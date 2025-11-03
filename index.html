@@ -1,64 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>exmxc.ai Audit Test</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      max-width: 600px;
-      margin: 60px auto;
-      text-align: center;
-    }
-    input {
-      width: 80%;
-      padding: 10px;
-      font-size: 1rem;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 1rem;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-    pre {
-      text-align: left;
-      background: #f6f8fa;
-      padding: 15px;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin-top: 20px;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>exmxc Audit</title>
 </head>
-<body>
-  <h1>🔍 exmxc.ai Audit App</h1>
+<body style="font-family:sans-serif;text-align:center;margin-top:60px;">
+  <h1>exmxc.ai Audit</h1>
   <p>Enter a URL to audit:</p>
-  <input id="url" placeholder="https://www.trailgenic.com" />
-  <br />
-  <button onclick="runAudit()">Run Audit</button>
-
-  <pre id="result"></pre>
-
+  <input id="url" style="width:60%;padding:10px;" placeholder="https://www.trailgenic.com">
+  <button onclick="runAudit()" style="padding:10px 20px;margin-left:10px;">Run Audit</button>
+  <pre id="result" style="text-align:left;background:#f9f9f9;padding:15px;margin-top:20px;"></pre>
   <script>
     async function runAudit() {
       const url = document.getElementById("url").value.trim();
-      if (!url) return alert("Please enter a URL");
-
+      if (!url) return alert("Enter a URL first.");
       document.getElementById("result").textContent = "⏳ Running audit...";
-
-      try {
-        const res = await fetch("/api/audit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url })
-        });
-        const data = await res.json();
-        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
-      } catch (err) {
-        document.getElementById("result").textContent = "❌ Error: " + err.message;
-      }
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      document.getElementById("result").textContent = JSON.stringify(data, null, 2);
     }
   </script>
 </body>
