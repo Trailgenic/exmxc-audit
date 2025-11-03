@@ -1,48 +1,40 @@
-// ✅ exmxc | Audit Function (Native Fetch, No External Packages)
-
+// /api/audit.js
+import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 
+export const config = {
+  runtime: "nodejs20.x", // ✅ ensures Node runtime
+};
+
+// Main API handler
 export default async function handler(req, res) {
   try {
     const { url } = req.query;
     if (!url) {
-      return res.status(400).json({ error: "Missing URL parameter" });
+      return res.status(400).json({ error: "Missing ?url parameter" });
     }
 
-    // ✅ Use native fetch (Node 18+ / 20+)
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${url} — ${response.statusText}`);
-    }
-
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Extract basic metadata + schema
-    const title = $("title").text() || "N/A";
-    const description = $('meta[name="description"]').attr("content") || "N/A";
-    const canonical = $('link[rel="canonical"]').attr("href") || "N/A";
-    const schemaCount = $('script[type="application/ld+json"]').length;
-    const ogTitle = $('meta[property="og:title"]').attr("content") || "N/A";
-    const ogDescription = $('meta[property="og:description"]').attr("content") || "N/A";
+    // Extract metadata for audit
+    const title = $("title").text() || "No title found";
+    const description = $('meta[name="description"]').attr("content") || "No description";
+    const canonical = $('link[rel="canonical"]').attr("href") || "No canonical tag";
 
-    // Return a simple structured audit result
-    return res.status(200).json({
-      status: "ok",
-      site: url,
+    const audit = {
       title,
       description,
       canonical,
-      schemaCount,
-      ogTitle,
-      ogDescription,
-      auditedAt: new Date().toISOString(),
-      poweredBy: "exmxc.ai",
-      agent: "Ella | Entity Engineering Audit Node"
-    });
+      url,
+      status: "✅ Audit Complete",
+      timestamp: new Date().toISOString(),
+    };
 
-  } catch (error) {
-    console.error("Audit Error:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(200).json(audit);
+  } catch (err) {
+    console.error("Audit error:", err);
+    return res.status(500).json({ error: "Internal Server Error", details: err.message });
   }
 }
