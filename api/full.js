@@ -1,60 +1,43 @@
-import axios from "axios";
-import cheerio from "cheerio";
+// ✅ exmxc | API: Single-Page Audit
+import * as cheerio from "cheerio"; // fixed import
+import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   try {
-    const rootUrl = (req.method === "GET" ? req.query.url : req.body?.url)?.trim();
-    if (!rootUrl) return res.status(400).json({ error: "Missing url" });
-
-    const visited = new Set();
-    const queue = [rootUrl];
-    const maxDepth = 2; // Crawl depth limit for now
-    const allPages = [];
-
-    while (queue.length) {
-      const currentUrl = queue.shift();
-      if (visited.has(currentUrl)) continue;
-      visited.add(currentUrl);
-
-      try {
-        const { data } = await axios.get(currentUrl, { timeout: 10000 });
-        const $ = cheerio.load(data);
-
-        const title = $("title").text().trim() || "No title";
-        const metaDesc = $('meta[name="description"]').attr("content") || null;
-        const ldCount = $('script[type="application/ld+json"]').length;
-        const canonical = $('link[rel="canonical"]').attr("href") || null;
-
-        allPages.push({
-          url: currentUrl,
-          title,
-          metaDesc,
-          ldCount,
-          canonical,
-        });
-
-        // Crawl internal links (limit depth)
-        if (currentUrl.startsWith(rootUrl)) {
-          $("a[href]").each((_, el) => {
-            const href = $(el).attr("href");
-            if (href && href.startsWith(rootUrl) && !visited.has(href)) {
-              queue.push(href);
-            }
-          });
-        }
-      } catch (err) {
-        allPages.push({ url: currentUrl, error: err.message });
-      }
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ error: "Missing URL parameter" });
     }
 
-    res.status(200).json({
-      status: "✅ Full-site crawl complete",
-      totalPages: allPages.length,
-      site: rootUrl,
-      pages: allPages,
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const title = $("title").text() || "No title found";
+    const description =
+      $('meta[name="description"]').attr("content") || "No description found";
+    const canonical =
+      $('link[rel="canonical"]').attr("href") ||
+      url.replace(/\/$/, "");
+
+    const data = {
+      status: "✅ Audit Complete",
+      title,
+      description,
+      canonical,
+      url,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    res.status(200).json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message || "Full crawl failed" });
+    console.error("Audit Error:", err);
+    res
+      .status(500)
+      .json({ error: "Server error", details: err.message || err.toString() });
   }
 }
