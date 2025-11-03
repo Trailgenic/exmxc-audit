@@ -3,16 +3,20 @@
   "version": 2,
   "cleanUrls": true,
   "trailingSlash": false,
-  "buildCommand": "echo 'No build needed'",
   "functions": {
     "api/**/*.js": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 10
+      "runtime": "nodejs20.x"
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
