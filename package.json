@@ -1,13 +1,16 @@
 {
   "name": "exmxc-audit",
   "version": "1.0.0",
-  "description": "Entity Engineering Audit API for AI-search optimization.",
+  "description": "Entity Engineering Audit API",
   "main": "api/audit.js",
-  "scripts": { "start": "node api/audit.js" },
+  "scripts": {
+    "start": "node api/audit.js"
+  },
   "dependencies": {
     "axios": "^1.6.0",
-    "cheerio": "^1.0.0-rc.12",
-    "resend": "^3.2.0"
+    "cheerio": "^1.0.0-rc.12"
   },
-  "engines": { "node": "20.x" }
+  "engines": {
+    "node": "20.x"
+  }
 }
