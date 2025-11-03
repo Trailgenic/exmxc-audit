@@ -1,60 +1,76 @@
-// ✅ exmxc-audit/api/audit.js
+// api/audit.js
+import axios from "axios";
+import * as cheerio from "cheerio";
 
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   try {
-    const { searchParams } = new URL(req.url);
-    const inputUrl = searchParams.get('url');
+    let { url } = req.query;
 
-    if (!inputUrl) {
-      return new Response(JSON.stringify({ error: 'Missing URL' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // --- Step 1: Validation ---
+    if (!url || typeof url !== "string" || url.trim() === "") {
+      return res.status(400).json({ error: "Missing URL" });
     }
 
-    // 🛠 Auto-prefix https:// if missing
-    const fullUrl = /^https?:\/\//i.test(inputUrl) ? inputUrl : `https://${inputUrl}`;
-
-    const response = await fetch(fullUrl, { redirect: 'follow' });
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch ${fullUrl}` }),
-        { status: response.status, headers: { 'Content-Type': 'application/json' } }
-      );
+    // Normalize user input (prepend https:// if missing)
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
     }
 
-    const html = await response.text();
+    // Validate the normalized URL
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Missing or invalid URL" });
+    }
 
-    // Extract key info
-    const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
-    const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
-    const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
-    const schemaCount = (html.match(/application\/ld\+json/g) || []).length;
+    // --- Step 2: Fetch page ---
+    const { data: html } = await axios.get(url, {
+      timeout: 12000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
+        Accept: "text/html",
+      },
+    });
 
-    const entityScore = Math.min(schemaCount * 25, 100);
+    // --- Step 3: Parse page ---
+    const $ = cheerio.load(html);
 
-    const result = {
-      url: fullUrl,
-      title: titleMatch ? titleMatch[1].trim() : 'N/A',
-      canonical: canonicalMatch ? canonicalMatch[1].trim() : 'N/A',
-      description: descMatch ? descMatch[1].trim() : 'N/A',
+    const title =
+      $("title").first().text().trim() || "No title found";
+    const canonical =
+      $('link[rel="canonical"]').attr("href") ||
+      url.replace(/\/$/, "");
+    const description =
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") ||
+      "No description found";
+
+    // --- Step 4: Count schema blocks ---
+    const schemaCount = $("script[type='application/ld+json']").length;
+
+    // --- Step 5: Compute Entity Score (basic logic) ---
+    const entityScore =
+      (title ? 30 : 0) +
+      (description ? 30 : 0) +
+      (canonical ? 10 : 0) +
+      Math.min(schemaCount * 10, 30);
+
+    // --- Step 6: Return result ---
+    return res.status(200).json({
+      url,
+      title,
+      canonical,
+      description,
       schemaCount,
       entityScore,
       timestamp: new Date().toISOString(),
-    };
-
-    return new Response(JSON.stringify(result, null, 2), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error("Audit error:", error.message);
+    return res.status(500).json({
+      error: "Failed to fetch or parse page",
+      details: error.message,
+    });
   }
 }
