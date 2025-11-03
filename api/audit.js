@@ -1,53 +1,58 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
-import { Resend } from "resend";
-
 export default async function handler(req, res) {
+  const { url } = req.query;
+
+  // Step 1: Validate input
+  if (!url) {
+    return res.status(400).json({ error: "Missing URL" });
+  }
+
+  // Step 2: Ensure full URL format
+  let target = url.trim();
+  if (!/^https?:\/\//i.test(target)) {
+    target = "https://" + target;
+  }
+
   try {
-    const url =
-      req.method === "POST"
-        ? req.body?.url
-        : req.query?.url;
+    // Step 3: Add timeout controller (10s)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    if (!url) {
-      return res.status(400).json({ error: "Missing URL" });
+    // Step 4: Fetch page HTML
+    const response = await fetch(target, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return res.status(500).json({ error: `Failed to fetch page: ${response.status}` });
     }
 
-    const { data } = await axios.get(url, { timeout: 10000 });
-    const $ = cheerio.load(data);
+    const html = await response.text();
 
-    const title = $("title").text() || "No title found";
-    const schemaCount = $("script[type='application/ld+json']").length;
-    const canonical = $("link[rel='canonical']").attr("href") || "Not found";
-    const description = $("meta[name='description']").attr("content") || "Not found";
-    const entityScore = Math.min(100, schemaCount * 20);
+    // Step 5: Extract key metadata
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : "No title found";
 
-    if (process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
-        from: "audit@exmxc.ai",
-        to: "you@example.com",
-        subject: `Audit Report for ${url}`,
-        html: `<h2>${url}</h2>
-               <p><b>Title:</b> ${title}</p>
-               <p><b>Schema Count:</b> ${schemaCount}</p>
-               <p><b>Canonical:</b> ${canonical}</p>
-               <p><b>Description:</b> ${description}</p>
-               <p><b>Entity Score:</b> ${entityScore}</p>`
-      });
-    }
+    const descMatch = html.match(/<meta name="description" content="([^"]*)"/i);
+    const description = descMatch ? descMatch[1].trim() : "No description found";
 
-    return res.status(200).json({
-      url,
+    const canonicalMatch = html.match(/<link rel="canonical" href="([^"]+)"/i);
+    const canonical = canonicalMatch ? canonicalMatch[1].trim() : target;
+
+    const schemaCount = (html.match(/"@context":/g) || []).length;
+    const entityScore = schemaCount > 0 ? 100 : 0;
+
+    // Step 6: Return structured result
+    res.status(200).json({
+      url: target,
       title,
       canonical,
       description,
       schemaCount,
       entityScore,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
+
   } catch (error) {
-    console.error("Audit error:", error.message);
-    return res.status(500).json({ error: error.message });
+    console.error("Audit error:", error);
+    res.status(500).json({ error: "Failed to fetch or parse page" });
   }
 }
