@@ -1,7 +1,6 @@
-// exmxc | Audit API (Baseline v1.0)
-// Single-page audit using Axios + Cheerio + Resend
+// exmxc | Audit API (Baseline v1.0 - Fixed for ESM)
 import axios from "axios";
-import * as cheerio from "cheerio";
+import * as cheerio from "cheerio"; // ✅ namespace import for ESM
 
 export default async function handler(req, res) {
   try {
@@ -13,7 +12,7 @@ export default async function handler(req, res) {
 
     // Fetch and parse
     const { data } = await axios.get(url, { timeout: 15000 });
-    const $ = cheerio.load(data);
+    const $ = cheerio.load(data); // ✅ works in ESM
 
     // Extract audit data
     const canonical = $('link[rel="canonical"]').attr("href") || null;
@@ -21,7 +20,7 @@ export default async function handler(req, res) {
     const schemaCount = $('script[type="application/ld+json"]').length;
     const title = $("title").text() || null;
 
-    // Simple entity score (example heuristic)
+    // Simple entity score
     let entityScore = 0;
     if (canonical) entityScore += 30;
     if (description) entityScore += 30;
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     };
 
-    // Send email if available
+    // Optional email send
     if (email && process.env.RESEND_API_KEY) {
       const { Resend } = await import("resend");
       const resend = new Resend(process.env.RESEND_API_KEY);
