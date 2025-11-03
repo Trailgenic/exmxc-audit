@@ -1,28 +1,41 @@
 // ✅ exmxc-audit/api/audit.js
-export default async function handler(req, res) {
+
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(req) {
   try {
-    // Support both GET and POST (for flexibility)
-    const { url } = req.query;
+    const { searchParams } = new URL(req.url);
+    const inputUrl = searchParams.get('url');
 
-    // Auto-fix missing protocol
-    if (!url) {
-      return res.status(400).json({ error: 'Missing URL' });
+    if (!inputUrl) {
+      return new Response(JSON.stringify({ error: 'Missing URL' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
-    const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
-    // Fetch target HTML
-    const response = await fetch(fullUrl);
+    // 🛠 Auto-prefix https:// if missing
+    const fullUrl = /^https?:\/\//i.test(inputUrl) ? inputUrl : `https://${inputUrl}`;
+
+    const response = await fetch(fullUrl, { redirect: 'follow' });
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Failed to fetch ${fullUrl}` });
+      return new Response(
+        JSON.stringify({ error: `Failed to fetch ${fullUrl}` }),
+        { status: response.status, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     const html = await response.text();
 
-    // Extract metadata
+    // Extract key info
     const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
     const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
     const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
     const schemaCount = (html.match(/application\/ld\+json/g) || []).length;
+
+    const entityScore = Math.min(schemaCount * 25, 100);
 
     const result = {
       url: fullUrl,
@@ -30,13 +43,18 @@ export default async function handler(req, res) {
       canonical: canonicalMatch ? canonicalMatch[1].trim() : 'N/A',
       description: descMatch ? descMatch[1].trim() : 'N/A',
       schemaCount,
-      entityScore: schemaCount * 25 > 100 ? 100 : schemaCount * 25,
+      entityScore,
       timestamp: new Date().toISOString(),
     };
 
-    res.status(200).json(result);
+    return new Response(JSON.stringify(result, null, 2), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    console.error('Audit error:', error);
-    res.status(500).json({ error: error.message });
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
