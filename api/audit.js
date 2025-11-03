@@ -1,46 +1,62 @@
-// exmxc | Stable Single-Page Audit (final baseline)
-const axios = require("axios");
-const cheerio = require("cheerio");
+// ✅ exmxc | Audit Function (Node 20-compatible)
 
-module.exports = async (req, res) => {
+import * as cheerio from "cheerio";
+import fetch from "node-fetch";
+import { Resend } from "resend";
+
+export default async function handler(req, res) {
   try {
     const { url } = req.query;
-    if (!url) return res.status(400).json({ error: "Missing URL parameter" });
+    if (!url) {
+      return res.status(400).json({ error: "Missing URL parameter" });
+    }
 
-    const { data: html, headers } = await axios.get(url, {
-      timeout: 10000,
-      maxRedirects: 5
-    });
+    // Fetch target HTML
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}`);
+    }
+
+    const html = await response.text();
     const $ = cheerio.load(html);
 
-    const title = $("title").text().trim() || null;
-    const metaDesc = $('meta[name="description"]').attr("content") || null;
-    const canonical = $('link[rel="canonical"]').attr("href") || null;
-    const ldCount = $('script[type=\"application/ld+json\"]').length;
+    // Extract basic SEO / schema elements
+    const title = $("title").text() || "N/A";
+    const description = $('meta[name="description"]').attr("content") || "N/A";
+    const canonical = $('link[rel="canonical"]').attr("href") || "N/A";
+    const schemaCount = $('script[type="application/ld+json"]').length;
 
-    let score = 0;
-    if (ldCount > 0) score += 40;
-    if (canonical) score += 30;
-    if (metaDesc) score += 20;
-    if (title) score += 10;
+    // Email notification (optional, requires RESEND_API_KEY)
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (resendApiKey) {
+      const resend = new Resend(resendApiKey);
+      await resend.emails.send({
+        from: "audit@exmxc.ai",
+        to: "mike.ye@live.com",
+        subject: `exmxc Audit Report: ${url}`,
+        html: `
+          <h2>✅ exmxc Audit Completed</h2>
+          <p><strong>URL:</strong> ${url}</p>
+          <p><strong>Title:</strong> ${title}</p>
+          <p><strong>Description:</strong> ${description}</p>
+          <p><strong>Canonical:</strong> ${canonical}</p>
+          <p><strong>Schema Blocks:</strong> ${schemaCount}</p>
+        `,
+      });
+    }
 
-    res.status(200).json({
+    // Return structured JSON response
+    return res.status(200).json({
+      status: "ok",
+      site: url,
+      title,
+      description,
+      canonical,
+      schemaCount,
       auditedAt: new Date().toISOString(),
-      target: url,
-      httpContentType: headers["content-type"] || null,
-      pageTitle: title,
-      entityScore: score,
-      checks: {
-        ldJsonCount: ldCount,
-        canonical,
-        metaDescPresent: !!metaDesc
-      }
     });
-  } catch (err) {
-    console.error("Audit Error:", err.message);
-    res.status(500).json({
-      error: "Audit failed",
-      details: err.message || "Unexpected error"
-    });
+  } catch (error) {
+    console.error("Audit Error:", error);
+    return res.status(500).json({ error: error.message });
   }
-};
+}
