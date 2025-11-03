@@ -1,58 +1,71 @@
 export default async function handler(req, res) {
-  const { url } = req.query;
+  const targetUrl = req.query.url;
 
-  // Step 1: Validate input
-  if (!url) {
-    return res.status(400).json({ error: "Missing URL" });
-  }
-
-  // Step 2: Ensure full URL format
-  let target = url.trim();
-  if (!/^https?:\/\//i.test(target)) {
-    target = "https://" + target;
+  // Step 1: basic validation
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    return res.status(400).json({ error: "Missing or invalid URL" });
   }
 
   try {
-    // Step 3: Add timeout controller (10s)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    // Step 2: simulate a real browser (bypass most bot firewalls)
+    const response = await fetch(targetUrl, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36",
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
 
-    // Step 4: Fetch page HTML
-    const response = await fetch(target, { signal: controller.signal });
-    clearTimeout(timeout);
-
+    // Step 3: ensure we got valid HTML
     if (!response.ok) {
-      return res.status(500).json({ error: `Failed to fetch page: ${response.status}` });
+      return res.status(response.status).json({
+        error: `Failed to fetch: ${response.statusText}`,
+      });
     }
 
     const html = await response.text();
+    if (!html || html.trim().length < 50) {
+      throw new Error("Empty or blocked HTML response");
+    }
 
-    // Step 5: Extract key metadata
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : "No title found";
+    // Step 4: extract basic metadata
+    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+    const canonicalMatch = html.match(
+      /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i
+    );
+    const descriptionMatch = html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
+    );
 
-    const descMatch = html.match(/<meta name="description" content="([^"]*)"/i);
-    const description = descMatch ? descMatch[1].trim() : "No description found";
+    // Step 5: count JSON-LD blocks (schema entities)
+    const schemaMatches = html.match(/application\/ld\+json/gi) || [];
+    const schemaCount = schemaMatches.length;
 
-    const canonicalMatch = html.match(/<link rel="canonical" href="([^"]+)"/i);
-    const canonical = canonicalMatch ? canonicalMatch[1].trim() : target;
+    // Step 6: generate a simple entity "trust score"
+    const entityScore = Math.min(schemaCount * 20, 100);
 
-    const schemaCount = (html.match(/"@context":/g) || []).length;
-    const entityScore = schemaCount > 0 ? 100 : 0;
-
-    // Step 6: Return structured result
-    res.status(200).json({
-      url: target,
-      title,
-      canonical,
-      description,
+    // Step 7: format response
+    const result = {
+      url: targetUrl,
+      title: titleMatch ? titleMatch[1].trim() : "N/A",
+      canonical: canonicalMatch ? canonicalMatch[1].trim() : targetUrl,
+      description: descriptionMatch
+        ? descriptionMatch[1].trim()
+        : "No meta description found.",
       schemaCount,
       entityScore,
       timestamp: new Date().toISOString(),
-    });
+    };
 
-  } catch (error) {
-    console.error("Audit error:", error);
-    res.status(500).json({ error: "Failed to fetch or parse page" });
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("Audit error:", err);
+    return res.status(500).json({ error: err.message });
   }
 }
