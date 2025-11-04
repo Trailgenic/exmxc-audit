@@ -37,6 +37,11 @@
         background: #333;
       }
 
+      button:disabled {
+        background: #999;
+        cursor: not-allowed;
+      }
+
       pre {
         background: #f4f4f4;
         padding: 20px;
@@ -45,6 +50,17 @@
         border-radius: 8px;
         margin-top: 25px;
         font-size: 0.9rem;
+      }
+
+      .error {
+        background: #fee;
+        border: 1px solid #fcc;
+        color: #c00;
+      }
+
+      .success {
+        background: #efe;
+        border: 1px solid #cfc;
       }
     </style>
   </head>
@@ -57,18 +73,64 @@
     <pre id="result"></pre>
 
     <script>
-      document.getElementById("runButton").addEventListener("click", async () => {
-        const input = document.getElementById("urlInput").value.trim();
-        const resultEl = document.getElementById("result");
+      const runButton = document.getElementById("runButton");
+      const urlInput = document.getElementById("urlInput");
+      const resultEl = document.getElementById("result");
+
+      runButton.addEventListener("click", async () => {
+        const input = urlInput.value.trim();
+        
+        if (!input) {
+          resultEl.className = "error";
+          resultEl.textContent = JSON.stringify({ error: "Please enter a URL" }, null, 2);
+          return;
+        }
+
+        resultEl.className = "";
         resultEl.textContent = "Loading...";
+        runButton.disabled = true;
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
           const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+          
+          // Check if response is actually JSON
+          const contentType = res.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            const text = await res.text();
+            resultEl.className = "error";
+            resultEl.textContent = JSON.stringify({
+              error: "Server returned non-JSON response",
+              response: text.substring(0, 500)
+            }, null, 2);
+            return;
+          }
+
           const data = await res.json();
+          
+          if (data.success) {
+            resultEl.className = "success";
+          } else {
+            resultEl.className = "error";
+          }
+          
           resultEl.textContent = JSON.stringify(data, null, 2);
+          
         } catch (err) {
-          resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
+          resultEl.className = "error";
+          resultEl.textContent = JSON.stringify({ 
+            error: "Request failed", 
+            details: err.message 
+          }, null, 2);
+        } finally {
+          runButton.disabled = false;
+        }
+      });
+
+      // Allow Enter key to trigger audit
+      urlInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          runButton.click();
         }
       });
     </script>
