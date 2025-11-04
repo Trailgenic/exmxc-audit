@@ -1,73 +1,47 @@
-# ==========================================================
-# exmxc-audit | .gitignore
-# Purpose: Keep repo clean of temp files, builds, and secrets
-# ==========================================================
-
-# Node dependencies
-/node_modules
+# === Node ===
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+package-lock.json
 
-# Environment variables
+# === Build & Environment Files ===
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.development
+.env.production
+.env.test
+.vercel
 
-# Logs
-logs
-*.log
-*.log.*
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# OS / System
+# === OS / Editor ===
 .DS_Store
 Thumbs.db
-Desktop.ini
-
-# IDE / Editor
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 
-# Build output
-dist/
-build/
+# === Logs ===
+logs
+*.log
+*.out
+*.err
+
+# === Backups & Temp ===
+*.bak
+*.tmp
+*.temp
+*.old
+
+# === Deployment / Cache ===
 .cache/
 .next/
 out/
-coverage/
-.vercel/
-.vercel_build_output/
+dist/
+build/
 
-# Temporary / Test artifacts
-tmp/
-temp/
-*.tmp
-*.temp
-*.bak
-*.old
-*.orig
-*.rej
-
-# Local runtime files
-*.local
-*.envrc
-
-# Lock files
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# ==========================================================
-# Notes:
-# - Keep package.json and vercel.json committed.
-# - Keep api/, schema/, and core logic folders under version control.
-# - Never commit environment keys, API secrets, or user data.
-# ==========================================================
+# === Misc ===
+*.zip
+*.tar
+*.gz
