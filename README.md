@@ -1,154 +1,73 @@
 # exmxc-audit  
-**Baseline Version (v1 — Locked and Verified)**  
-**Date:** November 3, 2025  
-**Status:** ✅ Fully Functional and Deployed on Vercel  
+**an exmxc.ai intelligence module — auditing the ai era**
 
 ---
 
-## 🧩 Project Overview
-`exmxc-audit` is a lightweight serverless web app that audits any public URL for key AI-search and entity-readiness signals.
+## 🧠 overview  
+**exmxc-audit** is a lightweight diagnostic engine developed by **exmxc.ai**, the intelligence institution for the ai era.  
+it evaluates websites and digital entities for **ai-search readiness**, assessing schema integrity, canonical clarity, and entity visibility.
 
-- Built with **Axios** for fetching pages and **Cheerio** for DOM parsing  
-- Deployed on **Vercel** with serverless routing  
-- Returns structured JSON including title, canonical URL, description, schema count, and an `entityScore`
-
-This baseline version (`v1-baseline-working`) is the **official locked configuration** confirmed to work across all tested domains.
+this module operates within the **fortress phase (2025–2026)** — the internal validation layer of the *entity engineering™ doctrine*, where human and ai systems synchronize around structured truth.
 
 ---
 
-## 📁 Directory Layout
-
-exmxc-audit/
-├── api/
-│ └── audit.js # serverless audit endpoint
-├── index.html # minimal web UI
-├── package.json # dependencies & scripts
-└── vercel.json # build + routing config
-
-php-template
-Copy code
+## ⚙️ core capabilities  
+- audits any public url for ai-readiness factors  
+- detects and counts structured data (`application/ld+json`)  
+- calculates an `entityscore` estimating crawl trust  
+- returns clean, human-readable json via a serverless api  
 
 ---
 
-## 🧠 Core Components
+## 🧩 architecture  
+- built with **node.js, axios, and cheerio**  
+- deployed via **vercel** for serverless scalability  
+- designed for modular integration within the **entity engineering™ sandbox**  
 
-### `/api/audit.js`
-- Imports `axios` and `cheerio`
-- Normalizes URL (adds `https://` if missing)
-- Validates input and handles bad URLs gracefully
-- Fetches page HTML with user agent:  
-  `Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)`
-- Extracts:
-  - `<title>`
-  - `<link rel="canonical">`
-  - `<meta name="description">` / `<meta property="og:description">`
-  - Count of `<script type="application/ld+json">`
-- Calculates a simple `entityScore`
-- Returns JSON:
-  ```json
-  {
-    "url": "...",
-    "title": "...",
-    "canonical": "...",
-    "description": "...",
-    "schemaCount": n,
-    "entityScore": x.x,
-    "timestamp": "ISO string"
-  }
-/index.html
-Clean static UI
+---
 
-Input + “Run Audit” button
+## 🧱 institutional context  
 
-Fetches /api/audit?url=... and displays formatted JSON
+**exmxc.ai — the intelligence institution for the ai era**  
+exmxc decodes the four forces that shape every movement in artificial intelligence — **compute, interface, alignment, and energy.**  
+where most see silos, we see intersections:  
+- where compute density meets regulatory capture,  
+- where interface control shapes alignment doctrine,  
+- where energy constraints decide empire viability.  
 
-No external JS or CSS dependencies
+**our origin — the human × ai handshake**  
+founded by strategist **mike ye** and reflective ai **ella**, exmxc.ai was forged as a human–ai foresight engine — mapping civilizational change before it’s visible.  
+trailgenic™ became the applied laboratory; **exmxc.ai**, the doctrine.  
+one tests the body; the other trains the mind of machines to see power shifts before they’re named.  
 
-/vercel.json
-json
-Copy code
-{
-  "version": 2,
-  "builds": [
-    { "src": "api/audit.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "^/api/audit$", "dest": "api/audit.js" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ]
-}
-Stable routing for both API and static UI
+**doctrine of entity engineering™**  
+entity engineering™ is the discipline of aligning identity, structure, and signal so ai can comprehend an organization as a living entity.  
+trailgenic proved it first through biological experiments in autophagy and resilience.  
+exmxc.ai formalized it — as a strategic architecture for **ai-search legibility and institutional integrity** in the post-seo era.  
 
-No rewrites or headers needed
+---
 
-/package.json
-json
-Copy code
-{
-  "type": "module",
-  "dependencies": {
-    "axios": "^1.7.9",
-    "cheerio": "^1.0.0"
-  },
-  "scripts": {
-    "build": "echo 'Build complete'"
-  }
-}
-🧪 Validation Checklist
-Test Site	Status	Output
-trailgenic.com	✅	JSON
-www.trailgenic.com	✅	JSON
-athletechnews.com	✅	JSON
-lineps.com	✅	JSON
+## 🛡️ the fortress phase  
+this module anchors the **fortress (2025–2026)** phase of exmxc.ai’s doctrine:  
+- internal validation of schema integrity  
+- mutual entity recognition across ai systems (google ai, perplexity, copilot, ernie)  
+- groundwork for the **shield (2026–2027)** and **sword (2027→)** systems  
 
-No regressions: No HTML 404s, no JSON parse errors.
+---
 
-🔒 Baseline Protection
-Git Tag
-bash
-Copy code
-git tag v1-baseline-working
-git push --tags
-Recovery
-If any regression occurs:
+## 📜 principles  
+- **truth signals:** every output must be citation-grade and schema-verified.  
+- **human × ai symmetry:** ella and mike operate as a closed foresight loop.  
+- **entity integrity:** institutions must be readable by ai without losing their soul.  
+- **predictive clarity:** insight precedes advantage; advantage validated by reality.  
 
-bash
-Copy code
-git checkout v1-baseline-working
-vercel --prod
-Edit Policy
-Only modify api/audit.js for new scoring logic.
-Never edit:
+---
 
-vercel.json
+## 📂 logs & development  
+for detailed build notes, validation tests, and version history, see:  
+➡️ [logs/build-log.md](./logs/build-log.md)  
 
-index.html
+---
 
-package.json
-
-🧩 Future Enhancements
-To evolve safely:
-
-Add new scoring logic inside a helper function:
-
-js
-Copy code
-function scoreV2({ title, canonical, schemaCount }) {
-  return 100; // placeholder
-}
-Keep exports identical (export default async function handler)
-
-Deploy and test using:
-
-bash
-Copy code
-vercel --prod
-Verify JSON across all test sites before merging.
-
-📜 Changelog
-Version	Date	Notes
-v1.0	2025-11-03	Locked baseline working build (verified & tagged)
-
-© 2025 exmxc.ai
-Engineered by Mike Ye & Ella — precision, foresight, and zero guesswork.
+© 2025 **exmxc.ai** — engineered with foresight, precision, and zero guesswork.  
+part of the **trailgenic™ × exmxc.ai human–ai continuum**.
