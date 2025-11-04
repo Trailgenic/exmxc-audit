@@ -1,36 +1,18 @@
-// api/audit.js
 import axios from "axios";
 import * as cheerio from "cheerio";
 
 export default async function handler(req, res) {
   try {
     let { url } = req.query;
+    if (!url) return res.status(400).json({ error: "Missing URL" });
 
-    if (!url || typeof url !== "string" || url.trim() === "") {
-      return res.status(400).json({ error: "Missing URL" });
-    }
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
 
-    // Normalize (prepend https:// if missing)
-    if (!/^https?:\/\//i.test(url)) {
-      url = `https://${url}`;
-    }
-
-    try {
-      new URL(url);
-    } catch {
-      return res.status(400).json({ error: "Invalid URL format" });
-    }
-
-    // Fetch
     const { data: html } = await axios.get(url, {
       timeout: 15000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
-        Accept: "text/html",
-      },
+      headers: { "User-Agent": "exmxc-audit/1.0" },
     });
 
-    // Parse
     const $ = cheerio.load(html);
     const title = $("title").first().text().trim() || "No title found";
     const canonical = $('link[rel="canonical"]').attr("href") || url;
@@ -56,10 +38,8 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("Audit error:", err.message);
-    return res.status(500).json({
-      error: "Failed to fetch or parse page",
-      details: err.message,
-    });
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch or parse page", details: err.message });
   }
 }
