@@ -1,57 +1,66 @@
-// /api/audit.js
+// api/audit.js
 import axios from "axios";
 import * as cheerio from "cheerio";
 
 export default async function handler(req, res) {
-  const { url } = req.query;
-
-  if (!url) {
-    return res.status(400).json({ error: "Missing URL parameter" });
-  }
-
   try {
-    const { data, headers } = await axios.get(url, {
-      timeout: 10000,
-      headers: { "User-Agent": "exmxc.ai-AuditBot/1.0" },
-    });
+    let { url } = req.query;
 
-    // Detect non-HTML (like images, PDFs, etc.)
-    if (!headers["content-type"]?.includes("text/html")) {
-      return res.json({
-        entityScore: 0,
-        issues: ["Non-HTML content detected"],
-        recommendations: ["Submit a valid webpage URL"],
-      });
+    if (!url || typeof url !== "string" || url.trim() === "") {
+      return res.status(400).json({ error: "Missing URL" });
     }
 
-    const $ = cheerio.load(data);
+    // Normalize (prepend https:// if missing)
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
+    }
 
-    const hasJSONLD = $('script[type="application/ld+json"]').length > 0;
-    const hasCanonical = $('link[rel="canonical"]').attr("href") ? true : false;
-    const hasMetaDesc = $('meta[name="description"]').attr("content") ? true : false;
-    const hasTitle = $("title").text().length > 0;
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Invalid URL format" });
+    }
 
-    const entityScore = [hasJSONLD, hasCanonical, hasMetaDesc, hasTitle].filter(Boolean).length * 25;
-
-    res.status(200).json({
-      entityScore,
-      checks: {
-        hasJSONLD,
-        hasCanonical,
-        hasMetaDesc,
-        hasTitle,
+    // Fetch
+    const { data: html } = await axios.get(url, {
+      timeout: 15000,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
+        Accept: "text/html",
       },
-      issues: [
-        !hasJSONLD && "Missing structured data (JSON-LD)",
-        !hasCanonical && "Missing canonical tag",
-        !hasMetaDesc && "Missing meta description",
-        !hasTitle && "Missing title tag",
-      ].filter(Boolean),
     });
-  } catch (error) {
-    res.status(500).json({
-      error: "Audit failed",
-      details: error.message || error.toString(),
+
+    // Parse
+    const $ = cheerio.load(html);
+    const title = $("title").first().text().trim() || "No title found";
+    const canonical = $('link[rel="canonical"]').attr("href") || url;
+    const description =
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") ||
+      "No description found";
+    const schemaCount = $("script[type='application/ld+json']").length;
+
+    const entityScore =
+      (title ? 30 : 0) +
+      (description ? 30 : 0) +
+      (canonical ? 10 : 0) +
+      Math.min(schemaCount * 10, 30);
+
+    return res.status(200).json({
+      url,
+      title,
+      canonical,
+      description,
+      schemaCount,
+      entityScore,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("Audit error:", err.message);
+    return res.status(500).json({
+      error: "Failed to fetch or parse page",
+      details: err.message,
     });
   }
 }
+
