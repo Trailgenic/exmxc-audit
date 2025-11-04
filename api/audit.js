@@ -1,93 +1,80 @@
-// api/audit.js
-import axios from "axios";
-import * as cheerio from "cheerio";
+// exmxc.ai Audit API — Stable v2.1 (Recalibrated Scoring)
+
+import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   try {
-    let { url } = req.query;
-
-    if (!url || typeof url !== "string" || url.trim() === "") {
-      return res.status(400).json({ error: "Missing URL" });
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ error: "Missing ?url parameter" });
     }
 
-    // Normalize (prepend https:// if missing)
-    if (!/^https?:\/\//i.test(url)) {
-      url = `https://${url}`;
-    }
+    const targetUrl = url.startsWith("http") ? url : `https://${url}`;
+    const response = await fetch(targetUrl, { timeout: 10000 });
+    const html = await response.text();
 
-    try {
-      new URL(url);
-    } catch {
-      return res.status(400).json({ error: "Invalid URL format" });
-    }
+    // Basic extraction helpers
+    const getMeta = (name) => {
+      const match = html.match(
+        new RegExp(`<meta[^>]*(name|property)=["']${name}["'][^>]*content=["']([^"']+)["']`, "i")
+      );
+      return match ? match[2] : null;
+    };
 
-    // Fetch page
-    const response = await axios.get(url, {
-      timeout: 15000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      validateStatus: () => true, // prevent axios from throwing for 404/500
-    });
+    // Feature detections
+    const hasJSONLD = html.includes('"@context":') && html.includes('"@type"');
+    const hasCanonical = html.includes('rel="canonical"');
+    const hasTitle = /<title>.*<\/title>/i.test(html);
+    const hasMetaDesc = getMeta("description") !== null;
+    const schemaCount = (html.match(/"@type"/g) || []).length;
 
-    if (response.status >= 400 || !response.data) {
-      return res.status(200).json({
-        error: `Site returned status ${response.status}`,
-        message: "The page could not be retrieved or is blocking the request.",
-      });
-    }
+    // Base scoring weights
+    let entityScore = 0;
+    if (hasJSONLD) entityScore += 40;
+    if (hasCanonical) entityScore += 25;
+    if (hasMetaDesc) entityScore += 20;
+    if (hasTitle) entityScore += 15;
 
-    const html = response.data;
+    // Penalties for missing schema structure
+    if (schemaCount < 1) entityScore -= 10;
 
-    // Detect non-HTML responses (like redirects or scripts)
-    if (typeof html !== "string" || !html.includes("<html")) {
-      return res.status(200).json({
-        error: "Non-HTML response received",
-        message: "Target did not return a parseable HTML document.",
-      });
-    }
+    // Clamp score between 0–100
+    entityScore = Math.max(0, Math.min(100, entityScore));
 
-    // Parse DOM
-    const $ = cheerio.load(html);
-    const title = $("title").first().text().trim() || "";
-    const canonical = $('link[rel="canonical"]').attr("href") || "";
-    const description =
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "";
-    const schemaCount = $("script[type='application/ld+json']").length;
+    // Recalibrated grading (2025 model)
+    let grade;
+    if (entityScore >= 95) grade = "A+ (Elite AI-Trust)";
+    else if (entityScore >= 85) grade = "A (Strong Authority)";
+    else if (entityScore >= 75) grade = "B (Moderate AI Visibility)";
+    else if (entityScore >= 60) grade = "C (Needs Optimization)";
+    else if (entityScore >= 40) grade = "D (Weak Signals)";
+    else grade = "F (Non-Entity)";
 
-    // Scoring
-    let score = 0;
-    if (title) score += 25;
-    if (description) score += 25;
-    if (canonical) score += 10;
-    if (schemaCount > 0) score += Math.min(schemaCount * 10, 40);
-
-    const entityScore = Math.min(score, 100);
-
-    let clarityTier;
-    if (entityScore >= 90) clarityTier = "Elite — Full AI Clarity";
-    else if (entityScore >= 70) clarityTier = "Moderate — Partial AI Clarity";
-    else clarityTier = "Weak — High Risk of Misinterpretation";
-
-    // Respond safely
-    return res.status(200).json({
-      url,
-      title: title || "No title found",
-      canonical: canonical || "No canonical link found",
-      description: description || "No description found",
+    // Response object
+    const auditResult = {
+      url: targetUrl,
+      title: getMeta("og:title") || getMeta("twitter:title") || html.match(/<title>(.*?)<\/title>/i)?.[1] || null,
+      canonical: html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] || null,
+      description: getMeta("description") || getMeta("og:description") || null,
       schemaCount,
       entityScore,
-      clarityTier,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("Audit error:", err.message);
+      grade,
+      checks: {
+        hasJSONLD,
+        hasCanonical,
+        hasMetaDesc,
+        hasTitle
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    return res.status(200).json(auditResult);
+
+  } catch (error) {
+    // Handle non-JSON or 404 gracefully
     return res.status(500).json({
-      error: "Unexpected processing failure",
-      details: err.message,
+      error: "Server returned non-JSON response",
+      response: error.message || String(error)
     });
   }
 }
