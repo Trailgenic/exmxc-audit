@@ -33,16 +33,25 @@ export default async function handler(req, res) {
     const title = $("title").first().text().trim() || "No title found";
     const canonical = $('link[rel="canonical"]').attr("href") || url;
     const description =
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
+      $('meta[name='description']").attr("content") ||
+      $('meta[property='og:description']").attr("content") ||
       "No description found";
     const schemaCount = $("script[type='application/ld+json']").length;
 
-    const entityScore =
-      (title ? 30 : 0) +
-      (description ? 30 : 0) +
-      (canonical ? 10 : 0) +
-      Math.min(schemaCount * 10, 30);
+    // 🧮 Recalibrated Scoring Model (New)
+    let entityScore = 0;
+
+    if (schemaCount > 0) entityScore += 40; // Core trust layer
+    if (description && description !== "No description found") entityScore += 30;
+    if (canonical) entityScore += 20;
+    if (title && title !== "No title found") entityScore += 10;
+
+    // Penalties for incomplete signals
+    if (schemaCount < 2) entityScore -= 10;
+    if (!(schemaCount && description && canonical)) entityScore -= 20;
+
+    // Clamp between 0–100
+    entityScore = Math.max(0, Math.min(100, entityScore));
 
     return res.status(200).json({
       url,
