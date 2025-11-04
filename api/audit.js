@@ -1,61 +1,63 @@
-// api/audit.js
 import axios from "axios";
 import * as cheerio from "cheerio";
-
-// ========= CONFIG =========
-const MAX_PAGES = 10; // limit recursive crawl depth
-const TIMEOUT = 15000; // 15s per request
-// ==========================
 
 export default async function handler(req, res) {
   try {
     let { url } = req.query;
-
-    if (!url || typeof url !== "string" || url.trim() === "")
+    if (!url || typeof url !== "string" || url.trim() === "") {
       return res.status(400).json({ error: "Missing URL" });
+    }
 
-    // Normalize URL
+    // --- Normalize + validate
     if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    const base = new URL(url);
-    const domainRoot = `${base.protocol}//${base.hostname}`;
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Invalid URL format" });
+    }
 
+    const origin = new URL(url).origin;
     const visited = new Set();
-    const results = [];
+    const pages = [];
+    const queue = [url];
+    const MAX_PAGES = 30;
 
-    async function crawlPage(target) {
-      if (visited.size >= MAX_PAGES || visited.has(target)) return;
-      visited.add(target);
+    // --- Crawl loop
+    while (queue.length && pages.length < MAX_PAGES) {
+      const current = queue.shift();
+      if (visited.has(current)) continue;
+      visited.add(current);
 
       try {
-        const { data: html } = await axios.get(target, {
-          timeout: TIMEOUT,
+        const { data: html, headers } = await axios.get(current, {
+          timeout: 15000,
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (compatible; exmxc-siteaudit/1.0; +https://exmxc.ai)",
+              "Mozilla/5.0 (compatible; exmxc-audit/2.0; +https://exmxc.ai)",
             Accept: "text/html",
           },
         });
 
+        if (!headers["content-type"]?.includes("text/html")) continue;
+
         const $ = cheerio.load(html);
         const title = $("title").first().text().trim() || "No title found";
         const canonical =
-          $('link[rel="canonical"]').attr("href") ||
-          `${domainRoot}${new URL(target).pathname}`;
+          $('link[rel="canonical"]').attr("href") || current;
         const description =
           $('meta[name="description"]').attr("content") ||
           $('meta[property="og:description"]').attr("content") ||
           "No description found";
         const schemaCount = $("script[type='application/ld+json']").length;
 
-        // Weighted scoring system (new calibration)
-        let entityScore = 0;
-        if (title && title !== "No title found") entityScore += 25;
-        if (description && description !== "No description found") entityScore += 25;
-        if (canonical) entityScore += 10;
-        entityScore += Math.min(schemaCount * 10, 40); // bonus for structured data
+        const entityScore =
+          (title ? 30 : 0) +
+          (description ? 30 : 0) +
+          (canonical ? 10 : 0) +
+          Math.min(schemaCount * 10, 30);
 
-        results.push({
-          pageUrl: target,
+        pages.push({
+          pageUrl: current,
           title,
           canonical,
           description,
@@ -63,46 +65,49 @@ export default async function handler(req, res) {
           entityScore,
         });
 
-        // Extract internal links (recursive crawl)
+        // --- Find internal links for next crawl
         $("a[href]").each((_, el) => {
-          const href = $(el).attr("href");
-          if (!href) return;
-
-          try {
-            const abs = new URL(href, domainRoot).href;
-            if (abs.startsWith(domainRoot) && !visited.has(abs)) {
-              crawlPage(abs);
-            }
-          } catch {
-            // Ignore invalid URLs
+          let link = $(el).attr("href");
+          if (!link) return;
+          if (link.startsWith("/")) link = origin + link;
+          if (link.startsWith(origin) && !visited.has(link)) {
+            queue.push(link);
           }
         });
       } catch (err) {
-        console.error(`❌ Crawl error for ${target}:`, err.message);
+        console.warn(`Skipped ${current}: ${err.message}`);
       }
     }
 
-    // Begin recursive crawl
-    await crawlPage(domainRoot);
-
-    // Aggregate domain stats
+    // --- Compute stats
     const avgEntityScore =
-      results.reduce((acc, r) => acc + r.entityScore, 0) / results.length || 0;
+      pages.reduce((sum, p) => sum + p.entityScore, 0) /
+      (pages.length || 1);
     const avgSchemaCount =
-      results.reduce((acc, r) => acc + r.schemaCount, 0) / results.length || 0;
+      pages.reduce((sum, p) => sum + p.schemaCount, 0) /
+      (pages.length || 1);
+    const internalLinkDensity = Math.min(
+      (pages.length / MAX_PAGES) * 1.0,
+      1.0
+    );
+    const entityGraphStrength = Math.round(
+      avgEntityScore * 0.6 + avgSchemaCount * 10 + internalLinkDensity * 30
+    );
 
+    // --- Return full result
     return res.status(200).json({
-      domain: domainRoot,
-      pagesCrawled: results.length,
+      domain: origin,
+      pagesCrawled: pages.length,
       avgEntityScore: Math.round(avgEntityScore),
-      avgSchemaCount: Number(avgSchemaCount.toFixed(1)),
+      avgSchemaCount: parseFloat(avgSchemaCount.toFixed(1)),
+      entityGraphStrength,
       timestamp: new Date().toISOString(),
-      pages: results,
+      pages,
     });
   } catch (err) {
-    console.error("⚠️ Audit error:", err.message);
+    console.error("Audit error:", err.message);
     return res.status(500).json({
-      error: "Failed to crawl site",
+      error: "Failed to crawl or analyze site",
       details: err.message,
     });
   }
