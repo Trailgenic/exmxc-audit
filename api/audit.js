@@ -1,3 +1,4 @@
+// api/audit.js
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -10,16 +11,17 @@ export default async function handler(req, res) {
     }
 
     // Normalize (prepend https:// if missing)
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
+    }
 
-    // Validate
     try {
       new URL(url);
     } catch {
       return res.status(400).json({ error: "Invalid URL format" });
     }
 
-    // Fetch target HTML
+    // Fetch
     const { data: html } = await axios.get(url, {
       timeout: 15000,
       headers: {
@@ -38,12 +40,24 @@ export default async function handler(req, res) {
       "No description found";
     const schemaCount = $("script[type='application/ld+json']").length;
 
-    const entityScore =
-      (title ? 30 : 0) +
-      (description ? 30 : 0) +
-      (canonical ? 10 : 0) +
-      Math.min(schemaCount * 10, 30);
+    // 🧠 Recalibrated clarity-weighted scoring
+    let score = 0;
 
+    if (title && title.length > 0) score += 25; // baseline presence
+    if (description && description.length > 0) score += 25; // clarity metadata
+    if (canonical && canonical.length > 0) score += 10; // index control
+    if (schemaCount > 0) score += Math.min(schemaCount * 10, 40); // entity structure bonus
+
+    // Normalize to 100 max
+    const entityScore = Math.min(score, 100);
+
+    // Diagnostic tier
+    let clarityTier;
+    if (entityScore >= 90) clarityTier = "Elite — Full AI Clarity";
+    else if (entityScore >= 70) clarityTier = "Moderate — Partial AI Clarity";
+    else clarityTier = "Weak — High Risk of Misinterpretation";
+
+    // Return results
     return res.status(200).json({
       url,
       title,
@@ -51,6 +65,7 @@ export default async function handler(req, res) {
       description,
       schemaCount,
       entityScore,
+      clarityTier,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
