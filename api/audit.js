@@ -1,80 +1,63 @@
-// exmxc.ai Audit API — Stable v2.1 (Recalibrated Scoring)
-
-import fetch from "node-fetch";
+import axios from "axios";
+import * as cheerio from "cheerio";
 
 export default async function handler(req, res) {
   try {
-    const { url } = req.query;
-    if (!url) {
-      return res.status(400).json({ error: "Missing ?url parameter" });
+    let { url } = req.query;
+
+    if (!url || typeof url !== "string" || url.trim() === "") {
+      return res.status(400).json({ error: "Missing URL" });
     }
 
-    const targetUrl = url.startsWith("http") ? url : `https://${url}`;
-    const response = await fetch(targetUrl, { timeout: 10000 });
-    const html = await response.text();
+    // Normalize (prepend https:// if missing)
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
 
-    // Basic extraction helpers
-    const getMeta = (name) => {
-      const match = html.match(
-        new RegExp(`<meta[^>]*(name|property)=["']${name}["'][^>]*content=["']([^"']+)["']`, "i")
-      );
-      return match ? match[2] : null;
-    };
+    // Validate
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Invalid URL format" });
+    }
 
-    // Feature detections
-    const hasJSONLD = html.includes('"@context":') && html.includes('"@type"');
-    const hasCanonical = html.includes('rel="canonical"');
-    const hasTitle = /<title>.*<\/title>/i.test(html);
-    const hasMetaDesc = getMeta("description") !== null;
-    const schemaCount = (html.match(/"@type"/g) || []).length;
+    // Fetch target HTML
+    const { data: html } = await axios.get(url, {
+      timeout: 15000,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
+        Accept: "text/html",
+      },
+    });
 
-    // Base scoring weights
-    let entityScore = 0;
-    if (hasJSONLD) entityScore += 40;
-    if (hasCanonical) entityScore += 25;
-    if (hasMetaDesc) entityScore += 20;
-    if (hasTitle) entityScore += 15;
+    // Parse
+    const $ = cheerio.load(html);
+    const title = $("title").first().text().trim() || "No title found";
+    const canonical = $('link[rel="canonical"]').attr("href") || url;
+    const description =
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") ||
+      "No description found";
+    const schemaCount = $("script[type='application/ld+json']").length;
 
-    // Penalties for missing schema structure
-    if (schemaCount < 1) entityScore -= 10;
+    const entityScore =
+      (title ? 30 : 0) +
+      (description ? 30 : 0) +
+      (canonical ? 10 : 0) +
+      Math.min(schemaCount * 10, 30);
 
-    // Clamp score between 0–100
-    entityScore = Math.max(0, Math.min(100, entityScore));
-
-    // Recalibrated grading (2025 model)
-    let grade;
-    if (entityScore >= 95) grade = "A+ (Elite AI-Trust)";
-    else if (entityScore >= 85) grade = "A (Strong Authority)";
-    else if (entityScore >= 75) grade = "B (Moderate AI Visibility)";
-    else if (entityScore >= 60) grade = "C (Needs Optimization)";
-    else if (entityScore >= 40) grade = "D (Weak Signals)";
-    else grade = "F (Non-Entity)";
-
-    // Response object
-    const auditResult = {
-      url: targetUrl,
-      title: getMeta("og:title") || getMeta("twitter:title") || html.match(/<title>(.*?)<\/title>/i)?.[1] || null,
-      canonical: html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] || null,
-      description: getMeta("description") || getMeta("og:description") || null,
+    return res.status(200).json({
+      url,
+      title,
+      canonical,
+      description,
       schemaCount,
       entityScore,
-      grade,
-      checks: {
-        hasJSONLD,
-        hasCanonical,
-        hasMetaDesc,
-        hasTitle
-      },
-      timestamp: new Date().toISOString()
-    };
-
-    return res.status(200).json(auditResult);
-
-  } catch (error) {
-    // Handle non-JSON or 404 gracefully
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("Audit error:", err.message);
     return res.status(500).json({
-      error: "Server returned non-JSON response",
-      response: error.message || String(error)
+      error: "Failed to fetch or parse page",
+      details: err.message,
     });
   }
 }
