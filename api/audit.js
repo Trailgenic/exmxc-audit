@@ -1,4 +1,3 @@
-// api/audit.js
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -11,17 +10,16 @@ export default async function handler(req, res) {
     }
 
     // Normalize (prepend https:// if missing)
-    if (!/^https?:\/\//i.test(url)) {
-      url = `https://${url}`;
-    }
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
 
+    // Validate
     try {
       new URL(url);
     } catch {
       return res.status(400).json({ error: "Invalid URL format" });
     }
 
-    // Fetch target page
+    // Fetch target HTML
     const { data: html } = await axios.get(url, {
       timeout: 15000,
       headers: {
