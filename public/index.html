@@ -60,12 +60,27 @@
       document.getElementById("runButton").addEventListener("click", async () => {
         const input = document.getElementById("urlInput").value.trim();
         const resultEl = document.getElementById("result");
+
+        if (!input) {
+          resultEl.textContent = JSON.stringify({ error: "No URL provided" }, null, 2);
+          return;
+        }
+
         resultEl.textContent = "Loading...";
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
           const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
-          const data = await res.json();
+
+          // Safely handle JSON response
+          const text = await res.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            throw new Error("Invalid JSON returned from API: " + text.slice(0, 80));
+          }
+
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
           resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
