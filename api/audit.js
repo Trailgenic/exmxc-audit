@@ -21,17 +21,25 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid URL format" });
     }
 
-    // Fetch
-    const { data: html } = await axios.get(url, {
+    // Fetch the page
+    const response = await axios.get(url, {
       timeout: 15000,
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)",
-        Accept: "text/html",
+        Accept: "text/html,application/xhtml+xml",
       },
+      validateStatus: () => true, // prevent throwing on 404s
     });
 
-    // Parse
-    const $ = cheerio.load(html);
+    // If it's not HTML, bail early
+    const contentType = response.headers["content-type"] || "";
+    if (!contentType.includes("text/html")) {
+      return res.status(400).json({ error: `Invalid content type: ${contentType}` });
+    }
+
+    // Load into cheerio
+    const $ = cheerio.load(response.data || "");
+
     const title = $("title").first().text().trim() || "No title found";
     const canonical = $('link[rel="canonical"]').attr("href") || url;
     const description =
