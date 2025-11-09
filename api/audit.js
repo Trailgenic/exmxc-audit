@@ -215,9 +215,10 @@ export default async function handler(req, res) {
       });
       html = resp.data;
     } catch (e) {
+      console.error("Fetch failed:", e.toJSON ? e.toJSON() : e);
       return res.status(500).json({
         error: "Failed to fetch URL",
-        details: e.message,
+        details: e.message || "Request blocked or timed out",
         url: normalized,
       });
     }
