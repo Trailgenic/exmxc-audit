@@ -562,7 +562,7 @@ export default async function handler(req, res) {
       b.strength = b.max ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3)) : 0;
     });
 
-   return res.status(200).json({
+  return res.status(200).json({
   success: true,
   url: normalized,
   hostname: originHost,
@@ -579,5 +579,9 @@ export default async function handler(req, res) {
   },
   timestamp: new Date().toISOString(),
 });
-  }
+} catch (err) {
+  return res.status(500).json({
+    error: "Internal server error",
+    details: err?.message || String(err),
+  });
 }
