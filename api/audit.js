@@ -11,10 +11,8 @@ const UA =
 function normalizeUrl(input) {
   let url = (input || "").trim();
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-  // Force hostname-only inputs like "example.com" to resolve
   try {
     const u = new URL(url);
-    // If no pathname provided, keep "/"
     if (!u.pathname) u.pathname = "/";
     return u.toString();
   } catch {
@@ -25,7 +23,6 @@ function normalizeUrl(input) {
 function tryParseJSON(text) {
   try {
     const parsed = JSON.parse(text);
-    // Flatten arrays of JSON-LD blocks
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     return [];
@@ -69,26 +66,20 @@ function hostnameOf(urlStr) {
 
 /**
  * ---------- Metric Scorers ----------
- * Each returns { points, raw } where points are already weighted.
  */
-
-// 1) Schema Count + Validity (max 25)
 function scoreSchema(schemaObjects) {
   const valid = schemaObjects.length;
-  // Full credit at 5+ valid blocks, linear scale up to that
   const ratio = Math.min(valid, 5) / 5;
   const points = Math.round(ratio * 25);
   return { points, raw: { validSchemaBlocks: valid } };
 }
 
-// 2) Title–Description Alignment (max 20)
 function scoreAlignment(title, description) {
-  const sim = jaccard(title, description); // 0..1
+  const sim = jaccard(title, description);
   const points = Math.round(Math.min(sim, 1) * 20);
   return { points, raw: { similarity: Number(sim.toFixed(3)) } };
 }
 
-// 3) Internal Link Density (max 15)
 function scoreLinks(allLinks, originHost) {
   const total = allLinks.length;
   let internal = 0;
@@ -97,19 +88,20 @@ function scoreLinks(allLinks, originHost) {
       const u = new URL(href, `https://${originHost}`);
       const host = u.hostname.replace(/^www\./i, "");
       if (host === originHost) internal++;
-    } catch {
-      // ignore bad hrefs
-    }
+    } catch {}
   }
   const ratio = total ? internal / total : 0;
   const points = Math.round(Math.min(ratio, 1) * 15);
   return {
     points,
-    raw: { totalLinks: total, internalLinks: internal, internalRatio: Number(ratio.toFixed(3)) },
+    raw: {
+      totalLinks: total,
+      internalLinks: internal,
+      internalRatio: Number(ratio.toFixed(3)),
+    },
   };
 }
 
-// 4) Canonical Consistency (max 10)
 function scoreCanonical(canonicalHref) {
   let ok = false;
   try {
@@ -121,12 +113,13 @@ function scoreCanonical(canonicalHref) {
   return { points: ok ? 10 : 0, raw: { canonicalPresentAndAbsolute: ok } };
 }
 
-// 5) Entity Name Precision (max 10)
 function scoreNamePrecision({ entityName, title, schemaNames = [], domain }) {
   const t = (title || "").toLowerCase();
   const name = (entityName || "").toLowerCase();
   const nameInTitle = name && t.includes(name);
-  const nameInSchema = schemaNames.some((n) => (n || "").toLowerCase().includes(name));
+  const nameInSchema = schemaNames.some((n) =>
+    (n || "").toLowerCase().includes(name)
+  );
   const domainInTitle = domain && t.includes(domain);
 
   let points = 0;
@@ -140,15 +133,12 @@ function scoreNamePrecision({ entityName, title, schemaNames = [], domain }) {
   };
 }
 
-// 6) Schema Diversity (max 10)
 function scoreDiversity(distinctTypes) {
-  // Full credit at 5+ different @type values
   const ratio = Math.min(distinctTypes.size, 5) / 5;
   const points = Math.round(ratio * 10);
   return { points, raw: { distinctTypes: Array.from(distinctTypes) } };
 }
 
-// 7) Cross-Referential Anchors (max 5)
 function scoreCrossRefs({ sameAs = [], pageLinks = [] }) {
   const socialHosts = [
     "linkedin.com",
@@ -162,27 +152,23 @@ function scoreCrossRefs({ sameAs = [], pageLinks = [] }) {
     "tiktok.com",
     "github.com",
   ];
-
   const seen = new Set();
-
   const checkUrl = (u) => {
     try {
       const host = new URL(u).hostname.replace(/^www\./i, "");
       if (socialHosts.some((s) => host.endsWith(s))) seen.add(host);
     } catch {}
   };
-
   sameAs.forEach(checkUrl);
   pageLinks.forEach(checkUrl);
-
   const count = Math.min(seen.size, 5);
-  const points = count; // 1 point each, up to 5
+  const points = count;
   return { points, raw: { distinctVerifiedHosts: Array.from(seen) } };
 }
 
-// 8) Timestamp Freshness (max 5)
 function scoreFreshness(latestDateStr) {
-  if (!latestDateStr) return { points: 0, raw: { latestISO: null, days: null } };
+  if (!latestDateStr)
+    return { points: 0, raw: { latestISO: null, days: null } };
   const d = daysSince(latestDateStr);
   let points = 0;
   if (d <= 90) points = 5;
@@ -194,7 +180,14 @@ function scoreFreshness(latestDateStr) {
  * ---------- Main Handler ----------
  */
 export default async function handler(req, res) {
+  // --- ✅ CORS FIX ---
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   res.setHeader("Content-Type", "application/json");
+
   try {
     const input = req.query?.url;
     if (!input || typeof input !== "string" || !input.trim()) {
@@ -214,8 +207,11 @@ export default async function handler(req, res) {
       const resp = await axios.get(normalized, {
         timeout: 15000,
         maxRedirects: 5,
-        headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
-        validateStatus: (s) => s >= 200 && s < 400, // allow 3xx we follow redirects anyway
+        headers: {
+          "User-Agent": UA,
+          Accept: "text/html,application/xhtml+xml",
+        },
+        validateStatus: (s) => s >= 200 && s < 400,
       });
       html = resp.data;
     } catch (e) {
@@ -235,59 +231,53 @@ export default async function handler(req, res) {
       $('meta[property="og:description"]').attr("content") ||
       "";
     const canonical =
-      $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
+      $('link[rel="canonical"]').attr("href") ||
+      normalized.replace(/\/$/, "");
 
-    // ---- All links on page (for internal density + cross refs)
     const pageLinks = $("a[href]")
       .map((_, el) => $(el).attr("href"))
       .get()
       .filter(Boolean);
 
-    // ---- JSON-LD
     const ldBlocks = $("script[type='application/ld+json']")
       .map((_, el) => $(el).contents().text())
       .get();
 
     const schemaObjects = ldBlocks.flatMap(tryParseJSON);
 
-    // Distinct @types
     const distinctTypes = new Set();
     const schemaNames = [];
     const sameAs = [];
     let latestISO = null;
 
     for (const obj of schemaObjects) {
-      // types can be string or array
       const t = obj["@type"];
       if (typeof t === "string") distinctTypes.add(t);
-      else if (Array.isArray(t)) t.forEach((x) => typeof x === "string" && distinctTypes.add(x));
+      else if (Array.isArray(t))
+        t.forEach((x) => typeof x === "string" && distinctTypes.add(x));
 
-      // names for name precision
       if (typeof obj.name === "string") schemaNames.push(obj.name);
 
-      // sameAs links
       if (obj.sameAs) {
         if (Array.isArray(obj.sameAs)) sameAs.push(...obj.sameAs);
         else if (typeof obj.sameAs === "string") sameAs.push(obj.sameAs);
       }
 
-      // freshness candidates
       const dateCandidates = [
         obj.dateModified,
         obj.dateUpdated,
         obj.datePublished,
         obj.uploadDate,
       ].filter(Boolean);
-
       for (const dc of dateCandidates) {
         const d = new Date(dc);
         if (!Number.isNaN(d.getTime())) {
-          if (!latestISO || d > new Date(latestISO)) latestISO = d.toISOString();
+          if (!latestISO || d > new Date(latestISO))
+            latestISO = d.toISOString();
         }
       }
     }
 
-    // Extra freshness from meta tags
     const metaDates = [
       $('meta[property="article:modified_time"]').attr("content"),
       $('meta[property="og:updated_time"]').attr("content"),
@@ -296,30 +286,37 @@ export default async function handler(req, res) {
     for (const md of metaDates) {
       const d = new Date(md);
       if (!Number.isNaN(d.getTime())) {
-        if (!latestISO || d > new Date(latestISO)) latestISO = d.toISOString();
+        if (!latestISO || d > new Date(latestISO))
+          latestISO = d.toISOString();
       }
     }
 
-    // ---- Entity Name Guess
-    // Prefer Organization/Person schema.name; else fallback to title left segment
     let entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization" && typeof o.name === "string")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person" && typeof o.name === "string")?.name ||
-      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
-
+      schemaObjects.find(
+        (o) => o["@type"] === "Organization" && typeof o.name === "string"
+      )?.name ||
+      schemaObjects.find(
+        (o) => o["@type"] === "Person" && typeof o.name === "string"
+      )?.name ||
+      (title.includes(" | ")
+        ? title.split(" | ")[0]
+        : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-    /**
-     * ---------- Score Each Metric ----------
-     */
-    const mSchema = scoreSchema(schemaObjects); // 25
-    const mAlign = scoreAlignment(title, description); // 20
-    const mLinks = scoreLinks(pageLinks, originHost); // 15
-    const mCanon = scoreCanonical(canonical); // 10
-    const mName = scoreNamePrecision({ entityName, title, schemaNames, domain: originHost }); // 10
-    const mDiver = scoreDiversity(distinctTypes); // 10
-    const mXref = scoreCrossRefs({ sameAs, pageLinks }); // 5
-    const mFresh = scoreFreshness(latestISO); // 5
+    // ---------- Score Each Metric ----------
+    const mSchema = scoreSchema(schemaObjects);
+    const mAlign = scoreAlignment(title, description);
+    const mLinks = scoreLinks(pageLinks, originHost);
+    const mCanon = scoreCanonical(canonical);
+    const mName = scoreNamePrecision({
+      entityName,
+      title,
+      schemaNames,
+      domain: originHost,
+    });
+    const mDiver = scoreDiversity(distinctTypes);
+    const mXref = scoreCrossRefs({ sameAs, pageLinks });
+    const mFresh = scoreFreshness(latestISO);
 
     const entityScore = Math.max(
       0,
@@ -336,9 +333,7 @@ export default async function handler(req, res) {
       )
     );
 
-    /**
-     * ---------- Recommendations ----------
-     */
+    // ---------- Recommendations ----------
     const recommendations = [];
     if (mSchema.raw.validSchemaBlocks === 0)
       recommendations.push("Add JSON-LD (Organization, Article) with valid nesting.");
@@ -357,9 +352,7 @@ export default async function handler(req, res) {
     if (mXref.points < 3)
       recommendations.push("Add verified sameAs links to official social profiles in JSON-LD.");
 
-    /**
-     * ---------- Response ----------
-     */
+    // ---------- Response ----------
     return res.status(200).json({
       success: true,
       url: normalized,
@@ -368,9 +361,7 @@ export default async function handler(req, res) {
       title,
       canonical,
       description,
-      // Primary score
       entityScore,
-      // Detailed breakdown (already weighted points)
       metrics: {
         schema: mSchema,
         alignment: mAlign,
@@ -381,7 +372,6 @@ export default async function handler(req, res) {
         crossRefs: mXref,
         freshness: mFresh,
       },
-      // Raw signals (for debugging/insight)
       signals: {
         schemaBlocks: schemaObjects.length,
         distinctSchemaTypes: Array.from(distinctTypes),
