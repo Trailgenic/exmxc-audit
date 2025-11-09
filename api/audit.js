@@ -5,8 +5,7 @@ import * as cheerio from "cheerio";
 /**
  * ---------- Helper Utils ----------
  */
-const UA =
-  "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)";
+const UA = "Mozilla/5.0 (compatible; exmxc-audit/1.0; +https://exmxc.ai)";
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -173,15 +172,30 @@ function scoreFreshness(latestDateStr) {
   let points = 0;
   if (d <= 90) points = 5;
   else if (d <= 180) points = 3;
-  return { points, raw: { latestISO: new Date(latestDateStr).toISOString(), days: d } };
+  return {
+    points,
+    raw: { latestISO: new Date(latestDateStr).toISOString(), days: d },
+  };
 }
 
 /**
  * ---------- Main Handler ----------
  */
 export default async function handler(req, res) {
-  // --- ✅ CORS FIX ---
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // --- ✅ CORS FIX (Whitelist) ---
+  const allowedOrigins = [
+    "https://exmxc.ai",
+    "https://www.exmxc.ai",
+    "https://preview.webflow.com",
+  ];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://exmxc.ai");
+  }
+
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
