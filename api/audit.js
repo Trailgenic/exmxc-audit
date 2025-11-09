@@ -562,26 +562,28 @@ export default async function handler(req, res) {
       b.strength = b.max ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3)) : 0;
     });
 
-  return res.status(200).json({
-  success: true,
-  url: normalized,
-  hostname: originHost,
-  entityName: entityName || null,
-  title,
-  canonical: canonicalHref,
-  description,
-  entityScore: Math.round(entityScore),
-  entityTier,
-  signals: breakdown, // 👈 renamed so frontend can render Signal Breakdown properly
-  schemaMeta: {
-    schemaBlocks: schemaObjects.length,
-    latestISO,
-  },
-  timestamp: new Date().toISOString(),
-});
-} catch (err) {
-  return res.status(500).json({
-    error: "Internal server error",
-    details: err?.message || String(err),
-  });
+     return res.status(200).json({
+      success: true,
+      url: normalized,
+      hostname: originHost,
+      entityName: entityName || null,
+      title,
+      canonical: canonicalHref,
+      description,
+      entityScore: Math.round(entityScore),
+      entityTier,
+      signals: breakdown, // 👈 key fix: proper name for frontend
+      schemaMeta: {
+        schemaBlocks: schemaObjects.length,
+        latestISO,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("EEI Audit Error:", err);
+    return res.status(500).json({
+      error: "Internal server error",
+      details: err?.message || String(err),
+    });
+  }
 }
