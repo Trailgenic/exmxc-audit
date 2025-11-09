@@ -6,56 +6,28 @@
     <title>exmxc.ai Audit</title>
     <style>
       body {
-        font-family: Inter, Arial, sans-serif;
+        font-family: "Inter", Arial, sans-serif;
         background-color: #fafafa;
         color: #111;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        min-height: 100vh;
-      }
-
-      header {
-        width: 100%;
-        background: #000;
-        color: #fff;
-        padding: 1rem 0;
-        text-align: center;
-        font-weight: 600;
-        font-size: 1.5rem;
-        letter-spacing: 0.5px;
-      }
-
-      #scoreBanner {
-        width: 100%;
-        text-align: center;
-        padding: 0.75rem;
-        font-weight: 600;
-        color: #111;
-      }
-
-      .score-good {
-        background: #d4edda;
-        color: #155724;
-      }
-
-      .score-medium {
-        background: #fff3cd;
-        color: #856404;
-      }
-
-      .score-poor {
-        background: #f8d7da;
-        color: #721c24;
-      }
-
-      main {
         max-width: 900px;
-        margin: 2rem auto;
-        padding: 0 1rem;
+        margin: 40px auto;
         text-align: center;
+        line-height: 1.6;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .banner {
+        background: #fff7d6;
+        border-top: 2px solid #111;
+        border-bottom: 2px solid #111;
+        padding: 8px 0;
+        font-weight: 600;
+        font-size: 0.95rem;
       }
 
       input {
@@ -89,62 +61,71 @@
         border-radius: 8px;
         margin-top: 25px;
         font-size: 0.9rem;
-        white-space: pre-wrap;
+      }
+
+      footer {
+        margin-top: 35px;
+        font-size: 0.85rem;
+        color: #555;
+      }
+
+      footer a {
+        color: #111;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      footer a:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
   <body>
-    <header>exmxc.ai Audit</header>
-    <div id="scoreBanner" class="score-medium">EEI: -- / 100 — Awaiting Input</div>
+    <h1>exmxc.ai Audit</h1>
+    <div id="banner" class="banner">EEI: — / 100</div>
 
-    <main>
-      <input id="urlInput" type="text" placeholder="https://example.com" />
-      <button id="runButton">Submit</button>
-      <pre id="result"></pre>
-    </main>
+    <p>Enter a URL to audit:</p>
+    <input id="urlInput" type="text" placeholder="https://example.com" />
+    <button id="runButton">Submit</button>
+
+    <pre id="result"></pre>
+
+    <footer>
+      ⚡ Powered by <a href="https://exmxc.ai" target="_blank">exmxc.ai</a> |
+      <strong>Entity Engineering™ Audit</strong>
+    </footer>
 
     <script>
-      const runButton = document.getElementById("runButton");
-      const resultEl = document.getElementById("result");
-      const scoreBanner = document.getElementById("scoreBanner");
-
-      function setBanner(score) {
-        let cls = "score-poor";
-        let label = "Invisible Entity";
-        if (score >= 70) {
-          cls = "score-good";
-          label = "Visible Entity";
-        } else if (score >= 40) {
-          cls = "score-medium";
-          label = "Partial Entity";
-        }
-        scoreBanner.className = cls;
-        scoreBanner.textContent = `EEI: ${score} / 100 — ${label}`;
-      }
-
-      runButton.addEventListener("click", async () => {
+      document.getElementById("runButton").addEventListener("click", async () => {
         const input = document.getElementById("urlInput").value.trim();
-        if (!input) return;
+        const resultEl = document.getElementById("result");
+        const bannerEl = document.getElementById("banner");
         resultEl.textContent = "Loading...";
-        scoreBanner.textContent = "Running audit...";
+        bannerEl.textContent = "EEI: — / 100 — Running audit...";
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
           const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
           const data = await res.json();
 
-          if (data.entityScore !== undefined) {
-            setBanner(data.entityScore);
-          } else {
-            scoreBanner.textContent = "EEI unavailable — check response below.";
-            scoreBanner.className = "score-poor";
+          if (data.error) {
+            resultEl.textContent = JSON.stringify(data, null, 2);
+            bannerEl.textContent = "EEI: — / 100 — Error";
+            return;
           }
 
+          const score = data.entityScore ?? "—";
+          let label = "Unknown";
+
+          if (score >= 80) label = "Visible Entity";
+          else if (score >= 50) label = "Partial Entity";
+          else label = "Invisible Entity";
+
+          bannerEl.textContent = `EEI: ${score} / 100 — ${label}`;
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
-          scoreBanner.textContent = "Error — could not complete audit.";
-          scoreBanner.className = "score-poor";
           resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
+          bannerEl.textContent = "EEI: — / 100 — Error";
         }
       });
     </script>
