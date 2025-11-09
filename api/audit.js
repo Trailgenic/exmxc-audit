@@ -64,7 +64,7 @@ function hostnameOf(urlStr) {
 }
 
 /**
- * ---------- Metric Scorers ----------
+ * ---------- Metric Scorers (unchanged) ----------
  */
 function scoreSchema(schemaObjects) {
   const valid = schemaObjects.length;
@@ -179,25 +179,75 @@ function scoreFreshness(latestDateStr) {
 }
 
 /**
- * ---------- Main Handler ----------
+ * ---------- Main Handler (CORS + Rate Limiter + Scoring) ----------
  */
 export default async function handler(req, res) {
-  // ✅ UNIVERSAL CORS FIX (Webflow + Vercel + direct)
-  const origin = req.headers.origin;
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
-  );
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Content-Type", "application/json");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
   try {
+    // ---------------- CORS / Preflight (UNIVERSAL) ----------------
+    const originHeader = req.headers.origin;
+    const refererHeader = req.headers.referer;
+
+    // Prefer explicit Origin, then derive from referer, else wildcard
+    let normalizedOrigin = "*";
+    if (originHeader && originHeader !== "null") {
+      normalizedOrigin = originHeader;
+    } else if (refererHeader) {
+      try {
+        normalizedOrigin = new URL(refererHeader).origin;
+      } catch {
+        normalizedOrigin = "*";
+      }
+    }
+
+    // Echo origin back when possible; keep wildcard for direct API calls
+    res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Requested-With"
+    );
+    if (normalizedOrigin !== "*") {
+      // Only set credentials when origin is explicit (cannot be '*' with credentials)
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+    res.setHeader("Content-Type", "application/json");
+
+    // Handle preflight immediately
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    // ---------------- Rate Limiter (lightweight, per-IP) ----------------
+    // 10 requests per minute per IP
+    if (!global.__eeiRateLimit) global.__eeiRateLimit = new Map();
+    const rateMap = global.__eeiRateLimit;
+    const ip =
+      (req.headers["x-forwarded-for"] || "").split(",").shift()?.trim() ||
+      req.socket?.remoteAddress ||
+      "unknown";
+
+    const now = Date.now();
+    const windowMs = 60_000;
+    const maxRequests = 10;
+
+    const hits = (rateMap.get(ip) || []).filter((t) => now - t < windowMs);
+    if (hits.length >= maxRequests) {
+      return res.status(429).json({
+        error: "Rate limit exceeded",
+        message: `Maximum ${maxRequests} requests per ${Math.floor(
+          windowMs / 1000
+        )}s per IP`,
+      });
+    }
+    hits.push(now);
+    rateMap.set(ip, hits);
+
+    // ---------------- Health Check (simple) ----------------
+    if (req.query?.health === "1") {
+      return res.status(200).json({ status: "ok", now: new Date().toISOString() });
+    }
+
+    // ---------------- Input Validation ----------------
     const input = req.query?.url;
     if (!input || typeof input !== "string" || !input.trim()) {
       return res.status(400).json({ error: "Missing URL" });
@@ -210,7 +260,7 @@ export default async function handler(req, res) {
 
     const originHost = hostnameOf(normalized);
 
-    // --- FETCH HTML ---
+    // ---------------- Fetch HTML ----------------
     let html;
     try {
       const resp = await axios.get(normalized, {
@@ -218,31 +268,30 @@ export default async function handler(req, res) {
         maxRedirects: 5,
         headers: {
           "User-Agent": UA,
-          Accept: "text/html,application/xhtml+xml",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
         validateStatus: (s) => s >= 200 && s < 400,
       });
       html = resp.data;
     } catch (e) {
-      console.error("Fetch failed:", e.toJSON ? e.toJSON() : e);
+      console.error("Fetch failed:", e?.toString ? e.toString() : e);
       return res.status(500).json({
         error: "Failed to fetch URL",
-        details: e.message || "Request blocked or timed out",
+        details: e?.message || String(e),
         url: normalized,
       });
     }
 
+    // ---------------- Parse & Extract ----------------
     const $ = cheerio.load(html);
 
-    // ---- CORE META
     const title = $("title").first().text().trim() || "";
     const description =
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "";
     const canonical =
-      $('link[rel="canonical"]').attr("href") ||
-      normalized.replace(/\/$/, "");
+      $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
 
     const pageLinks = $("a[href]")
       .map((_, el) => $(el).attr("href"))
@@ -308,12 +357,10 @@ export default async function handler(req, res) {
       schemaObjects.find(
         (o) => o["@type"] === "Person" && typeof o.name === "string"
       )?.name ||
-      (title.includes(" | ")
-        ? title.split(" | ")[0]
-        : title.split(" - ")[0]);
+      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-    // ---------- SCORING ----------
+    // ---------------- Score Each Metric ----------------
     const mSchema = scoreSchema(schemaObjects);
     const mAlign = scoreAlignment(title, description);
     const mLinks = scoreLinks(pageLinks, originHost);
@@ -343,7 +390,7 @@ export default async function handler(req, res) {
       )
     );
 
-    // ---------- RECOMMENDATIONS ----------
+    // ---------------- Recommendations ----------------
     const recommendations = [];
     if (mSchema.raw.validSchemaBlocks === 0)
       recommendations.push("Add JSON-LD (Organization, Article) with valid nesting.");
@@ -362,7 +409,7 @@ export default async function handler(req, res) {
     if (mXref.points < 3)
       recommendations.push("Add verified sameAs links to official social profiles in JSON-LD.");
 
-    // ---------- RESPONSE ----------
+    // ---------------- Response ----------------
     return res.status(200).json({
       success: true,
       url: normalized,
