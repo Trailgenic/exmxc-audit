@@ -1,4 +1,4 @@
-yes bestie. here is the current audit.js code as reference.    // /api/audit.js  — Phase 2B (Rubric-based signals, 0–100)
+// /api/audit.js  — Phase 2B (Rubric-based signals, 0–100)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -46,7 +46,7 @@ const SOCIAL_HOSTS = [
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
-  if (!/^https?:\/\//i.test(url)) url = https://${url};
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   try {
     const u = new URL(url);
     if (!u.pathname) u.pathname = "/";
@@ -348,7 +348,7 @@ function scoreInternalLinks(pageLinks, originHost) {
   for (const href of pageLinks) {
     total++;
     try {
-      const u = new URL(href, https://${originHost});
+      const u = new URL(href, `https://${originHost}`);
       const host = u.hostname.replace(/^www\./i, "");
       if (host === originHost) internal++;
     } catch {}
@@ -377,7 +377,7 @@ function scoreExternalLinks(pageLinks, originHost) {
   let externalHosts = new Set();
   for (const href of pageLinks) {
     try {
-      const u = new URL(href, https://${originHost});
+      const u = new URL(href, `https://${originHost}`);
       const host = u.hostname.replace(/^www\./i, "");
       if (host !== originHost) externalHosts.add(host);
     } catch {}
@@ -587,9 +587,3 @@ export default async function handler(req, res) {
     });
   }
 }
-You said:
-wait bestie. the code you gave me is like 137 lines. what I gave you had alot more?
-You said:
-now, by changing the audit.js, it's trying to run all 25 sites?  so essentially, our original purpose of auditing any site has been replaced?  look at first screen shot.  second screenshot is the predictive, it still has the 401 and 403
-You said:
-so then why did we replace audit.js? why not just predictive.js? don't we take a step back? i was afraid this would happen. that's why I asked you 
