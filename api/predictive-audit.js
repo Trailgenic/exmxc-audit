@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 
 // Load the baked-in baseline dataset
-import coreWeb from "../data/core-web.js";
+import coreWeb from "../data/core-web.json";
 
 export default async function handler(req, res) {
   try {
