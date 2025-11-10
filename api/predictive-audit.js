@@ -1,101 +1,105 @@
-import axios from "axios";
 import fs from "fs";
 import path from "path";
-
-/* ================================
-   CONFIG
-   ================================ */
-
-const PROXY_POOL = [
-  // free rotation fallback (can expand to paid proxies later)
-  "",
-  "https://api.allorigins.win/raw?url=",
-  "https://corsproxy.io/?",
-];
-
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.0 Safari/537.36";
-
-const DATA_FILE = path.resolve("./data/core-web.json");
-
-/* ================================
-   HELPERS
-   ================================ */
-
-async function fetchWithProxies(url) {
-  let lastError = null;
-  for (const proxy of PROXY_POOL) {
-    try {
-      const fullUrl = proxy ? `${proxy}${encodeURIComponent(url)}` : url;
-      const resp = await axios.get(fullUrl, {
-        timeout: 15000,
-        headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
-        validateStatus: (s) => s >= 200 && s < 400,
-      });
-      return resp.data;
-    } catch (err) {
-      lastError = err;
-      // try next proxy
-    }
-  }
-  throw lastError || new Error("All proxy attempts failed");
-}
-
-/* ================================
-   MAIN HANDLER
-   ================================ */
+import axios from "axios";
+import * as cheerio from "cheerio";
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
-  res.setHeader("Content-Type", "application/json");
-
   try {
-    // load baked-in dataset
-    const dataset = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    const urls = dataset.urls;
+    const datasetPath = path.join(process.cwd(), "data", "core-web.json");
+    const resultsPath = path.join(process.cwd(), "data", "core-web-results.json");
+
+    if (!fs.existsSync(datasetPath)) {
+      return res.status(404).json({ error: "Missing core-web.json dataset" });
+    }
+
+    const dataset = JSON.parse(fs.readFileSync(datasetPath, "utf8"));
+    const urls = dataset.urls || [];
+
+    let totalScore = 0;
+    let validCount = 0;
+    let blockedCount = 0;
     const results = [];
 
     for (const url of urls) {
+      console.log(`🔍 Auditing ${url}`);
       try {
-        const auditUrl = `${
-          process.env.VERCEL_URL || "https://exmxc.ai"
-        }/api/audit?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(auditUrl, { timeout: 20000 });
-        results.push({ url, ...response.data });
+        // Add header spoofing to bypass bot-blockers
+        const response = await axios.get(url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+          timeout: 10000,
+        });
+
+        const $ = cheerio.load(response.data);
+
+        const title = $("title").text() || "N/A";
+        const description =
+          $('meta[name="description"]').attr("content") || "N/A";
+        const canonical =
+          $('link[rel="canonical"]').attr("href") || "N/A";
+
+        // crude mini scoring model for demonstration
+        let siteScore = 0;
+        if (title !== "N/A") siteScore += 20;
+        if (description !== "N/A") siteScore += 20;
+        if (canonical !== "N/A") siteScore += 10;
+
+        totalScore += siteScore;
+        validCount++;
+
+        results.push({
+          url,
+          title,
+          description,
+          canonical,
+          siteScore,
+          status: "ok",
+        });
+
       } catch (err) {
-        // fallback: try direct proxy fetch to confirm connectivity
-        try {
-          await fetchWithProxies(url);
-          results.push({ url, error: "Audit endpoint blocked but fetchable" });
-        } catch {
-          results.push({ url, error: err.message || "Fetch failed" });
-        }
+        blockedCount++;
+        results.push({
+          url,
+          error:
+            err.response?.status === 403
+              ? "Audit endpoint blocked (403)"
+              : err.code === "ECONNABORTED"
+              ? "Timeout"
+              : err.message,
+        });
       }
+
+      // throttle between requests to mimic human browsing
+      await new Promise((r) => setTimeout(r, 800));
     }
 
-    // aggregate scoring
-    const valid = results.filter((r) => !r.error && r.entityScore);
-    const avgScore =
-      valid.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
-      (valid.length || 1);
-
-    res.status(200).json({
+    const avgEntityScore = validCount ? (totalScore / validCount).toFixed(2) : 0;
+    const summary = {
       success: true,
       dataset: dataset.vertical,
       totalUrls: urls.length,
-      validCount: valid.length,
-      avgEntityScore: Math.round(avgScore),
-      results,
+      validCount,
+      blockedCount,
+      avgEntityScore,
       timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("Predictive Audit Error:", err);
-    res.status(500).json({
-      error: "Predictive audit failed",
-      details: err.message,
-    });
+      results,
+    };
+
+    // Save to results file (append mode)
+    fs.writeFileSync(
+      resultsPath,
+      JSON.stringify(summary, null, 2),
+      "utf8"
+    );
+
+    return res.status(200).json(summary);
+  } catch (error) {
+    console.error("Predictive audit failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Predictive audit failed", details: error.message });
   }
 }
