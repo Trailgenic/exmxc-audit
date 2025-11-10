@@ -1,105 +1,62 @@
 import fs from "fs";
 import path from "path";
 import axios from "axios";
-import * as cheerio from "cheerio";
+import cheerio from "cheerio";
 
 export default async function handler(req, res) {
   try {
-    const datasetPath = path.join(process.cwd(), "data", "core-web.json");
-    const resultsPath = path.join(process.cwd(), "data", "core-web-results.json");
+    const dataset = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "data", "core-web.json"), "utf8")
+    );
 
-    if (!fs.existsSync(datasetPath)) {
-      return res.status(404).json({ error: "Missing core-web.json dataset" });
-    }
-
-    const dataset = JSON.parse(fs.readFileSync(datasetPath, "utf8"));
-    const urls = dataset.urls || [];
-
-    let totalScore = 0;
-    let validCount = 0;
-    let blockedCount = 0;
     const results = [];
-
-    for (const url of urls) {
-      console.log(`🔍 Auditing ${url}`);
+    for (const site of dataset.urls) {
       try {
-        // Add header spoofing to bypass bot-blockers
-        const response = await axios.get(url, {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-          },
-          timeout: 10000,
-        });
-
-        const $ = cheerio.load(response.data);
-
-        const title = $("title").text() || "N/A";
+        const { data } = await axios.get(site, { timeout: 10000 });
+        const $ = cheerio.load(data);
+        const title = $("title").text().trim();
         const description =
           $('meta[name="description"]').attr("content") || "N/A";
         const canonical =
           $('link[rel="canonical"]').attr("href") || "N/A";
 
-        // crude mini scoring model for demonstration
-        let siteScore = 0;
-        if (title !== "N/A") siteScore += 20;
-        if (description !== "N/A") siteScore += 20;
-        if (canonical !== "N/A") siteScore += 10;
-
-        totalScore += siteScore;
-        validCount++;
+        const entityScore =
+          (title ? 30 : 0) + (description !== "N/A" ? 30 : 0) + (canonical !== "N/A" ? 40 : 0);
 
         results.push({
-          url,
+          url: site,
           title,
           description,
           canonical,
-          siteScore,
-          status: "ok",
+          entityScore,
         });
-
       } catch (err) {
-        blockedCount++;
-        results.push({
-          url,
-          error:
-            err.response?.status === 403
-              ? "Audit endpoint blocked (403)"
-              : err.code === "ECONNABORTED"
-              ? "Timeout"
-              : err.message,
-        });
+        results.push({ url: site, error: err.message });
       }
-
-      // throttle between requests to mimic human browsing
-      await new Promise((r) => setTimeout(r, 800));
     }
 
-    const avgEntityScore = validCount ? (totalScore / validCount).toFixed(2) : 0;
+    const avgScore =
+      results.reduce((sum, r) => sum + (r.entityScore || 0), 0) / results.length;
+
     const summary = {
       success: true,
       dataset: dataset.vertical,
-      totalUrls: urls.length,
-      validCount,
-      blockedCount,
-      avgEntityScore,
-      timestamp: new Date().toISOString(),
+      totalUrls: dataset.urls.length,
+      avgEntityScore: avgScore.toFixed(2),
       results,
+      timestamp: new Date().toISOString(),
     };
 
-    // Save to results file (append mode)
-    fs.writeFileSync(
-      resultsPath,
-      JSON.stringify(summary, null, 2),
-      "utf8"
-    );
+    // ✅ Write to temporary directory (allowed on Vercel)
+    const tmpPath = path.join("/tmp", "core-web-results.json");
+    fs.writeFileSync(tmpPath, JSON.stringify(summary, null, 2), "utf8");
+    console.log(`✅ Results saved temporarily to ${tmpPath}`);
 
-    return res.status(200).json(summary);
-  } catch (error) {
-    console.error("Predictive audit failed:", error);
-    return res
-      .status(500)
-      .json({ error: "Predictive audit failed", details: error.message });
+    res.status(200).json(summary);
+  } catch (err) {
+    res.status(500).json({
+      error: "Predictive audit failed",
+      details: err.message,
+    });
   }
 }
