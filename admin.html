@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>EEI Batch Audit — exmxc.ai</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 max-w-5xl mx-auto p-6">
+  <h1 class="text-2xl font-bold mb-2">EEI Batch Audit</h1>
+  <p class="text-sm text-slate-600 mb-6">
+    Paste up to 100 URLs (one per line). Runs against <code>/api/audit</code> with concurrency & timeouts.
+  </p>
+
+  <textarea id="urls" rows="10" class="w-full p-3 border rounded mb-3" placeholder="https://example.com&#10;https://trailgenic.com"></textarea>
+  <div class="flex items-center gap-3 mb-6">
+    <button id="run" class="bg-black text-white px-4 py-2 rounded">Run Batch</button>
+    <a id="download" class="hidden underline text-sm">Download CSV</a>
+  </div>
+
+  <pre id="out" class="bg-slate-900 text-slate-100 p-4 rounded text-sm overflow-x-auto">// Ready.</pre>
+
+  <script>
+    const runBtn = document.getElementById('run');
+    const dl = document.getElementById('download');
+    const out = document.getElementById('out');
+
+    runBtn.addEventListener('click', async () => {
+      const lines = document.getElementById('urls').value
+        .split('\n').map(s => s.trim()).filter(Boolean);
+      if (!lines.length) {
+        alert('Please paste at least one URL.');
+        return;
+      }
+      out.textContent = 'Running…';
+      dl.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/batch-audit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: lines })
+        });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+
+        if (data?.csv) {
+          const blob = new Blob([data.csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          dl.href = url;
+          dl.download = `eei-batch-${Date.now()}.csv`;
+          dl.textContent = 'Download CSV';
+          dl.classList.remove('hidden');
+        }
+      } catch (e) {
+        out.textContent = JSON.stringify({ error: e.message }, null, 2);
+        dl.classList.add('hidden');
+      }
+    });
+  </script>
+
+  <footer class="text-center text-xs text-slate-500 mt-10">
+    Powered by <span class="font-semibold text-black">exmxc.ai</span> |
+    Entity Engineering<sup>™</sup> Audit
+  </footer>
+</body>
+</html>
