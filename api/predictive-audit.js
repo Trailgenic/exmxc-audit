@@ -1,121 +1,162 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
-import fs from "fs";
-import path from "path";
+// /api/predictive-audit.js — Phase 3 Predictive Intelligence (Option A: Persistent Data)
+// Loads pre-baked core-web.json dataset and runs EEI batch audit
 
-// Load the baked-in baseline dataset
-import coreWeb from "../data/core-web.json";
+import axios from "axios";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+
+/* ================================
+   CONFIG
+   ================================ */
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_PATH = path.join(__dirname, "../data/core-web.json");
+const HISTORY_PATH = "/tmp/core-web-results.json";
+
+const BASE_URL =
+  process.env.VERCEL_URL?.startsWith("http")
+    ? process.env.VERCEL_URL
+    : `https://${process.env.VERCEL_URL || "exmxc-audit.vercel.app"}`;
+
+const TIMEOUT = 20000; // 20 s per site
+
+/* ================================
+   HELPERS
+   ================================ */
+
+async function loadCoreWeb() {
+  try {
+    const raw = await fs.readFile(DATA_PATH, "utf-8");
+    const json = JSON.parse(raw);
+    if (!Array.isArray(json) || json.length === 0) {
+      throw new Error("core-web.json is empty or invalid.");
+    }
+    return json;
+  } catch (err) {
+    console.error("❌ Failed to load core-web.json:", err);
+    throw err;
+  }
+}
+
+async function saveResults(payload) {
+  try {
+    await fs.writeFile(
+      HISTORY_PATH,
+      JSON.stringify(payload, null, 2),
+      "utf-8"
+    );
+    console.log("✅ Saved batch results to", HISTORY_PATH);
+  } catch (err) {
+    console.error("⚠️ Failed to write history file:", err);
+  }
+}
+
+/* ================================
+   MAIN HANDLER
+   ================================ */
 
 export default async function handler(req, res) {
+  // --- CORS ---
+  const origin = req.headers.origin || req.headers.referer;
+  let normalizedOrigin = "*";
+  if (origin && origin !== "null") {
+    try {
+      normalizedOrigin = new URL(origin).origin;
+    } catch {
+      normalizedOrigin = "*";
+    }
+  }
+  res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+  if (normalizedOrigin !== "*") {
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader("Content-Type", "application/json");
+
   try {
-    const { urls } = req.body || {};
-    const sites = urls && urls.length ? urls : coreWeb.urls;
+    // --- Load dataset ---
+    const sites = await loadCoreWeb();
+    console.log(`🧩 Running Predictive EEI for ${sites.length} entities...`);
 
     const results = [];
     for (const site of sites) {
-      const url = site.startsWith("http") ? site : `https://${site}`;
-
+      const url = site.url || site;
       try {
-        const response = await axios.get(url, {
-          timeout: 15000,
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            Connection: "keep-alive",
-          },
-          validateStatus: (status) => status < 500,
+        const response = await axios.get(`${BASE_URL}/api/audit`, {
+          params: { url },
+          timeout: TIMEOUT,
         });
-
-        // Handle non-200 responses gracefully
-        if (response.status >= 400) {
-          results.push({
-            url,
-            error: `Request failed with status code ${response.status}`,
-          });
-          continue;
-        }
-
-        // Parse with Cheerio
-        const $ = cheerio.load(response.data);
-        const title = $("title").first().text() || "N/A";
-        const description =
-          $('meta[name="description"]').attr("content") ||
-          $('meta[property="og:description"]').attr("content") ||
-          "N/A";
-        const canonical =
-          $('link[rel="canonical"]').attr("href") ||
-          $('meta[property="og:url"]').attr("content") ||
-          url;
-
-        // Entity Engineering simplified scoring
-        const entityScore = Math.min(
-          100,
-          (title !== "N/A" ? 20 : 0) +
-            (description !== "N/A" ? 20 : 0) +
-            (canonical !== "N/A" ? 20 : 0) +
-            Math.floor(Math.random() * 40) // variability for realism
-        );
-
         results.push({
           url,
-          title,
-          description,
-          canonical,
-          entityScore,
+          entityScore: response.data.entityScore,
+          entityTier: response.data.entityTier,
+          schemaBlocks: response.data.schemaMeta?.schemaBlocks || 0,
         });
       } catch (err) {
+        console.error(`❌ Failed: ${url}`, err.message);
         results.push({
           url,
-          error: err.message.includes("403")
-            ? "Audit endpoint blocked but fetchable"
-            : err.message,
+          error: err.response?.data?.error || err.message,
         });
       }
     }
 
-    // Aggregate metrics
-    const valid = results.filter((r) => r.entityScore);
+    // --- Aggregate metrics ---
+    const valid = results.filter((r) => !r.error);
     const avgEntityScore =
-      valid.reduce((sum, r) => sum + r.entityScore, 0) / (valid.length || 1);
+      valid.reduce((s, r) => s + (r.entityScore || 0), 0) /
+      (valid.length || 1);
+    const avgSchemaCount =
+      valid.reduce((s, r) => s + (r.schemaBlocks || 0), 0) /
+      (valid.length || 1);
 
-    // Historical logging (writes inside Vercel /tmp)
-    const timestamp = new Date().toISOString();
-    const logPath = path.join("/tmp", "core-web-history.json");
-    const newLog = {
-      date: timestamp,
+    // Future-weighted drift (example formula)
+    const driftFactor = 1.12; // simulated 2026+ crawler weighting
+    const projectedScore = Math.min(
+      Math.round(avgEntityScore * driftFactor),
+      100
+    );
+
+    // Entity Resilience Score (normalized variance)
+    const variance =
+      valid.reduce(
+        (sum, r) => sum + Math.pow((r.entityScore || 0) - avgEntityScore, 2),
+        0
+      ) / (valid.length || 1);
+    const resilience = Math.max(
+      0,
+      Math.min(100, 100 - Math.sqrt(variance)))
+      .toFixed(1);
+
+    const payload = {
+      success: true,
+      totalSites: sites.length,
+      audited: valid.length,
+      failed: sites.length - valid.length,
       avgEntityScore: Math.round(avgEntityScore),
-      totalUrls: sites.length,
-      validCount: valid.length,
+      avgSchemaCount: Math.round(avgSchemaCount),
+      projectedEEI: projectedScore,
+      entityResilienceScore: resilience,
+      results,
+      timestamp: new Date().toISOString(),
     };
 
-    try {
-      let history = [];
-      if (fs.existsSync(logPath)) {
-        const oldData = fs.readFileSync(logPath, "utf8");
-        history = JSON.parse(oldData);
-      }
-      history.push(newLog);
-      fs.writeFileSync(logPath, JSON.stringify(history, null, 2));
-    } catch (logErr) {
-      console.warn("History log write failed:", logErr.message);
-    }
+    // --- Save to tmp for record (Option A persistence) ---
+    await saveResults(payload);
 
-    // Response payload
-    res.status(200).json({
-      success: true,
-      dataset: coreWeb.vertical,
-      totalUrls: sites.length,
-      avgEntityScore: Math.round(avgEntityScore),
-      results,
-      timestamp,
-    });
+    return res.status(200).json(payload);
   } catch (err) {
-    res.status(500).json({
+    console.error("💥 Predictive Audit Error:", err);
+    return res.status(500).json({
       error: "Predictive audit failed",
-      details: err.message,
+      details: err.message || String(err),
     });
   }
 }
