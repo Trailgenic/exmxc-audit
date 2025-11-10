@@ -1,103 +1,101 @@
-// /api/predictive-audit.js
 import axios from "axios";
 import fs from "fs";
 import path from "path";
-import { CURRENT_WEIGHTS, FUTURE_WEIGHTS } from "../shared/weights.js";
 
-// --- basic helpers
-const normalize = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+/* ================================
+   CONFIG
+   ================================ */
 
-// --- simulate predictive drift (future bias)
-function projectEEI(currentScore) {
-  const driftFactor = 1.05; // +5% uplift for structured/AI-ready entities
-  const projected = Math.min(100, Math.round(currentScore * driftFactor));
-  const resilience = Number((projected / 100).toFixed(2));
-  return { projected, resilience };
+const PROXY_POOL = [
+  // free rotation fallback (can expand to paid proxies later)
+  "",
+  "https://api.allorigins.win/raw?url=",
+  "https://corsproxy.io/?",
+];
+
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.0 Safari/537.36";
+
+const DATA_FILE = path.resolve("./data/core-web.json");
+
+/* ================================
+   HELPERS
+   ================================ */
+
+async function fetchWithProxies(url) {
+  let lastError = null;
+  for (const proxy of PROXY_POOL) {
+    try {
+      const fullUrl = proxy ? `${proxy}${encodeURIComponent(url)}` : url;
+      const resp = await axios.get(fullUrl, {
+        timeout: 15000,
+        headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
+        validateStatus: (s) => s >= 200 && s < 400,
+      });
+      return resp.data;
+    } catch (err) {
+      lastError = err;
+      // try next proxy
+    }
+  }
+  throw lastError || new Error("All proxy attempts failed");
 }
 
+/* ================================
+   MAIN HANDLER
+   ================================ */
+
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader("Content-Type", "application/json");
+
   try {
-    let urls = [];
-
-    // 🔹 Option A: vertical preloaded
-    if (req.method === "GET" && req.query.vertical) {
-      const file = path.join(process.cwd(), "data", `${req.query.vertical}.json`);
-      if (!fs.existsSync(file)) {
-        return res
-          .status(404)
-          .json({ error: `Vertical file not found: ${req.query.vertical}` });
-      }
-      const data = JSON.parse(fs.readFileSync(file, "utf-8"));
-      urls = data.urls || [];
-    }
-
-    // 🔹 Option B: POST body override
-    if (req.method === "POST") {
-      const body = await new Promise((resolve) => {
-        let str = "";
-        req.on("data", (chunk) => (str += chunk));
-        req.on("end", () => resolve(JSON.parse(str || "{}")));
-      });
-      urls = body.urls || [];
-    }
-
-    if (!Array.isArray(urls) || urls.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "No URLs provided or invalid format" });
-    }
-
+    // load baked-in dataset
+    const dataset = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    const urls = dataset.urls;
     const results = [];
-    for (const raw of urls) {
-      const url = normalize(raw);
+
+    for (const url of urls) {
       try {
-        const resp = await axios.get(
-          `${process.env.VERCEL_URL || "https://exmxc-audit.vercel.app"}/api/audit`,
-          { params: { url }, timeout: 20000 }
-        );
-
-        const current = resp.data.entityScore || 0;
-        const { projected, resilience } = projectEEI(current);
-
-        results.push({
-          url,
-          EEI_current: current,
-          EEI_projected: projected,
-          EntityResilienceScore: resilience
-        });
+        const auditUrl = `${
+          process.env.VERCEL_URL || "https://exmxc.ai"
+        }/api/audit?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(auditUrl, { timeout: 20000 });
+        results.push({ url, ...response.data });
       } catch (err) {
-        results.push({
-          url,
-          error: err.message || "Audit failed"
-        });
+        // fallback: try direct proxy fetch to confirm connectivity
+        try {
+          await fetchWithProxies(url);
+          results.push({ url, error: "Audit endpoint blocked but fetchable" });
+        } catch {
+          results.push({ url, error: err.message || "Fetch failed" });
+        }
       }
     }
 
-    // --- aggregate summary
-    const valid = results.filter((r) => !r.error);
-    const avgCurrent =
-      valid.reduce((s, r) => s + (r.EEI_current || 0), 0) / (valid.length || 1);
-    const avgProjected =
-      valid.reduce((s, r) => s + (r.EEI_projected || 0), 0) / (valid.length || 1);
-    const avgResilience =
-      valid.reduce((s, r) => s + (r.EntityResilienceScore || 0), 0) /
+    // aggregate scoring
+    const valid = results.filter((r) => !r.error && r.entityScore);
+    const avgScore =
+      valid.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
       (valid.length || 1);
 
     res.status(200).json({
       success: true,
-      vertical: req.query.vertical || "custom",
+      dataset: dataset.vertical,
       totalUrls: urls.length,
-      audited: valid.length,
-      averages: {
-        EEI_current: Math.round(avgCurrent),
-        EEI_projected: Math.round(avgProjected),
-        EntityResilienceScore: Number(avgResilience.toFixed(2))
-      },
+      validCount: valid.length,
+      avgEntityScore: Math.round(avgScore),
       results,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("Predictive audit error:", err);
-    res.status(500).json({ error: "Internal server error", details: err.message });
+    console.error("Predictive Audit Error:", err);
+    res.status(500).json({
+      error: "Predictive audit failed",
+      details: err.message,
+    });
   }
 }
