@@ -5,9 +5,14 @@ import cheerio from "cheerio";
 
 export default async function handler(req, res) {
   try {
-    const dataset = JSON.parse(
-      fs.readFileSync(path.join(process.cwd(), "data", "core-web.json"), "utf8")
-    );
+    // --- Safe path resolution for Vercel ---
+    const dataPath = path.resolve("./data/core-web.json");
+
+    if (!fs.existsSync(dataPath)) {
+      throw new Error(`core-web.json not found at ${dataPath}`);
+    }
+
+    const dataset = JSON.parse(fs.readFileSync(dataPath, "utf8"));
 
     const results = [];
     for (const site of dataset.urls) {
@@ -47,13 +52,14 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     };
 
-    // ✅ Write to temporary directory (allowed on Vercel)
-    const tmpPath = path.join("/tmp", "core-web-results.json");
+    // --- Safe writable temp path (no permissions issue) ---
+    const tmpPath = "/tmp/core-web-results.json";
     fs.writeFileSync(tmpPath, JSON.stringify(summary, null, 2), "utf8");
-    console.log(`✅ Results saved temporarily to ${tmpPath}`);
+    console.log(`✅ Results saved to ${tmpPath}`);
 
     res.status(200).json(summary);
   } catch (err) {
+    console.error("Predictive audit failed:", err.message);
     res.status(500).json({
       error: "Predictive audit failed",
       details: err.message,
