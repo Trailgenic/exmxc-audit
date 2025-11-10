@@ -1,31 +1,14 @@
 {
   "version": 2,
-  "name": "exmxc-audit",
-  "builds": [
-    { "src": "api/audit.js", "use": "@vercel/node" },
-    { "src": "api/predictive-audit.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "predictive.html", "use": "@vercel/static", "continue": true }
-  ],
-  "routes": [
-    {
-      "src": "^/api/audit$",
-      "dest": "api/audit.js"
-    },
-    {
-      "src": "^/api/predictive-audit$",
-      "dest": "api/predictive-audit.js"
-    },
-    {
-      "src": "^/predictive-audit$",
-      "dest": "/predictive.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  },
+  "routes": [
+    { "src": "^/api/audit$", "dest": "api/audit.js" },
+    { "src": "^/api/predictive-audit$", "dest": "api/predictive-audit.js" },
+    { "src": "^/predictive-audit$", "dest": "/predictive.html" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
