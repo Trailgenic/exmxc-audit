@@ -1,7 +1,7 @@
 // /shared/weights.js
-// EEI Rubric Weights (Current vs Future Projection)
+// Rubric weights for EEI — centralized for all audits and predictive scoring.
 
-export const CURRENT_WEIGHTS = {
+export const WEIGHTS = {
   title: 10,
   metaDescription: 10,
   canonical: 10,
@@ -17,19 +17,16 @@ export const CURRENT_WEIGHTS = {
   faviconOg: 2,
 };
 
-// Predictive rubric: biases toward structured data, crawl signals, and transparency
-export const FUTURE_WEIGHTS = {
-  title: 6,
-  metaDescription: 6,
-  canonical: 6,
-  schemaPresence: 25,
-  orgSchema: 12,
-  breadcrumbSchema: 10,
-  authorPerson: 10,
-  socialLinks: 6,
-  aiCrawl: 8,
-  contentDepth: 6,
-  internalLinks: 3,
-  externalLinks: 2,
-  faviconOg: 0,
-};
+// Optional: social platforms for reference in scoring.js
+export const SOCIAL_HOSTS = [
+  "linkedin.com",
+  "instagram.com",
+  "youtube.com",
+  "x.com",
+  "twitter.com",
+  "facebook.com",
+  "wikipedia.org",
+  "threads.net",
+  "tiktok.com",
+  "github.com",
+];
