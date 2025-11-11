@@ -1,135 +1,77 @@
-// ==============================================
-// exmxc.ai | Predictive EEI Audit — Stage 1
-// Batch runner for /data/core-web.json
-// ==============================================
+// /api/predictive-audit.js — Modular v3.0
+// Batch EEI runner: loads URLs from /data/core-web.json → audits → composite output
 
 import axios from "axios";
-import fs from "fs";
-import path from "path";
+import coreSites from "../data/core-web.json" assert { type: "json" };
 
-// --- stealth UA + headers (mimic human browser)
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 exmxc.ai-Audit/3.0";
-
-const STEALTH_HEADERS = {
-  "User-Agent": UA,
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Cache-Control": "no-cache",
-  Pragma: "no-cache",
-  Referer: "https://www.google.com/",
-  Connection: "keep-alive",
-};
-
-// --- proxy placeholder (Stage 2 upgrade slot)
-// const PROXY = { host: "proxy.example.com", port: 8080, auth: { username: "", password: "" } };
+// Base URL (auto-resolves for local or deployed)
+const BASE_URL = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : "http://localhost:3000";
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    // --- load dataset
-    const dataPath = path.join(process.cwd(), "data", "core-web.json");
-    const raw = fs.readFileSync(dataPath, "utf8");
-    const dataset = JSON.parse(raw);
-    const urls = dataset.urls || [];
+    const urls = Array.isArray(coreSites?.urls)
+      ? coreSites.urls
+      : Object.values(coreSites).flat();
 
-    if (!urls.length) {
-      return res
-        .status(400)
-        .json({ error: "core-web.json is empty or invalid." });
+    if (!urls || urls.length === 0) {
+      return res.status(400).json({ error: "No URLs found in core-web.json" });
     }
 
     const results = [];
-    let successCount = 0;
-    let schemaSum = 0;
-
-    // --- sequential crawl (light concurrency for safety)
-    for (const site of urls) {
-      const url = site.trim();
+    for (const url of urls) {
       try {
-        const resp = await axios.get(url, {
-          timeout: 15000,
-          maxRedirects: 5,
-          headers: STEALTH_HEADERS,
-          // proxy: PROXY, // (enable in Stage 2)
-          validateStatus: (s) => s < 400,
+        const response = await axios.get(`${BASE_URL}/api/audit`, {
+          params: { url },
+          timeout: 25000,
         });
-
-        const html = resp.data || "";
-        const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim() : null;
-        const descMatch = html.match(
-          /<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i
-        );
-        const description = descMatch ? descMatch[1].trim() : "";
-        const canonicalMatch = html.match(
-          /<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i
-        );
-        const canonical = canonicalMatch ? canonicalMatch[1].trim() : url;
-
-        // Count schema blocks
-        const schemaCount = (html.match(/application\/ld\+json/g) || []).length;
-        schemaSum += schemaCount;
-
-        const score = Math.min(
-          100,
-          (title ? 20 : 0) +
-            (description ? 20 : 0) +
-            (canonical ? 10 : 0) +
-            Math.min(schemaCount * 10, 50)
-        );
-
-        results.push({
-          url,
-          title,
-          description,
-          canonical,
-          schemaCount,
-          score,
-        });
-        successCount++;
+        results.push({ url, ...response.data });
       } catch (err) {
         results.push({
           url,
-          error: err.response
-            ? `Request failed with status code ${err.response.status}`
-            : err.message || "Fetch error",
+          error: err.response?.data?.error || err.message || "Request failed",
         });
       }
     }
 
-    // --- composite predictive scoring
+    // --- Aggregate analysis ---
+    const valid = results.filter((r) => r.entityScore !== undefined);
     const avgEntityScore =
-      results.reduce((sum, r) => sum + (r.score || 0), 0) / (successCount || 1);
-    const avgSchemaCount = schemaSum / (successCount || 1);
-    const projectedEEI = Math.min(
-      100,
-      Math.round(avgEntityScore * 0.8 + avgSchemaCount * 5)
-    );
-    const resilienceScore = successCount
-      ? Math.round((successCount / urls.length) * 100)
-      : 0;
+      valid.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
+      (valid.length || 1);
+    const avgSchemaBlocks =
+      valid.reduce((sum, r) => sum + (r.schemaMeta?.schemaBlocks || 0), 0) /
+      (valid.length || 1);
 
-    return res.status(200).json({
-      success: true,
-      dataset: dataset.vertical || "Core Web",
-      totalSites: urls.length,
-      audited: successCount,
-      failed: urls.length - successCount,
+    const compositeScore = Math.round(
+      Math.min(avgEntityScore * 0.9 + avgSchemaBlocks * 2, 100)
+    );
+
+    const summary = {
+      compositeScore,
       avgEntityScore: Math.round(avgEntityScore),
-      avgSchemaCount: Math.round(avgSchemaCount),
-      projectedEEI,
-      entityResilienceScore: resilienceScore,
-      results,
+      avgSchemaBlocks: Math.round(avgSchemaBlocks),
+      totalSites: urls.length,
+      successful: valid.length,
+      failed: urls.length - valid.length,
       timestamp: new Date().toISOString(),
+    };
+
+    res.status(200).json({
+      success: true,
+      summary,
+      results,
     });
   } catch (err) {
-    console.error("Predictive audit error:", err);
-    return res.status(500).json({
-      error: "Predictive audit failed",
+    console.error("Predictive Audit Error:", err.message);
+    res.status(500).json({
+      error: "Failed to run predictive audit",
       details: err.message,
     });
   }
