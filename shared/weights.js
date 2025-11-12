@@ -1,36 +1,26 @@
-/* ================================
-   EEI v3.0 — Weights Configuration
-   ================================ */
+// shared/weights.js
+// EEI v3.0 weights mapped to the current 13 signal functions
+const WEIGHTS = {
+  // Meta (15)
+  title: 5,
+  metaDescription: 5,
+  canonical: 5,
 
-export const LAYER_WEIGHTS = {
-  meta: 15,
-  schema: 30,
-  graph: 20,
-  trust: 20,
-  ai: 15
+  // Schema (30)
+  schemaPresence: 10,
+  orgSchema: 8,
+  breadcrumbSchema: 8,
+  authorPerson: 8,
+
+  // Graph (20)
+  internalLinks: 12,
+  externalLinks: 8,
+
+  // Trust + AI (35 split to our existing signals)
+  socialLinks: 6,   // brand graph / authority hints
+  aiCrawl: 8,       // indexability + crawl fidelity
+  contentDepth: 7,  // inference efficiency proxy
+  faviconOg: 10     // branding + tech consistency (rolled up)
 };
 
-export const SIGNAL_WEIGHTS = {
-  // META (15)
-  titlePrecision: 5,
-  metaDescriptionIntegrity: 5,
-  canonicalClarity: 5,
-
-  // SCHEMA (30)
-  schemaPresenceValidity: 10,
-  schemaTypeDiversity: 8,
-  schemaDepthRelations: 7,
-  schemaToScaleRatio: 5,
-
-  // GRAPH (20)
-  internalLatticeIntegrity: 12,
-  externalAuthoritySignal: 8,
-
-  // TRUST (20)
-  robotsHealth: 10,
-  brandTechConsistency: 10,
-
-  // AI COMPREHENSION (15)
-  crawlFidelity: 8,
-  inferenceEfficiency: 7
-};
+export default WEIGHTS;
