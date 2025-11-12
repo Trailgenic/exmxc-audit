@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v3.0 Modular Entity Audit (Layered Scoring)
+// /api/audit.js — EEI v3.0 Modular Entity Audit (Layered Scoring | Clean Build)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -122,7 +122,10 @@ export default async function handler(req, res) {
       .map((_, el) => $(el).contents().text())
       .get();
     const schemaObjects = ldBlocks.flatMap(tryParseJSON);
-    const pageLinks = $("a[href]").map((_, el) => $(el).attr("href")).get().filter(Boolean);
+    const pageLinks = $("a[href]")
+      .map((_, el) => $(el).attr("href"))
+      .get()
+      .filter(Boolean);
 
     // --- Run EEI v3.0 Scoring Layers ---
     const metaScores = scoreMetaLayer($, normalized);
@@ -144,13 +147,14 @@ export default async function handler(req, res) {
     // --- Entity identity extraction ---
     const title = $("title").first().text().trim();
     const entityName =
-      schemaObjects.find(o => o["@type"] === "Organization" && o.name)?.name ||
-      schemaObjects.find(o => o["@type"] === "Person" && o.name)?.name ||
+      schemaObjects.find((o) => o["@type"] === "Organization" && o.name)?.name ||
+      schemaObjects.find((o) => o["@type"] === "Person" && o.name)?.name ||
       (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
 
     const description =
       $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") || "";
+      $('meta[property="og:description"]').attr("content") ||
+      "";
 
     const canonical =
       $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
