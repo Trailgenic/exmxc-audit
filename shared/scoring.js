@@ -1,106 +1,177 @@
-/* ======================================
-   EEI v3.0 — Scoring Logic by Layer
-   ====================================== */
+// shared/scoring.js
+import WEIGHTS from "./weights.js";
 
-import * as cheerio from "cheerio";
-import { SIGNAL_WEIGHTS } from "./weights.js";
-
-/* ---------- Utility ---------- */
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
+/* ---------- tiny utils ---------- */
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function tryParseJSON(text) {
+  try { const p = JSON.parse(text); return Array.isArray(p) ? p : [p]; }
+  catch { return []; }
 }
 
-function countValidSchemas(schemaObjects) {
-  return schemaObjects.filter(o => o && o["@type"]).length;
+/* ---------- tiers ---------- */
+export function tierFromScore(score) {
+  if (score >= 90) return "Platinum Entity";
+  if (score >= 70) return "Gold Entity";
+  if (score >= 50) return "Silver Entity";
+  if (score >= 30) return "Bronze Entity";
+  return "Obscure Entity";
 }
 
-/* ---------- META LAYER (15 pts) ---------- */
-export function scoreMetaLayer($, normalizedUrl) {
-  const results = [];
-
-  // 1. Title Precision
-  const title = $("title").first().text().trim();
-  let titlePts = 0;
-  if (title.length > 25 && /[\|\-–]/.test(title)) titlePts = SIGNAL_WEIGHTS.titlePrecision;
-  else if (title.length > 15) titlePts = SIGNAL_WEIGHTS.titlePrecision * 0.6;
-  results.push({ key: "Title Precision", points: titlePts, max: SIGNAL_WEIGHTS.titlePrecision, raw: { title } });
-
-  // 2. Meta Description Integrity
-  const desc =
-    $('meta[name="description"]').attr("content") ||
-    $('meta[property="og:description"]').attr("content") || "";
-  let descPts = 0;
-  if (desc.length > 80) descPts = SIGNAL_WEIGHTS.metaDescriptionIntegrity;
-  else if (desc.length > 40) descPts = SIGNAL_WEIGHTS.metaDescriptionIntegrity * 0.6;
-  results.push({ key: "Meta Description Integrity", points: descPts, max: SIGNAL_WEIGHTS.metaDescriptionIntegrity, raw: { desc } });
-
-  // 3. Canonical Clarity
-  const canonical = $('link[rel="canonical"]').attr("href");
-  let canPts = 0;
-  if (canonical) {
-    try {
-      const c = new URL(canonical, normalizedUrl);
-      if (c.protocol.startsWith("http") && !/[?#]/.test(c.href)) canPts = SIGNAL_WEIGHTS.canonicalClarity;
-      else canPts = SIGNAL_WEIGHTS.canonicalClarity * 0.5;
-    } catch {
-      canPts = 0;
-    }
+/* ---------- individual scorers (match audit.js imports) ---------- */
+export function scoreTitle($) {
+  const title = ($("title").first().text() || "").trim();
+  let points = 0, notes = "Missing";
+  if (title) {
+    const isShort = title.length < 15;
+    const hasSeparator = / \| | - /.test(title);
+    if (isShort) { points = 3; notes = "Present but short"; }
+    else if (hasSeparator || title.length >= 30) { points = WEIGHTS.title; notes = "Specific & contextual"; }
+    else { points = Math.min(WEIGHTS.title, 4); notes = "Decent clarity"; }
   }
-  results.push({ key: "Canonical Clarity", points: canPts, max: SIGNAL_WEIGHTS.canonicalClarity, raw: { canonical } });
-
-  return results;
+  return { key: "Title Presence & Clarity", points, max: WEIGHTS.title, notes, raw: { title } };
 }
 
-/* ---------- SCHEMA LAYER (30 pts) ---------- */
-export function scoreSchemaLayer(schemaObjects = [], pageLinks = []) {
-  const results = [];
-  const validSchemas = countValidSchemas(schemaObjects);
-
-  // 4. Schema Presence & Validity
-  const presencePts = validSchemas > 0 ? SIGNAL_WEIGHTS.schemaPresenceValidity : 0;
-  results.push({ key: "Schema Presence & Validity", points: presencePts, max: SIGNAL_WEIGHTS.schemaPresenceValidity, raw: { validSchemas } });
-
-  // 5. Diversity of Types
-  const types = new Set();
-  schemaObjects.forEach(o => {
-    if (Array.isArray(o["@type"])) o["@type"].forEach(t => types.add(t));
-    else if (o["@type"]) types.add(o["@type"]);
-  });
-  const diversity = types.size;
-  let divPts = 0;
-  if (diversity >= 4) divPts = SIGNAL_WEIGHTS.schemaTypeDiversity;
-  else if (diversity >= 2) divPts = SIGNAL_WEIGHTS.schemaTypeDiversity * 0.6;
-  results.push({ key: "Schema Type Diversity", points: divPts, max: SIGNAL_WEIGHTS.schemaTypeDiversity, raw: { types: [...types] } });
-
-  // 6. Depth / Nested Relations
-  let relationCount = 0;
-  schemaObjects.forEach(o => {
-    if (o.sameAs || o.about || o.parentOrganization || o.knowsAbout) relationCount++;
-  });
-  const depthRatio = clamp(relationCount / validSchemas, 0, 1);
-  const depthPts = SIGNAL_WEIGHTS.schemaDepthRelations * depthRatio;
-  results.push({ key: "Schema Depth Relations", points: depthPts, max: SIGNAL_WEIGHTS.schemaDepthRelations, raw: { relationCount } });
-
-  // 7. Schema-to-Scale Ratio (SSR)
-  const totalLinks = pageLinks.length || 1;
-  const ssr = (validSchemas / totalLinks) * 100;
-  let ssrPts = 0;
-  if (ssr >= 5) ssrPts = SIGNAL_WEIGHTS.schemaToScaleRatio;
-  else if (ssr >= 2) ssrPts = SIGNAL_WEIGHTS.schemaToScaleRatio * 0.6;
-  else if (ssr >= 0.5) ssrPts = SIGNAL_WEIGHTS.schemaToScaleRatio * 0.3;
-  results.push({ key: "Schema-to-Scale Ratio (SSR)", points: ssrPts, max: SIGNAL_WEIGHTS.schemaToScaleRatio, raw: { ssr } });
-
-  return results;
+export function scoreMetaDescription($) {
+  const md = $('meta[name="description"]').attr("content")
+         || $('meta[property="og:description"]').attr("content") || "";
+  let points = 0, notes = "Missing";
+  if (md) {
+    if (md.length < 80) { points = 3; notes = "Present but short/weak"; }
+    else { points = WEIGHTS.metaDescription; notes = "Descriptive & specific"; }
+  }
+  return { key: "Meta Description", points, max: WEIGHTS.metaDescription, notes, raw: { metaDescription: md } };
 }
 
-/* ---------- GRAPH LAYER (20 pts) ---------- */
-export function scoreGraphLayer($, originHost) {
-  const results = [];
-  const links = $("a[href]").map((_, el) => $(el).attr("href")).get();
-  const total = links.length;
-  let internal = 0, externalHosts = new Set();
-
-  links.forEach(href => {
+export function scoreCanonical($, normalizedUrl) {
+  const href = ($('link[rel="canonical"]').attr("href") || "").trim();
+  let points = 0, notes = "Missing";
+  if (href) {
     try {
-      const u = new URL(href, `https://${originH
+      const can = new URL(href, normalizedUrl);
+      const abs = can.protocol && can.hostname;
+      const clean = abs && (can.origin === new URL(normalizedUrl).origin) && !/[?#]/.test(can.href);
+      points = clean ? WEIGHTS.canonical : Math.min(WEIGHTS.canonical, 3);
+      notes = clean ? "Clean absolute canonical" : "Present but not clean/absolute";
+    } catch { points = 2; notes = "Present but invalid URL"; }
+  }
+  return { key: "Canonical URL", points, max: WEIGHTS.canonical, notes, raw: { canonical: href || null } };
+}
+
+export function scoreSchemaPresence(schemaObjects) {
+  const count = schemaObjects.length;
+  const ratio = clamp(Math.min(count, 2) / 2, 0, 1);
+  const points = Math.round(ratio * WEIGHTS.schemaPresence);
+  const notes = count === 0 ? "No JSON-LD" : (count === 1 ? "1 schema block" : "2+ schema blocks");
+  return { key: "Schema Presence", points, max: WEIGHTS.schemaPresence, notes, raw: { schemaBlocks: count } };
+}
+
+export function scoreOrgSchema(schemaObjects) {
+  const org = schemaObjects.find(o => {
+    const t = o["@type"]; return t === "Organization" || (Array.isArray(t) && t.indexOf("Organization") >= 0);
+  });
+  let points = 0, notes = "Missing";
+  if (org) {
+    const hasName = typeof org.name === "string" && org.name.trim().length > 0;
+    const hasUrl = typeof org.url === "string" && org.url.trim().length > 0;
+    if (hasName && hasUrl) { points = WEIGHTS.orgSchema; notes = "Present & valid"; }
+    else { points = Math.round(WEIGHTS.orgSchema * 0.5); notes = "Present but incomplete"; }
+  }
+  return { key: "Organization Schema", points, max: WEIGHTS.orgSchema,
+           notes, raw: org ? { name: org.name || null, url: org.url || null } : null };
+}
+
+export function scoreBreadcrumbSchema(schemaObjects) {
+  const crumb = schemaObjects.find(o => {
+    const t = o["@type"]; return t === "BreadcrumbList" || (Array.isArray(t) && t.indexOf("BreadcrumbList") >= 0);
+  });
+  const points = crumb ? WEIGHTS.breadcrumbSchema : 0;
+  const notes = crumb ? "Present" : "Missing";
+  return { key: "Breadcrumb Schema", points, max: WEIGHTS.breadcrumbSchema, notes, raw: crumb || null };
+}
+
+export function scoreAuthorPerson(schemaObjects, $) {
+  const person = schemaObjects.find(o => {
+    const t = o["@type"]; return t === "Person" || (Array.isArray(t) && t.indexOf("Person") >= 0);
+  });
+  const metaAuthor = $('meta[name="author"]').attr("content") || $('a[rel="author"]').text() || "";
+  let points = 0, notes = "Missing";
+  if (person) { points = WEIGHTS.authorPerson; notes = "Person schema present"; }
+  else if (metaAuthor) { points = Math.round(WEIGHTS.authorPerson * 0.5); notes = "Author meta present"; }
+  return { key: "Author/Person Schema", points, max: WEIGHTS.authorPerson,
+           notes, raw: { person: !!person, metaAuthor: metaAuthor || null } };
+}
+
+export function scoreSocialLinks(schemaObjects, pageLinks) {
+  const SOCIAL_HOSTS = ["linkedin.com","instagram.com","youtube.com","x.com","twitter.com","facebook.com","wikipedia.org","threads.net","tiktok.com","github.com"];
+  const seen = new Set();
+  function add(u){ try{ const host = new URL(u).hostname.replace(/^www\./i,""); if (SOCIAL_HOSTS.some(s => host.endsWith(s))) seen.add(host); } catch{} }
+  schemaObjects.forEach(o => { const sa = o.sameAs; if (Array.isArray(sa)) sa.forEach(add); else if (typeof sa === "string") add(sa); });
+  pageLinks.forEach(add);
+  const count = seen.size;
+  let points = 0, notes = "None found";
+  if (count >= 3) { points = WEIGHTS.socialLinks; notes = "Strong set (3+)"; }
+  else if (count >= 1) { points = Math.round(WEIGHTS.socialLinks * 0.5); notes = "Partial (1–2)"; }
+  return { key: "Social Entity Links", points, max: WEIGHTS.socialLinks, notes, raw: { distinctSocialHosts: Array.from(seen) } };
+}
+
+export function scoreAICrawlSignals($) {
+  const robots = ($('meta[name="robots"]').attr("content") || "").toLowerCase();
+  const allowIndex = robots === "" || robots.indexOf("index") >= 0;
+  const aiPing = $('img[src*="ai-crawl-ping"], img[src*="crawl-ping"]').length > 0;
+  let points = 0, notes = "Blocked/unknown";
+  if (!allowIndex) { points = 0; notes = "Robots meta blocks indexing"; }
+  else if (aiPing) { points = WEIGHTS.aiCrawl; notes = "Explicit crawl ping"; }
+  else { points = Math.round(WEIGHTS.aiCrawl * 0.6); notes = "Indexable, no explicit ping"; }
+  return { key: "AI Crawl Trust Signals", points, max: WEIGHTS.aiCrawl, notes, raw: { robots, aiPing } };
+}
+
+export function scoreContentDepth($) {
+  const text = $("body").text().replace(/\s+/g, " ").trim();
+  const words = text ? text.split(" ").length : 0;
+  let points = 0, notes = "< 300 words";
+  if (words >= 1200) { points = WEIGHTS.contentDepth; notes = "Deep context"; }
+  else if (words >= 300) { points = Math.round(WEIGHTS.contentDepth * 0.5); notes = "Moderate"; }
+  return { key: "Content Depth & Context", points, max: WEIGHTS.contentDepth, notes, raw: { wordCount: words } };
+}
+
+export function scoreInternalLinks(pageLinks, originHost) {
+  let total = 0, internal = 0;
+  for (const href of pageLinks) {
+    total++;
+    try {
+      const u = new URL(href, "https://" + originHost);
+      const host = u.hostname.replace(/^www\./i, "");
+      if (host === originHost) internal++;
+    } catch {}
+  }
+  const ratio = total ? internal / total : 0;
+  let points = 0, notes = "No internal links";
+  if (ratio >= 0.5 && internal >= 10) { points = WEIGHTS.internalLinks; notes = "Strong network"; }
+  else if (ratio >= 0.2 && internal >= 3) { points = Math.round(WEIGHTS.internalLinks * 0.5); notes = "Some internal linking"; }
+  return { key: "Internal Link / Graph Density", points, max: WEIGHTS.internalLinks,
+           notes, raw: { totalLinks: total, internalLinks: internal, internalRatio: Number(ratio.toFixed(3)) } };
+}
+
+export function scoreExternalLinks(pageLinks, originHost) {
+  const hosts = new Set();
+  for (const href of pageLinks) {
+    try {
+      const u = new URL(href, "https://" + originHost);
+      const host = u.hostname.replace(/^www\./i, "");
+      if (host !== originHost) hosts.add(host);
+    } catch {}
+  }
+  const count = hosts.size;
+  let points = 0, notes = "No outbound links";
+  if (count >= 1) { points = WEIGHTS.externalLinks; notes = "Outbound credibility present"; }
+  return { key: "External Outbound Links", points, max: WEIGHTS.externalLinks,
+           notes, raw: { distinctOutboundHosts: Array.from(hosts).slice(0, 20), count } };
+}
+
+export function scoreFaviconOg($) {
+  const favicon = $('link[rel="icon"]').attr("href") || $('link[rel="shortcut icon"]').attr("href") || "";
+  const ogImg = $('meta[property="og:image"]').attr("content") || "";
+  let points = 0, notes = "Missing";
+  if (favicon || ogImg) { points = WEIGHTS.faviconOg; notes = "Branding present"; }
+  return { key: "Favicon & OG Branding", points, max: WEIGHTS.faviconOg, notes, raw: { favicon: favicon || null, ogImage: ogImg || null } };
+}
