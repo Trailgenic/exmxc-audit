@@ -1,32 +1,32 @@
-// /shared/weights.js
-// Rubric weights for EEI — centralized for all audits and predictive scoring.
-
-export const WEIGHTS = {
-  title: 10,
-  metaDescription: 10,
-  canonical: 10,
-  schemaPresence: 20,
-  orgSchema: 8,
-  breadcrumbSchema: 8,
-  authorPerson: 8,
-  socialLinks: 6,
-  aiCrawl: 4,
-  contentDepth: 10,
-  internalLinks: 10,
-  externalLinks: 4,
-  faviconOg: 2,
+export const LAYER_WEIGHTS = {
+  meta: 15,
+  schema: 30,
+  graph: 20,
+  trust: 20,
+  ai: 15
 };
 
-// Optional: social platforms for reference in scoring.js
-export const SOCIAL_HOSTS = [
-  "linkedin.com",
-  "instagram.com",
-  "youtube.com",
-  "x.com",
-  "twitter.com",
-  "facebook.com",
-  "wikipedia.org",
-  "threads.net",
-  "tiktok.com",
-  "github.com",
-];
+export const SIGNAL_WEIGHTS = {
+  // META (15)
+  titlePrecision: 5,
+  metaDescriptionIntegrity: 5,
+  canonicalClarity: 5,
+
+  // SCHEMA (30)
+  schemaPresenceValidity: 10,
+  schemaTypeDiversity: 8,
+  schemaDepthRelations: 7,
+  schemaToScaleRatio: 5,
+
+  // GRAPH (20)
+  internalLatticeIntegrity: 12,
+  externalAuthoritySignal: 8,
+
+  // TRUST (20)
+  robotsHealth: 10,
+  brandTechConsistency: 10,
+
+  // AI (15)
+  crawlFidelity: 8,
+  inferenceEfficiency: 7
+};
