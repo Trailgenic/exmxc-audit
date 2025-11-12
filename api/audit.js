@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v3.0 Modular Entity Audit (Layered Scoring | Clean Build)
+// /api/audit.js — EEI v3.0 Modular Entity Audit (Verified Clean ASCII)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -11,17 +11,12 @@ import {
   combineScores
 } from "../shared/scoring.js";
 
-/* ================================
-   CONFIG
-   ================================ */
-
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.0 Safari/537.36";
 
-/* ---------- Helpers ---------- */
 function normalizeUrl(input) {
   let url = (input || "").trim();
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
   try {
     const u = new URL(url);
     if (!u.pathname) u.pathname = "/";
@@ -60,12 +55,7 @@ function tierFromScore(score) {
   return "Unstructured Entity";
 }
 
-/* ================================
-   MAIN HANDLER
-   ================================ */
-
 export default async function handler(req, res) {
-  // --- Basic CORS handling ---
   const origin = req.headers.origin || req.headers.referer;
   let normalizedOrigin = "*";
   if (origin && origin !== "null") {
@@ -95,8 +85,6 @@ export default async function handler(req, res) {
     }
 
     const originHost = hostnameOf(normalized);
-
-    // --- Fetch HTML content ---
     let html = "";
     try {
       const resp = await axios.get(normalized, {
@@ -104,16 +92,16 @@ export default async function handler(req, res) {
         maxRedirects: 5,
         headers: {
           "User-Agent": UA,
-          Accept: "text/html,application/xhtml+xml",
+          Accept: "text/html,application/xhtml+xml"
         },
-        validateStatus: (s) => s >= 200 && s < 400,
+        validateStatus: (s) => s >= 200 && s < 400
       });
       html = resp.data || "";
     } catch (e) {
       return res.status(500).json({
         error: "Failed to fetch URL",
         details: e?.message || "Request blocked or timed out",
-        url: normalized,
+        url: normalized
       });
     }
 
@@ -127,7 +115,6 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-    // --- Run EEI v3.0 Scoring Layers ---
     const metaScores = scoreMetaLayer($, normalized);
     const schemaScores = scoreSchemaLayer(schemaObjects, pageLinks);
     const graphScores = scoreGraphLayer($, originHost);
@@ -144,7 +131,6 @@ export default async function handler(req, res) {
 
     const entityTier = tierFromScore(entityScore);
 
-    // --- Entity identity extraction ---
     const title = $("title").first().text().trim();
     const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization" && o.name)?.name ||
@@ -159,7 +145,6 @@ export default async function handler(req, res) {
     const canonical =
       $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
 
-    // --- Final JSON response ---
     return res.status(200).json({
       success: true,
       url: normalized,
@@ -173,12 +158,11 @@ export default async function handler(req, res) {
       canonical,
       timestamp: new Date().toISOString()
     });
-
   } catch (err) {
     console.error("EEI Audit Error:", err);
     return res.status(500).json({
       error: "Internal server error",
-      details: err?.message || String(err),
+      details: err?.message || String(err)
     });
   }
 }
