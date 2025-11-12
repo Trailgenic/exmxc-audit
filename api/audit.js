@@ -1,22 +1,14 @@
-// /api/audit.js — Modular v3.0 (Scalable Entity Audit Framework)
+// /api/audit.js — EEI v3.0 Modular Entity Audit (Layered Scoring)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
 import {
-  scoreTitle,
-  scoreMetaDescription,
-  scoreCanonical,
-  scoreSchemaPresence,
-  scoreOrgSchema,
-  scoreBreadcrumbSchema,
-  scoreAuthorPerson,
-  scoreSocialLinks,
-  scoreAICrawlSignals,
-  scoreContentDepth,
-  scoreInternalLinks,
-  scoreExternalLinks,
-  scoreFaviconOg,
-  tierFromScore
+  scoreMetaLayer,
+  scoreSchemaLayer,
+  scoreGraphLayer,
+  scoreTrustLayer,
+  scoreAILayer,
+  combineScores
 } from "../shared/scoring.js";
 
 /* ================================
@@ -58,6 +50,14 @@ function tryParseJSON(text) {
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
+}
+
+function tierFromScore(score) {
+  if (score >= 90) return "☀️ Sovereign Entity";
+  if (score >= 70) return "🌕 Structured Entity";
+  if (score >= 50) return "🌗 Visible Entity";
+  if (score >= 30) return "🌑 Emergent Entity";
+  return "Unstructured Entity";
 }
 
 /* ================================
@@ -118,94 +118,58 @@ export default async function handler(req, res) {
     }
 
     const $ = cheerio.load(html);
-
-    // --- Collect site signals ---
-    const title = ($("title").first().text() || "").trim();
-    const description =
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "";
-    const canonicalHref =
-      $('link[rel="canonical"]').attr("href") ||
-      normalized.replace(/\/$/, "");
-
-    const pageLinks = $("a[href]")
-      .map((_, el) => $(el).attr("href"))
-      .get()
-      .filter(Boolean);
-
     const ldBlocks = $("script[type='application/ld+json']")
       .map((_, el) => $(el).contents().text())
       .get();
-
     const schemaObjects = ldBlocks.flatMap(tryParseJSON);
+    const pageLinks = $("a[href]").map((_, el) => $(el).attr("href")).get().filter(Boolean);
 
-    // --- Find latest content date ---
-    let latestISO = null;
-    for (const obj of schemaObjects) {
-      const ds = [obj.dateModified, obj.dateUpdated, obj.datePublished, obj.uploadDate].filter(Boolean);
-      ds.forEach((dc) => {
-        const d = new Date(dc);
-        if (!Number.isNaN(d.getTime())) {
-          if (!latestISO || d > new Date(latestISO)) latestISO = d.toISOString();
-        }
-      });
-    }
+    // --- Run EEI v3.0 Scoring Layers ---
+    const metaScores = scoreMetaLayer($, normalized);
+    const schemaScores = scoreSchemaLayer(schemaObjects, pageLinks);
+    const graphScores = scoreGraphLayer($, originHost);
+    const trustScores = scoreTrustLayer($);
+    const aiScores = scoreAILayer($, schemaObjects);
 
-    // --- Determine entity name ---
-    let entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization" && typeof o.name === "string")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person" && typeof o.name === "string")?.name ||
-      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
-    entityName = (entityName || "").trim();
+    const { total: entityScore, breakdown } = combineScores([
+      metaScores,
+      schemaScores,
+      graphScores,
+      trustScores,
+      aiScores
+    ]);
 
-    // --- Score using modular functions ---
-    const breakdown = [
-      scoreTitle($),
-      scoreMetaDescription($),
-      scoreCanonical($, normalized),
-      scoreSchemaPresence(schemaObjects),
-      scoreOrgSchema(schemaObjects),
-      scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects, $),
-      scoreSocialLinks(schemaObjects, pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($),
-      scoreInternalLinks(pageLinks, originHost),
-      scoreExternalLinks(pageLinks, originHost),
-      scoreFaviconOg($),
-    ];
-
-    // --- Calculate composite score ---
-    const entityScore = clamp(
-      breakdown.reduce((sum, b) => sum + clamp(b.points, 0, b.max), 0),
-      0,
-      100
-    );
     const entityTier = tierFromScore(entityScore);
 
-    breakdown.forEach((b) => {
-      b.strength = b.max ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3)) : 0;
-    });
+    // --- Entity identity extraction ---
+    const title = $("title").first().text().trim();
+    const entityName =
+      schemaObjects.find(o => o["@type"] === "Organization" && o.name)?.name ||
+      schemaObjects.find(o => o["@type"] === "Person" && o.name)?.name ||
+      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
 
-    // --- Return results ---
+    const description =
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") || "";
+
+    const canonical =
+      $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
+
+    // --- Final JSON response ---
     return res.status(200).json({
       success: true,
       url: normalized,
       hostname: originHost,
-      entityName: entityName || null,
-      title,
-      canonical: canonicalHref,
-      description,
+      entityName: (entityName || "").trim(),
       entityScore: Math.round(entityScore),
       entityTier,
       signals: breakdown,
-      schemaMeta: {
-        schemaBlocks: schemaObjects.length,
-        latestISO,
-      },
-      timestamp: new Date().toISOString(),
+      schemaMeta: { schemaBlocks: schemaObjects.length },
+      description,
+      canonical,
+      timestamp: new Date().toISOString()
     });
+
   } catch (err) {
     console.error("EEI Audit Error:", err);
     return res.status(500).json({
