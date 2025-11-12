@@ -1,3 +1,7 @@
+/* ================================
+   EEI v3.0 — Weights Configuration
+   ================================ */
+
 export const LAYER_WEIGHTS = {
   meta: 15,
   schema: 30,
@@ -26,7 +30,7 @@ export const SIGNAL_WEIGHTS = {
   robotsHealth: 10,
   brandTechConsistency: 10,
 
-  // AI (15)
+  // AI COMPREHENSION (15)
   crawlFidelity: 8,
   inferenceEfficiency: 7
 };
