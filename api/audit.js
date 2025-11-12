@@ -1,4 +1,4 @@
-// /api/audit.js — Modular v3.0 (Scalable Entity Audit Framework)
+// /api/audit.js — EEI v3.1 (Evolutionary Scoring Integration)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -24,7 +24,7 @@ import {
    ================================ */
 
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.1 Safari/537.36";
 
 /* ---------- Helpers ---------- */
 function normalizeUrl(input) {
@@ -182,8 +182,11 @@ export default async function handler(req, res) {
       0,
       100
     );
+
+    // --- Get evolutionary tier info ---
     const entityTier = tierFromScore(entityScore);
 
+    // --- Add normalized strengths ---
     breakdown.forEach((b) => {
       b.strength = b.max ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3)) : 0;
     });
@@ -198,7 +201,13 @@ export default async function handler(req, res) {
       canonical: canonicalHref,
       description,
       entityScore: Math.round(entityScore),
-      entityTier,
+
+      // 🌕 Evolutionary Layer Output
+      entityStage: entityTier.stage,
+      entityVerb: entityTier.verb,
+      entityDescription: entityTier.description,
+      entityFocus: entityTier.coreFocus,
+
       signals: breakdown,
       schemaMeta: {
         schemaBlocks: schemaObjects.length,
