@@ -1,77 +1,70 @@
-// /api/scan.js — EEI v3.3 Batch Relay (Internal Key Auth)
-import axios from "axios";
 import fs from "fs";
 import path from "path";
+import axios from "axios";
 
 export default async function handler(req, res) {
   try {
-    // Load dataset from core-web.json
-    const corePath = path.join(process.cwd(), "core-web.json");
-    const dataset = JSON.parse(fs.readFileSync(corePath, "utf8"));
-    const urls = dataset.urls || [];
+    // Allow selecting datasets, default to core-web
+    const { dataset = "core-web" } = req.query;
 
-    if (!Array.isArray(urls) || urls.length === 0) {
-      return res.status(400).json({ error: "Missing or invalid URL list" });
+    // ✅ Correct path: keep everything under /data
+    const corePath = path.join(process.cwd(), `data/${dataset}.json`);
+
+    if (!fs.existsSync(corePath)) {
+      return res.status(400).json({
+        error: "Dataset not found",
+        details: `Missing file: data/${dataset}.json`,
+      });
     }
 
-    const normalize = (url) =>
-      /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const { urls = [] } = JSON.parse(fs.readFileSync(corePath, "utf8"));
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ error: "Dataset has no URLs" });
+    }
+
+    const base = process.env.AUDIT_BASE_URL || `https://${req.headers.host}`;
+    const toAbs = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 
     const results = [];
-
-    for (const rawUrl of urls) {
-      const url = normalize(rawUrl);
+    for (const raw of urls) {
+      const url = toAbs(raw);
       try {
-        const response = await axios.get(
-          `${process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : "https://exmxc-audit.vercel.app"}/api/audit`,
-          {
-            params: { url },
-            timeout: 25000,
-            headers: {
-              "x-exmxc-key": "exmxc-internal",
-              "User-Agent": "exmxc-batch/3.3",
-            },
-          }
-        );
-        results.push({
-          url,
-          success: true,
-          ...response.data,
+        const r = await axios.get(`${base}/api/audit`, {
+          params: { url },
+          timeout: 20000,
+          headers: { "User-Agent": "exmxc-batch/1.0" },
+          validateStatus: (s) => s >= 200 && s < 500,
         });
-      } catch (err) {
+        results.push({ url, ...(r.data || {}) });
+      } catch (e) {
         results.push({
           url,
           success: false,
-          error:
-            err.response?.data?.error ||
-            err.message ||
-            "Unknown error during fetch",
+          error: e?.response?.data?.error || e?.message || "Request failed",
         });
       }
     }
 
-    // --- Aggregate Scoring ---
-    const valid = results.filter((r) => r.success && r.entityScore !== undefined);
+    const valids = results.filter((r) => r.success);
     const avgEntityScore =
-      valid.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
-      (valid.length || 1);
+      valids.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
+      (valids.length || 1);
     const avgSchemaBlocks =
-      valid.reduce((sum, r) => sum + (r.schemaMeta?.schemaBlocks || 0), 0) /
-      (valid.length || 1);
+      valids.reduce((sum, r) => sum + (r.schemaMeta?.schemaBlocks || 0), 0) /
+      (valids.length || 1);
 
+    // Simple composite for display; tune later
     const siteScore = Math.min(
-      Math.round(avgEntityScore * 0.9 + avgSchemaBlocks * 3),
+      Math.round(avgEntityScore * 0.9 + avgSchemaBlocks * 2),
       100
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      model: "EEI v3.3 (Schema > Scale + Proxy Relay)",
-      dataset: dataset.vertical || "Core Web",
+      model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
+      dataset: dataset.replace("-", " ").replace(/\b\w/g, (m) => m.toUpperCase()),
       totalUrls: urls.length,
-      audited: valid.length,
+      audited: valids.length,
       avgEntityScore: Math.round(avgEntityScore),
       avgSchemaBlocks: Math.round(avgSchemaBlocks),
       siteScore,
@@ -79,10 +72,9 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("Site scan error:", err.message);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to run site scan",
-      details: err.message,
+      details: err?.message || String(err),
     });
   }
 }
