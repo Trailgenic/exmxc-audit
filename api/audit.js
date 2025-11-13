@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v3.2 (Evolutionary Scoring + Internal Relay)
+// /api/audit.js — EEI v3.3 (Evolutionary Scoring + Internal Relay + Safe Allowlist)
 import axios from "axios";
 import * as cheerio from "cheerio";
 import {
@@ -22,7 +22,7 @@ import {
    CONFIG
    ================================ */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.2 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.3 Safari/537.36";
 
 /* ---------- Helpers ---------- */
 function normalizeUrl(input) {
@@ -86,19 +86,24 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
 
   /* ================================
-     INTERNAL RELAY BYPASS
+     INTERNAL RELAY BYPASS + SAFELIST
      ================================ */
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
   const referer = req.headers.referer || "";
+
+  // allow official origins
   const isExternal =
-    !referer.includes("exmxc.ai") &&
-    !referer.includes("localhost") &&
-    !isInternal;
+    !(
+      referer.includes("exmxc.ai") ||
+      referer.includes("localhost") ||
+      referer.includes("vercel.app")
+    ) && !isInternal;
 
   if (isExternal) {
-    return res
-      .status(401)
-      .json({ error: "Access denied (401)", note: "External calls blocked" });
+    return res.status(401).json({
+      error: "Access denied (401)",
+      note: "External calls blocked",
+    });
   }
 
   /* ================================
