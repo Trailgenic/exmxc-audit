@@ -1,80 +1,84 @@
-import fs from "fs";
+// /api/scan.js — EEI v3.2 (Schema > Scale > Proxy Relay)
+import fs from "fs/promises";
 import path from "path";
-import axios from "axios";
+import auditHandler from "./audit.js"; // direct in-process import
 
 export default async function handler(req, res) {
+  // --- CORS Handling ---
+  const origin = req.headers.origin || req.headers.referer;
+  let normalizedOrigin = "*";
+  if (origin && origin !== "null") {
+    try {
+      normalizedOrigin = new URL(origin).origin;
+    } catch {
+      normalizedOrigin = "*";
+    }
+  }
+  res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  res.setHeader("Content-Type", "application/json");
+
+  // --- Load dataset (core-web.json) ---
   try {
-    // Allow selecting datasets, default to core-web
-    const { dataset = "core-web" } = req.query;
+    const filePath = path.join(process.cwd(), "data", "core-web.json");
+    const raw = await fs.readFile(filePath, "utf8");
+    const dataset = JSON.parse(raw);
 
-    // ✅ Correct path: keep everything under /data
-    const corePath = path.join(process.cwd(), `data/${dataset}.json`);
-
-    if (!fs.existsSync(corePath)) {
-      return res.status(400).json({
-        error: "Dataset not found",
-        details: `Missing file: data/${dataset}.json`,
-      });
-    }
-
-    const { urls = [] } = JSON.parse(fs.readFileSync(corePath, "utf8"));
-    if (!Array.isArray(urls) || urls.length === 0) {
-      return res.status(400).json({ error: "Dataset has no URLs" });
-    }
-
-    const base = process.env.AUDIT_BASE_URL || `https://${req.headers.host}`;
-    const toAbs = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
-
+    const urls = dataset.urls || [];
     const results = [];
-    for (const raw of urls) {
-      const url = toAbs(raw);
+
+    for (const url of urls) {
       try {
-        const r = await axios.get(`${base}/api/audit`, {
-          params: { url },
-          timeout: 20000,
-          headers: { "User-Agent": "exmxc-batch/1.0" },
-          validateStatus: (s) => s >= 200 && s < 500,
-        });
-        results.push({ url, ...(r.data || {}) });
-      } catch (e) {
+        // 🧩 Fake req/res objects for in-process call
+        const fakeReq = { query: { url } };
+        let output;
+        const fakeRes = {
+          status(code) {
+            this.statusCode = code;
+            return this;
+          },
+          json(obj) {
+            output = obj;
+            return obj;
+          },
+          setHeader() {},
+        };
+
+        await auditHandler(fakeReq, fakeRes);
+        results.push({ url, ...output });
+      } catch (err) {
         results.push({
           url,
-          success: false,
-          error: e?.response?.data?.error || e?.message || "Request failed",
+          error: err.message || "Internal error",
         });
       }
     }
 
-    const valids = results.filter((r) => r.success);
     const avgEntityScore =
-      valids.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
-      (valids.length || 1);
-    const avgSchemaBlocks =
-      valids.reduce((sum, r) => sum + (r.schemaMeta?.schemaBlocks || 0), 0) /
-      (valids.length || 1);
-
-    // Simple composite for display; tune later
-    const siteScore = Math.min(
-      Math.round(avgEntityScore * 0.9 + avgSchemaBlocks * 2),
-      100
-    );
+      results.filter((r) => r?.entityScore).reduce((s, r) => s + r.entityScore, 0) /
+      (results.filter((r) => r?.entityScore).length || 1);
 
     return res.status(200).json({
       success: true,
       model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
-      dataset: dataset.replace("-", " ").replace(/\b\w/g, (m) => m.toUpperCase()),
+      dataset: dataset.vertical || "Unknown",
       totalUrls: urls.length,
-      audited: valids.length,
-      avgEntityScore: Math.round(avgEntityScore),
-      avgSchemaBlocks: Math.round(avgSchemaBlocks),
-      siteScore,
+      audited: results.filter((r) => r?.success).length,
+      avgEntityScore: Number(avgEntityScore.toFixed(2)) || 0,
+      avgSchemaBlocks:
+        results.reduce((s, r) => s + (r.schemaMeta?.schemaBlocks || 0), 0) / (results.length || 1),
+      siteScore: Math.round(avgEntityScore) || 0,
       results,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
+    console.error("EEI Batch Error:", err);
     return res.status(500).json({
       error: "Failed to run site scan",
-      details: err?.message || String(err),
+      details: err.message || String(err),
     });
   }
 }
