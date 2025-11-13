@@ -1,5 +1,4 @@
-// /api/audit.js — EEI v3.1 (Evolutionary Scoring Integration)
-
+// /api/audit.js — EEI v3.2 (Evolutionary Scoring + Internal Relay)
 import axios from "axios";
 import * as cheerio from "cheerio";
 import {
@@ -16,15 +15,14 @@ import {
   scoreInternalLinks,
   scoreExternalLinks,
   scoreFaviconOg,
-  tierFromScore
+  tierFromScore,
 } from "../shared/scoring.js";
 
 /* ================================
    CONFIG
    ================================ */
-
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.1 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.2 Safari/537.36";
 
 /* ---------- Helpers ---------- */
 function normalizeUrl(input) {
@@ -77,12 +75,35 @@ export default async function handler(req, res) {
   }
   res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
-  if (normalizedOrigin !== "*") res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
+  );
+  if (normalizedOrigin !== "*")
+    res.setHeader("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   res.setHeader("Content-Type", "application/json");
 
+  /* ================================
+     INTERNAL RELAY BYPASS
+     ================================ */
+  const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
+  const referer = req.headers.referer || "";
+  const isExternal =
+    !referer.includes("exmxc.ai") &&
+    !referer.includes("localhost") &&
+    !isInternal;
+
+  if (isExternal) {
+    return res
+      .status(401)
+      .json({ error: "Access denied (401)", note: "External calls blocked" });
+  }
+
+  /* ================================
+     MAIN AUDIT EXECUTION
+     ================================ */
   try {
     const input = req.query?.url;
     if (!input || typeof input !== "string" || !input.trim()) {
@@ -126,8 +147,7 @@ export default async function handler(req, res) {
       $('meta[property="og:description"]').attr("content") ||
       "";
     const canonicalHref =
-      $('link[rel="canonical"]').attr("href") ||
-      normalized.replace(/\/$/, "");
+      $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
 
     const pageLinks = $("a[href]")
       .map((_, el) => $(el).attr("href"))
@@ -143,20 +163,32 @@ export default async function handler(req, res) {
     // --- Find latest content date ---
     let latestISO = null;
     for (const obj of schemaObjects) {
-      const ds = [obj.dateModified, obj.dateUpdated, obj.datePublished, obj.uploadDate].filter(Boolean);
+      const ds = [
+        obj.dateModified,
+        obj.dateUpdated,
+        obj.datePublished,
+        obj.uploadDate,
+      ].filter(Boolean);
       ds.forEach((dc) => {
         const d = new Date(dc);
         if (!Number.isNaN(d.getTime())) {
-          if (!latestISO || d > new Date(latestISO)) latestISO = d.toISOString();
+          if (!latestISO || d > new Date(latestISO))
+            latestISO = d.toISOString();
         }
       });
     }
 
     // --- Determine entity name ---
     let entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization" && typeof o.name === "string")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person" && typeof o.name === "string")?.name ||
-      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]);
+      schemaObjects.find(
+        (o) => o["@type"] === "Organization" && typeof o.name === "string"
+      )?.name ||
+      schemaObjects.find(
+        (o) => o["@type"] === "Person" && typeof o.name === "string"
+      )?.name ||
+      (title.includes(" | ")
+        ? title.split(" | ")[0]
+        : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
     // --- Score using modular functions ---
@@ -188,7 +220,9 @@ export default async function handler(req, res) {
 
     // --- Add normalized strengths ---
     breakdown.forEach((b) => {
-      b.strength = b.max ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3)) : 0;
+      b.strength = b.max
+        ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3))
+        : 0;
     });
 
     // --- Return results ---
