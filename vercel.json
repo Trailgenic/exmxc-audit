@@ -6,6 +6,7 @@
   ],
   "routes": [
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
+    { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
 
     { "src": "^/predictive-audit$", "dest": "/public/predictive.html" },
