@@ -1,6 +1,6 @@
 // ==========================
-// exmxc.ai | Fortress Batch Mode v3.1
-// Dataset Scanner + EEI Aggregator
+// exmxc.ai | Fortress Batch Mode v3.2
+// Proxy Relay Enabled
 // ==========================
 
 import fs from "fs";
@@ -9,7 +9,6 @@ import axios from "axios";
 
 export default async function handler(req, res) {
   try {
-    // --- Load dataset ---
     const dataPath = path.resolve("./data/core-web.json");
     if (!fs.existsSync(dataPath)) {
       return res.status(404).json({ error: "Dataset not found" });
@@ -18,25 +17,38 @@ export default async function handler(req, res) {
     const dataset = JSON.parse(fs.readFileSync(dataPath, "utf8"));
     const results = [];
 
-    // --- Build base URL for internal API calls ---
+    // --- Internal base URL ---
     const base =
       process.env.VERCEL_URL?.startsWith("http")
         ? process.env.VERCEL_URL
         : `https://${process.env.VERCEL_URL || "exmxc-audit.vercel.app"}`;
 
-    // --- User-Agent Header (matches /api/audit) ---
-    const UA =
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.0 Safari/537.36";
+    const isLocal =
+      process.env.NODE_ENV === "development" ||
+      base.includes("localhost") ||
+      base.includes("127.0.0.1");
 
-    // --- Loop through each URL in dataset ---
+    // --- Internal auth token (for safe relay) ---
+    const API_KEY = process.env.AUDIT_KEY || "exmxc-internal";
+
+    const UA =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.2 Safari/537.36";
+
     for (const site of dataset.urls) {
       const target = site.startsWith("http") ? site : `https://${site}`;
+
       try {
-        const { data } = await axios.get(`${base}/api/audit`, {
+        // --- use local call if running dev ---
+        const auditUrl = isLocal
+          ? `http://localhost:3000/api/audit`
+          : `${base}/api/audit`;
+
+        const { data } = await axios.get(auditUrl, {
           params: { url: target },
           headers: {
             "User-Agent": UA,
             Accept: "application/json,text/html",
+            "x-exmxc-key": API_KEY,
           },
           timeout: 25000,
         });
@@ -74,10 +86,9 @@ export default async function handler(req, res) {
       100
     );
 
-    // --- Final output ---
     res.status(200).json({
       success: true,
-      model: "EEI v3.1 (Schema > Scale)",
+      model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
       dataset: dataset.vertical,
       totalUrls: dataset.urls.length,
       audited: valid.length,
