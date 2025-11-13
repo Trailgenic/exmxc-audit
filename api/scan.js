@@ -1,84 +1,64 @@
-// ==========================
-// exmxc.ai | Fortress Batch Mode v3.2
-// Proxy Relay Enabled
-// ==========================
-
+// /api/scan.js — EEI v3.3 Batch Relay (Internal Key Auth)
+import axios from "axios";
 import fs from "fs";
 import path from "path";
-import axios from "axios";
 
 export default async function handler(req, res) {
   try {
-    const dataPath = path.resolve("./data/core-web.json");
-    if (!fs.existsSync(dataPath)) {
-      return res.status(404).json({ error: "Dataset not found" });
+    // Load dataset from core-web.json
+    const corePath = path.join(process.cwd(), "core-web.json");
+    const dataset = JSON.parse(fs.readFileSync(corePath, "utf8"));
+    const urls = dataset.urls || [];
+
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ error: "Missing or invalid URL list" });
     }
 
-    const dataset = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+    const normalize = (url) =>
+      /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
     const results = [];
 
-    // --- Internal base URL ---
-    const base =
-      process.env.VERCEL_URL?.startsWith("http")
-        ? process.env.VERCEL_URL
-        : `https://${process.env.VERCEL_URL || "exmxc-audit.vercel.app"}`;
-
-    const isLocal =
-      process.env.NODE_ENV === "development" ||
-      base.includes("localhost") ||
-      base.includes("127.0.0.1");
-
-    // --- Internal auth token (for safe relay) ---
-    const API_KEY = process.env.AUDIT_KEY || "exmxc-internal";
-
-    const UA =
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.2 Safari/537.36";
-
-    for (const site of dataset.urls) {
-      const target = site.startsWith("http") ? site : `https://${site}`;
-
+    for (const rawUrl of urls) {
+      const url = normalize(rawUrl);
       try {
-        // --- use local call if running dev ---
-        const auditUrl = isLocal
-          ? `http://localhost:3000/api/audit`
-          : `${base}/api/audit`;
-
-        const { data } = await axios.get(auditUrl, {
-          params: { url: target },
-          headers: {
-            "User-Agent": UA,
-            Accept: "application/json,text/html",
-            "x-exmxc-key": API_KEY,
-          },
-          timeout: 25000,
-        });
-
+        const response = await axios.get(
+          `${process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : "https://exmxc-audit.vercel.app"}/api/audit`,
+          {
+            params: { url },
+            timeout: 25000,
+            headers: {
+              "x-exmxc-key": "exmxc-internal",
+              "User-Agent": "exmxc-batch/3.3",
+            },
+          }
+        );
         results.push({
-          url: target,
+          url,
           success: true,
-          entityScore: data.entityScore || 0,
-          schemaCount: data.schemaCount || 0,
-          entityTier: data.entityTier || "N/A",
+          ...response.data,
         });
       } catch (err) {
         results.push({
-          url: target,
+          url,
           success: false,
           error:
-            err.response?.status === 401
-              ? "Access denied (401)"
-              : err.message || "Fetch failed",
+            err.response?.data?.error ||
+            err.message ||
+            "Unknown error during fetch",
         });
       }
     }
 
-    // --- Aggregate scoring ---
-    const valid = results.filter((r) => r.success);
+    // --- Aggregate Scoring ---
+    const valid = results.filter((r) => r.success && r.entityScore !== undefined);
     const avgEntityScore =
       valid.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
       (valid.length || 1);
     const avgSchemaBlocks =
-      valid.reduce((sum, r) => sum + (r.schemaCount || 0), 0) /
+      valid.reduce((sum, r) => sum + (r.schemaMeta?.schemaBlocks || 0), 0) /
       (valid.length || 1);
 
     const siteScore = Math.min(
@@ -88,9 +68,9 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
-      model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
-      dataset: dataset.vertical,
-      totalUrls: dataset.urls.length,
+      model: "EEI v3.3 (Schema > Scale + Proxy Relay)",
+      dataset: dataset.vertical || "Core Web",
+      totalUrls: urls.length,
       audited: valid.length,
       avgEntityScore: Math.round(avgEntityScore),
       avgSchemaBlocks: Math.round(avgSchemaBlocks),
@@ -99,9 +79,9 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("Batch scan error:", err.message);
+    console.error("Site scan error:", err.message);
     res.status(500).json({
-      error: "Batch scan failed",
+      error: "Failed to run site scan",
       details: err.message,
     });
   }
