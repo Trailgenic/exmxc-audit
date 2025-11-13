@@ -1,7 +1,7 @@
-// /api/scan.js — EEI v3.2 (Schema > Scale > Proxy Relay)
+// /api/scan.js — EEI v3.2b (Schema > Scale > Proxy Relay + Safe Origin Patch)
 import fs from "fs/promises";
 import path from "path";
-import auditHandler from "./audit.js"; // direct in-process import
+import auditHandler from "./audit.js"; // internal import (no external HTTP)
 
 export default async function handler(req, res) {
   // --- CORS Handling ---
@@ -21,19 +21,24 @@ export default async function handler(req, res) {
 
   res.setHeader("Content-Type", "application/json");
 
-  // --- Load dataset (core-web.json) ---
   try {
+    // --- Load dataset ---
     const filePath = path.join(process.cwd(), "data", "core-web.json");
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
-
     const urls = dataset.urls || [];
+
     const results = [];
 
     for (const url of urls) {
       try {
-        // 🧩 Fake req/res objects for in-process call
-        const fakeReq = { query: { url } };
+        // 🧩 Create fake req/res objects to run auditHandler in-process
+        const fakeReq = {
+          query: { url },
+          headers: { origin: "http://localhost" }, // 👈 added safe fallback
+          method: "GET",
+        };
+
         let output;
         const fakeRes = {
           status(code) {
@@ -48,25 +53,37 @@ export default async function handler(req, res) {
         };
 
         await auditHandler(fakeReq, fakeRes);
-        results.push({ url, ...output });
+
+        // Handle when auditHandler returns via .json()
+        if (output?.success) {
+          results.push(output);
+        } else {
+          results.push({
+            url,
+            success: false,
+            error: output?.error || "Audit failed",
+          });
+        }
       } catch (err) {
         results.push({
           url,
+          success: false,
           error: err.message || "Internal error",
         });
       }
     }
 
+    // --- Aggregate results ---
+    const scored = results.filter((r) => r?.entityScore);
     const avgEntityScore =
-      results.filter((r) => r?.entityScore).reduce((s, r) => s + r.entityScore, 0) /
-      (results.filter((r) => r?.entityScore).length || 1);
+      scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) / (scored.length || 1);
 
     return res.status(200).json({
       success: true,
       model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
       dataset: dataset.vertical || "Unknown",
       totalUrls: urls.length,
-      audited: results.filter((r) => r?.success).length,
+      audited: scored.length,
       avgEntityScore: Number(avgEntityScore.toFixed(2)) || 0,
       avgSchemaBlocks:
         results.reduce((s, r) => s + (r.schemaMeta?.schemaBlocks || 0), 0) / (results.length || 1),
