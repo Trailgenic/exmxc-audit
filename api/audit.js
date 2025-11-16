@@ -79,11 +79,14 @@ export default async function handler(req, res) {
   /* ================================
      INTERNAL RELAY BYPASS + SAFELIST
      ================================ */
- // --- Safe origin + internal relay bypass ---
+// Determine internal key (must be defined BEFORE checks)
+const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
+
+// Pull referer/origin safely
 const referer = req.headers.referer || "";
 const originHeader = req.headers.origin || "";
 
-// Allow local, vercel, and internal batch calls
+// Allow localhost, Vercel, and exmxc.ai
 const allowedOrigins = [
   "localhost",
   "127.0.0.1",
@@ -91,9 +94,10 @@ const allowedOrigins = [
   "exmxc.ai",
 ];
 
+// Combine for easier detection
 const originString = `${referer} ${originHeader}`.toLowerCase();
 
-// If caller is not internal + not from allowed origin → block
+// External = NOT internal AND NOT in safelist
 const isExternal =
   !isInternal &&
   !allowedOrigins.some((allowed) => originString.includes(allowed));
