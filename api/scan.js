@@ -1,12 +1,13 @@
-// /api/scan.js — EEI v3.2b (Schema > Scale > Proxy Relay + Safe Origin Patch)
+// /api/scan.js — EEI v3.4 (Rendered Batch Mode + Safe Fallback + Schema Guards)
 import fs from "fs/promises";
 import path from "path";
-import auditHandler from "./audit.js"; // internal import (no external HTTP)
+import auditHandler from "./audit.js";
 
 export default async function handler(req, res) {
-  // --- CORS Handling ---
+  // --- CORS ---
   const origin = req.headers.origin || req.headers.referer;
   let normalizedOrigin = "*";
+
   if (origin && origin !== "null") {
     try {
       normalizedOrigin = new URL(origin).origin;
@@ -14,9 +15,13 @@ export default async function handler(req, res) {
       normalizedOrigin = "*";
     }
   }
+
   res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
   if (req.method === "OPTIONS") return res.status(200).end();
 
   res.setHeader("Content-Type", "application/json");
@@ -32,10 +37,10 @@ export default async function handler(req, res) {
 
     for (const url of urls) {
       try {
-        // 🧩 Create fake req/res objects to run auditHandler in-process
+        // Create in-process request for auditHandler
         const fakeReq = {
           query: { url },
-          headers: { origin: "http://localhost" }, // 👈 added safe fallback
+          headers: { origin: "http://localhost" },
           method: "GET",
         };
 
@@ -52,50 +57,85 @@ export default async function handler(req, res) {
           setHeader() {},
         };
 
+        // --- Run audit ---
         await auditHandler(fakeReq, fakeRes);
 
-        // Handle when auditHandler returns via .json()
+        // --- Normalize output ---
         if (output?.success) {
-          results.push(output);
+          // Guaranteed-safe schemaMeta
+          const safeSchemaMeta = {
+            schemaBlocks: output.schemaMeta?.schemaBlocks ?? 0,
+            latestISO: output.schemaMeta?.latestISO ?? null,
+            mode: output.schemaMeta?.mode ?? "static",
+            rendered: output.schemaMeta?.rendered ?? false,
+            renderError: output.schemaMeta?.renderError ?? null,
+          };
+
+          results.push({
+            ...output,
+            schemaMeta: safeSchemaMeta,
+          });
         } else {
+          // Failure object
           results.push({
             url,
             success: false,
             error: output?.error || "Audit failed",
+            schemaMeta: {
+              schemaBlocks: 0,
+              latestISO: null,
+              mode: "static",
+              rendered: false,
+              renderError: output?.renderError || null,
+            },
           });
         }
       } catch (err) {
+        // Hard crash fallback
         results.push({
           url,
           success: false,
-          error: err.message || "Internal error",
+          error: err?.message || "Internal error",
+          schemaMeta: {
+            schemaBlocks: 0,
+            latestISO: null,
+            mode: "static",
+            rendered: false,
+            renderError: err?.message || null,
+          },
         });
       }
     }
 
-    // --- Aggregate results ---
-    const scored = results.filter((r) => r?.entityScore);
+    // --- Aggregate safely ---
+    const scored = results.filter((r) => r?.entityScore !== undefined);
     const avgEntityScore =
-      scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) / (scored.length || 1);
+      scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
+      (scored.length || 1);
+
+    const avgSchemaBlocks =
+      results.reduce(
+        (sum, r) => sum + (r.schemaMeta?.schemaBlocks ?? 0),
+        0
+      ) / (results.length || 1);
 
     return res.status(200).json({
       success: true,
-      model: "EEI v3.2 (Schema > Scale + Proxy Relay)",
+      model: "EEI v3.4 (AI-Rendered Batch Mode + Safe Fallback)",
       dataset: dataset.vertical || "Unknown",
       totalUrls: urls.length,
       audited: scored.length,
       avgEntityScore: Number(avgEntityScore.toFixed(2)) || 0,
-      avgSchemaBlocks:
-        results.reduce((s, r) => s + (r.schemaMeta?.schemaBlocks || 0), 0) / (results.length || 1),
+      avgSchemaBlocks: Number(avgSchemaBlocks.toFixed(2)) || 0,
       siteScore: Math.round(avgEntityScore) || 0,
       results,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("EEI Batch Error:", err);
+    console.error("EEI Batch Fatal:", err);
     return res.status(500).json({
-      error: "Failed to run site scan",
-      details: err.message || String(err),
+      error: "Failed to run batch scan",
+      details: err?.message || String(err),
     });
   }
 }
