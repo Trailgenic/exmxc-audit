@@ -79,22 +79,32 @@ export default async function handler(req, res) {
   /* ================================
      INTERNAL RELAY BYPASS + SAFELIST
      ================================ */
-  const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
-  const referer = req.headers.referer || "";
+ // --- Safe origin + internal relay bypass ---
+const referer = req.headers.referer || "";
+const originHeader = req.headers.origin || "";
 
-  const isExternal =
-    !(
-      referer.includes("exmxc.ai") ||
-      referer.includes("localhost") ||
-      referer.includes("vercel.app")
-    ) && !isInternal;
+// Allow local, vercel, and internal batch calls
+const allowedOrigins = [
+  "localhost",
+  "127.0.0.1",
+  "vercel.app",
+  "exmxc.ai",
+];
 
-  if (isExternal) {
-    return res.status(401).json({
-      error: "Access denied (401)",
-      note: "External calls blocked",
-    });
-  }
+const originString = `${referer} ${originHeader}`.toLowerCase();
+
+// If caller is not internal + not from allowed origin → block
+const isExternal =
+  !isInternal &&
+  !allowedOrigins.some((allowed) => originString.includes(allowed));
+
+if (isExternal) {
+  return res.status(401).json({
+    error: "Access denied (401) — origin not allowed",
+    originString,
+  });
+}
+
 
   /* ================================
      MAIN AUDIT EXECUTION
