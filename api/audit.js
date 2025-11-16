@@ -1,5 +1,4 @@
-// /api/audit.js — EEI v3.3 (Evolutionary Scoring + Internal Relay + Safe Allowlist)
-import axios from "axios";
+// /api/audit.js — EEI v3.4 (Crawl v2 Integration + Evolutionary Scoring)
 import * as cheerio from "cheerio";
 import {
   scoreTitle,
@@ -17,12 +16,13 @@ import {
   scoreFaviconOg,
   tierFromScore,
 } from "../shared/scoring.js";
+import { crawlPage } from "./core-scan.js";
 
 /* ================================
    CONFIG
    ================================ */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.3 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.4 Safari/537.36";
 
 /* ---------- Helpers ---------- */
 function normalizeUrl(input) {
@@ -42,15 +42,6 @@ function hostnameOf(urlStr) {
     return new URL(urlStr).hostname.replace(/^www\./i, "");
   } catch {
     return "";
-  }
-}
-
-function tryParseJSON(text) {
-  try {
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    return [];
   }
 }
 
@@ -91,7 +82,6 @@ export default async function handler(req, res) {
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
   const referer = req.headers.referer || "";
 
-  // allow official origins
   const isExternal =
     !(
       referer.includes("exmxc.ai") ||
@@ -122,66 +112,59 @@ export default async function handler(req, res) {
 
     const originHost = hostnameOf(normalized);
 
-    // --- Fetch HTML content ---
-    let html = "";
-    try {
-      const resp = await axios.get(normalized, {
-        timeout: 15000,
-        maxRedirects: 5,
-        headers: {
-          "User-Agent": UA,
-          Accept: "text/html,application/xhtml+xml",
-        },
-        validateStatus: (s) => s >= 200 && s < 400,
-      });
-      html = resp.data || "";
-    } catch (e) {
-      return res.status(500).json({
-        error: "Failed to fetch URL",
-        details: e?.message || "Request blocked or timed out",
+    // Support ?mode=static for A/B or debugging; default to rendered
+    const requestedMode = req.query?.mode === "static" ? "static" : "rendered";
+
+    // --- EEI Crawl v2: rendered-first crawl with static fallback ---
+    const crawl = await crawlPage({
+      url: normalized,
+      mode: requestedMode,
+      userAgent: UA,
+    });
+
+    if (crawl.error || !crawl.html) {
+      const statusCode =
+        (crawl.status && crawl.status >= 400 && crawl.status < 600
+          ? crawl.status
+          : 500) || 500;
+
+      return res.status(statusCode).json({
+        error: crawl.error || "Failed to crawl URL",
         url: normalized,
+        mode: crawl.mode,
+        rendered: crawl.rendered,
+        renderError: crawl.renderError || null,
       });
     }
 
-    const $ = cheerio.load(html);
+    const {
+      html,
+      title: crawlTitle,
+      description: crawlDescription,
+      canonicalHref: crawlCanonical,
+      pageLinks,
+      schemaObjects,
+      latestISO,
+      mode: resolvedMode,
+      rendered,
+      fallbackFromRendered,
+      status: httpStatus,
+    } = crawl;
 
-    // --- Collect site signals ---
-    const title = ($("title").first().text() || "").trim();
+    const $ = cheerio.load(html || "");
+
+    // Prefer crawl-derived fields, but keep current behavior semantics
+    const title = (crawlTitle || $("title").first().text() || "").trim();
     const description =
+      crawlDescription ||
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "";
+
     const canonicalHref =
-      $('link[rel="canonical"]').attr("href") || normalized.replace(/\/$/, "");
-
-    const pageLinks = $("a[href]")
-      .map((_, el) => $(el).attr("href"))
-      .get()
-      .filter(Boolean);
-
-    const ldBlocks = $("script[type='application/ld+json']")
-      .map((_, el) => $(el).contents().text())
-      .get();
-
-    const schemaObjects = ldBlocks.flatMap(tryParseJSON);
-
-    // --- Find latest content date ---
-    let latestISO = null;
-    for (const obj of schemaObjects) {
-      const ds = [
-        obj.dateModified,
-        obj.dateUpdated,
-        obj.datePublished,
-        obj.uploadDate,
-      ].filter(Boolean);
-      ds.forEach((dc) => {
-        const d = new Date(dc);
-        if (!Number.isNaN(d.getTime())) {
-          if (!latestISO || d > new Date(latestISO))
-            latestISO = d.toISOString();
-        }
-      });
-    }
+      crawlCanonical ||
+      $('link[rel="canonical"]').attr("href") ||
+      normalized.replace(/\/$/, "");
 
     // --- Determine entity name ---
     let entityName =
@@ -196,7 +179,7 @@ export default async function handler(req, res) {
         : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-    // --- Score using modular functions ---
+    // --- Score using modular functions (unchanged logic) ---
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -251,6 +234,10 @@ export default async function handler(req, res) {
       schemaMeta: {
         schemaBlocks: schemaObjects.length,
         latestISO,
+        rendered,
+        mode: resolvedMode,
+        httpStatus: httpStatus || null,
+        fallbackFromRendered: !!fallbackFromRendered,
       },
       timestamp: new Date().toISOString(),
     });
