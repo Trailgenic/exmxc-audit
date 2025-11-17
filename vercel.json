@@ -4,23 +4,23 @@
     { "src": "api/**/*.js", "use": "@vercel/node" },
     { "src": "public/**/*", "use": "@vercel/static" }
   ],
+
   "routes": [
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
     { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
-    { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
 
-    { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
-    { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
+    /* ---------- NEW: EEI v5 endpoints ---------- */
+    { "src": "^/api/audit-v5$", "dest": "/api/audit-v5.js" },
+    { "src": "^/api/batch-v5$", "dest": "/api/batch-v5.js" },
 
+    /* ---------- static UI pages ---------- */
     { "src": "^/batch$", "dest": "/public/batch.html" },
-    { "src": "^/batch.html$", "dest": "/public/batch.html" },
+    { "src": "^/batch-v5$", "dest": "/public/batch-v5.html" },
+    { "src": "^/predictive$", "dest": "/public/predictive.html" },
+    { "src": "^/style.css$", "dest": "/public/styles.css" },
 
-    { "src": "^/predictive-audit$", "dest": "/public/predictive.html" },
-    { "src": "^/predictive.html$", "dest": "/public/predictive.html" },
-
-    { "src": "^/styles.css$", "dest": "/public/styles.css" },
-
+    /* ---------- fallback ---------- */
     { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
