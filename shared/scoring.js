@@ -1,4 +1,4 @@
-// /shared/scoring.js — EEI v3.0 Modular Scoring System (TrailGenic × exmxc.ai)
+// /shared/scoring.js — EEI v5 Modular Scoring System (TrailGenic × exmxc.ai)
 
 import { WEIGHTS } from "./weights.js";
 
@@ -57,7 +57,13 @@ export function scoreMetaDescription($) {
     }
   }
 
-  return { key: "Meta Description Integrity", points, max: WEIGHTS.metaDescription, notes, raw: { meta: md } };
+  return {
+    key: "Meta Description Integrity",
+    points,
+    max: WEIGHTS.metaDescription,
+    notes,
+    raw: { meta: md }
+  };
 }
 
 export function scoreCanonical($, normalizedUrl) {
@@ -76,7 +82,13 @@ export function scoreCanonical($, normalizedUrl) {
     }
   }
 
-  return { key: "Canonical Clarity", points, max: WEIGHTS.canonical, notes, raw: { canonical: href } };
+  return {
+    key: "Canonical Clarity",
+    points,
+    max: WEIGHTS.canonical,
+    notes,
+    raw: { canonical: href }
+  };
 }
 
 // --- Schema Layer (30 pts total) ---
@@ -88,11 +100,21 @@ export function scoreSchemaPresence(schemaObjects) {
     count === 0 ? "No JSON-LD found" :
     count === 1 ? "1 schema block" : "Multiple schema blocks";
 
-  return { key: "Schema Presence & Validity", points, max: WEIGHTS.schemaPresence, notes, raw: { schemaBlocks: count } };
+  return {
+    key: "Schema Presence & Validity",
+    points,
+    max: WEIGHTS.schemaPresence,
+    notes,
+    raw: { schemaBlocks: count }
+  };
 }
 
 export function scoreOrgSchema(schemaObjects) {
-  const org = schemaObjects.find(o => o["@type"] === "Organization" || (Array.isArray(o["@type"]) && o["@type"].includes("Organization")));
+  const org = schemaObjects.find(
+    o =>
+      o["@type"] === "Organization" ||
+      (Array.isArray(o["@type"]) && o["@type"].includes("Organization"))
+  );
   let points = 0, notes = "Missing";
 
   if (org) {
@@ -107,20 +129,41 @@ export function scoreOrgSchema(schemaObjects) {
     }
   }
 
-  return { key: "Organization Schema", points, max: WEIGHTS.orgSchema, notes, raw: org || null };
+  return {
+    key: "Organization Schema",
+    points,
+    max: WEIGHTS.orgSchema,
+    notes,
+    raw: org || null
+  };
 }
 
 export function scoreBreadcrumbSchema(schemaObjects) {
-  const crumb = schemaObjects.find(o => o["@type"] === "BreadcrumbList" || (Array.isArray(o["@type"]) && o["@type"].includes("BreadcrumbList")));
+  const crumb = schemaObjects.find(
+    o =>
+      o["@type"] === "BreadcrumbList" ||
+      (Array.isArray(o["@type"]) && o["@type"].includes("BreadcrumbList"))
+  );
   const points = crumb ? WEIGHTS.breadcrumbSchema : 0;
   const notes = crumb ? "Breadcrumb schema present" : "Missing";
 
-  return { key: "Breadcrumb Schema", points, max: WEIGHTS.breadcrumbSchema, notes, raw: crumb || null };
+  return {
+    key: "Breadcrumb Schema",
+    points,
+    max: WEIGHTS.breadcrumbSchema,
+    notes,
+    raw: crumb || null
+  };
 }
 
 export function scoreAuthorPerson(schemaObjects, $) {
-  const person = schemaObjects.find(o => o["@type"] === "Person" || (Array.isArray(o["@type"]) && o["@type"].includes("Person")));
-  const metaAuthor = $('meta[name="author"]').attr("content") || $('a[rel="author"]').text() || "";
+  const person = schemaObjects.find(
+    o =>
+      o["@type"] === "Person" ||
+      (Array.isArray(o["@type"]) && o["@type"].includes("Person"))
+  );
+  const metaAuthor =
+    $('meta[name="author"]').attr("content") || $('a[rel="author"]').text() || "";
   let points = 0, notes = "Missing";
 
   if (person) {
@@ -131,24 +174,38 @@ export function scoreAuthorPerson(schemaObjects, $) {
     notes = "Author meta tag present";
   }
 
-  return { key: "Author/Person Schema", points, max: WEIGHTS.authorPerson, notes, raw: { person: !!person, metaAuthor } };
+  return {
+    key: "Author/Person Schema",
+    points,
+    max: WEIGHTS.authorPerson,
+    notes,
+    raw: { person: !!person, metaAuthor }
+  };
 }
 
 export function scoreSocialLinks(schemaObjects, pageLinks) {
   const SOCIAL_HOSTS = [
-    "linkedin.com", "instagram.com", "youtube.com", "x.com", "twitter.com",
-    "facebook.com", "threads.net", "tiktok.com", "wikipedia.org", "github.com"
+    "linkedin.com",
+    "instagram.com",
+    "youtube.com",
+    "x.com",
+    "twitter.com",
+    "facebook.com",
+    "threads.net",
+    "tiktok.com",
+    "wikipedia.org",
+    "github.com"
   ];
   const seen = new Set();
 
   const add = (u) => {
     try {
       const host = new URL(u).hostname.replace(/^www\./i, "");
-      if (SOCIAL_HOSTS.some(s => host.endsWith(s))) seen.add(host);
+      if (SOCIAL_HOSTS.some((s) => host.endsWith(s))) seen.add(host);
     } catch {}
   };
 
-  schemaObjects.forEach(o => {
+  schemaObjects.forEach((o) => {
     if (Array.isArray(o.sameAs)) o.sameAs.forEach(add);
     else if (o.sameAs) add(o.sameAs);
   });
@@ -156,15 +213,27 @@ export function scoreSocialLinks(schemaObjects, pageLinks) {
 
   const count = seen.size;
   let points = 0, notes = "None found";
-  if (count >= 3) { points = WEIGHTS.socialLinks; notes = "Strong (3+)"; }
-  else if (count >= 1) { points = Math.round(WEIGHTS.socialLinks * 0.5); notes = "Partial (1–2)"; }
+  if (count >= 3) {
+    points = WEIGHTS.socialLinks;
+    notes = "Strong (3+)";
+  } else if (count >= 1) {
+    points = Math.round(WEIGHTS.socialLinks * 0.5);
+    notes = "Partial (1–2)";
+  }
 
-  return { key: "Social Entity Links", points, max: WEIGHTS.socialLinks, notes, raw: { distinctSocialHosts: Array.from(seen) } };
+  return {
+    key: "Social Entity Links",
+    points,
+    max: WEIGHTS.socialLinks,
+    notes,
+    raw: { distinctSocialHosts: Array.from(seen) }
+  };
 }
 
 // --- Trust / Graph Layers (40 pts total) ---
 export function scoreInternalLinks(pageLinks, originHost) {
-  let total = 0, internal = 0;
+  let total = 0,
+    internal = 0;
   for (const href of pageLinks) {
     total++;
     try {
@@ -173,12 +242,24 @@ export function scoreInternalLinks(pageLinks, originHost) {
     } catch {}
   }
   const ratio = total ? internal / total : 0;
-  let points = 0, notes = "No internal links";
+  let points = 0,
+    notes = "No internal links";
 
-  if (ratio >= 0.5 && internal >= 10) { points = WEIGHTS.internalLinks; notes = "Strong lattice"; }
-  else if (ratio >= 0.2 && internal >= 3) { points = Math.round(WEIGHTS.internalLinks * 0.5); notes = "Some internal linking"; }
+  if (ratio >= 0.5 && internal >= 10) {
+    points = WEIGHTS.internalLinks;
+    notes = "Strong lattice";
+  } else if (ratio >= 0.2 && internal >= 3) {
+    points = Math.round(WEIGHTS.internalLinks * 0.5);
+    notes = "Some internal linking";
+  }
 
-  return { key: "Internal Lattice Integrity", points, max: WEIGHTS.internalLinks, notes, raw: { total, internal, ratio } };
+  return {
+    key: "Internal Lattice Integrity",
+    points,
+    max: WEIGHTS.internalLinks,
+    notes,
+    raw: { total, internal, ratio }
+  };
 }
 
 export function scoreExternalLinks(pageLinks, originHost) {
@@ -194,32 +275,65 @@ export function scoreExternalLinks(pageLinks, originHost) {
   const points = count >= 1 ? WEIGHTS.externalLinks : 0;
   const notes = count >= 1 ? "Outbound credibility present" : "No outbound links";
 
-  return { key: "External Authority Signal", points, max: WEIGHTS.externalLinks, notes, raw: { count, distinctOutboundHosts: Array.from(externalHosts) } };
+  return {
+    key: "External Authority Signal",
+    points,
+    max: WEIGHTS.externalLinks,
+    notes,
+    raw: { count, distinctOutboundHosts: Array.from(externalHosts) }
+  };
 }
 
 export function scoreAICrawlSignals($) {
   const robots = ($('meta[name="robots"]').attr("content") || "").toLowerCase();
-  const aiPing = $('img[src*="ai-crawl-ping"], img[src*="crawl-ping"]').length > 0;
+  const aiPing =
+    $('img[src*="ai-crawl-ping"], img[src*="crawl-ping"]').length > 0;
   const allowIndex = robots === "" || /index/.test(robots);
-  let points = 0, notes = "Blocked";
+  let points = 0,
+    notes = "Blocked";
 
-  if (!allowIndex) { points = 0; notes = "Robots block indexing"; }
-  else if (aiPing) { points = WEIGHTS.aiCrawl; notes = "Explicit crawl ping"; }
-  else { points = Math.round(WEIGHTS.aiCrawl * 0.6); notes = "Indexable, no explicit ping"; }
+  if (!allowIndex) {
+    points = 0;
+    notes = "Robots block indexing";
+  } else if (aiPing) {
+    points = WEIGHTS.aiCrawl;
+    notes = "Explicit crawl ping";
+  } else {
+    points = Math.round(WEIGHTS.aiCrawl * 0.6);
+    notes = "Indexable, no explicit ping";
+  }
 
-  return { key: "AI Crawl Fidelity", points, max: WEIGHTS.aiCrawl, notes, raw: { robots, aiPing } };
+  return {
+    key: "AI Crawl Fidelity",
+    points,
+    max: WEIGHTS.aiCrawl,
+    notes,
+    raw: { robots, aiPing }
+  };
 }
 
 // --- Content / AI Comprehension Layer (15 pts total) ---
 export function scoreContentDepth($) {
   const text = $("body").text().replace(/\s+/g, " ").trim();
   const words = text.split(" ").length;
-  let points = 0, notes = "Shallow (<300 words)";
+  let points = 0,
+    notes = "Shallow (<300 words)";
 
-  if (words >= 1200) { points = WEIGHTS.contentDepth; notes = "Deep context"; }
-  else if (words >= 300) { points = Math.round(WEIGHTS.contentDepth * 0.5); notes = "Moderate"; }
+  if (words >= 1200) {
+    points = WEIGHTS.contentDepth;
+    notes = "Deep context";
+  } else if (words >= 300) {
+    points = Math.round(WEIGHTS.contentDepth * 0.5);
+    notes = "Moderate";
+  }
 
-  return { key: "Inference Efficiency", points, max: WEIGHTS.contentDepth, notes, raw: { wordCount: words } };
+  return {
+    key: "Inference Efficiency",
+    points,
+    max: WEIGHTS.contentDepth,
+    notes,
+    raw: { wordCount: words }
+  };
 }
 
 export function scoreFaviconOg($) {
@@ -230,11 +344,17 @@ export function scoreFaviconOg($) {
   const points = favicon || ogImg ? WEIGHTS.faviconOg : 0;
   const notes = favicon || ogImg ? "Branding consistent" : "Missing";
 
-  return { key: "Brand & Technical Consistency", points, max: WEIGHTS.faviconOg, notes, raw: { favicon, ogImage: ogImg } };
+  return {
+    key: "Brand & Technical Consistency",
+    points,
+    max: WEIGHTS.faviconOg,
+    notes,
+    raw: { favicon, ogImage: ogImg }
+  };
 }
 
 /* ================================
-   EVOLUTIONARY STAGE (EEI v3.0)
+   EVOLUTIONARY STAGE (EEI v5)
    ================================ */
 
 export function tierFromScore(score) {
