@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v3.4 (Crawl v2 Integration + Evolutionary Scoring)
+// /api/audit.js — EEI v5 Unified (V4 Framework + Tiered Scoring & Full Crawl)
 import * as cheerio from "cheerio";
 import {
   scoreTitle,
@@ -16,13 +16,14 @@ import {
   scoreFaviconOg,
   tierFromScore,
 } from "../shared/scoring.js";
+import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
 
 /* ================================
    CONFIG
    ================================ */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/3.4 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.0 Safari/537.36";
 
 /* ---------- Helpers ---------- */
 function normalizeUrl(input) {
@@ -48,6 +49,31 @@ function hostnameOf(urlStr) {
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
+
+/* ---------- Tier Mapping (for aggregated V5 tiers) ---------- */
+const SIGNAL_TIER = {
+  "Title Precision": "tier3",
+  "Meta Description Integrity": "tier3",
+  "Canonical Clarity": "tier3",
+  "Brand & Technical Consistency": "tier3",
+
+  "Schema Presence & Validity": "tier2",
+  "Organization Schema": "tier2",
+  "Breadcrumb Schema": "tier2",
+  "Author/Person Schema": "tier2",
+
+  "Social Entity Links": "tier1",
+  "Internal Lattice Integrity": "tier1",
+  "External Authority Signal": "tier1",
+  "AI Crawl Fidelity": "tier1",
+  "Inference Efficiency": "tier1",
+};
+
+const TIER_LABELS = {
+  tier1: "Entity comprehension & trust",
+  tier2: "Structural data fidelity",
+  tier3: "Page-level hygiene",
+};
 
 /* ================================
    MAIN HANDLER
@@ -79,36 +105,30 @@ export default async function handler(req, res) {
   /* ================================
      INTERNAL RELAY BYPASS + SAFELIST
      ================================ */
-// Determine internal key (must be defined BEFORE checks)
-const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
+  // Determine internal key (must be defined BEFORE checks)
+  const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
 
-// Pull referer/origin safely
-const referer = req.headers.referer || "";
-const originHeader = req.headers.origin || "";
+  // Pull referer/origin safely
+  const referer = req.headers.referer || "";
+  const originHeader = req.headers.origin || "";
 
-// Allow localhost, Vercel, and exmxc.ai
-const allowedOrigins = [
-  "localhost",
-  "127.0.0.1",
-  "vercel.app",
-  "exmxc.ai",
-];
+  // Allow localhost, Vercel, and exmxc.ai
+  const allowedOrigins = ["localhost", "127.0.0.1", "vercel.app", "exmxc.ai"];
 
-// Combine for easier detection
-const originString = `${referer} ${originHeader}`.toLowerCase();
+  // Combine for easier detection
+  const originString = `${referer} ${originHeader}`.toLowerCase();
 
-// External = NOT internal AND NOT in safelist
-const isExternal =
-  !isInternal &&
-  !allowedOrigins.some((allowed) => originString.includes(allowed));
+  // External = NOT internal AND NOT in safelist
+  const isExternal =
+    !isInternal &&
+    !allowedOrigins.some((allowed) => originString.includes(allowed));
 
-if (isExternal) {
-  return res.status(401).json({
-    error: "Access denied (401) — origin not allowed",
-    originString,
-  });
-}
-
+  if (isExternal) {
+    return res.status(401).json({
+      error: "Access denied (401) — origin not allowed",
+      originString,
+    });
+  }
 
   /* ================================
      MAIN AUDIT EXECUTION
@@ -193,7 +213,7 @@ if (isExternal) {
         : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-    // --- Score using modular functions (unchanged logic) ---
+    // --- Score using modular functions ---
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -210,17 +230,69 @@ if (isExternal) {
       scoreFaviconOg($),
     ];
 
-    // --- Calculate composite score ---
-    const entityScore = clamp(
-      breakdown.reduce((sum, b) => sum + clamp(b.points, 0, b.max), 0),
-      0,
-      100
-    );
+    // --- Build map by key for tier logic ---
+    const byKey = {};
+    for (const sig of breakdown) {
+      if (sig && sig.key) byKey[sig.key] = sig;
+    }
 
-    // --- Get evolutionary tier info ---
+    // --- V5 aggregation: normalized 0–100 using TOTAL_WEIGHT (105 → 100) ---
+    let totalRaw = 0;
+    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
+
+    for (const sig of breakdown) {
+      if (!sig || typeof sig.max !== "number") continue;
+      const max = sig.max || 0;
+      const safePoints = clamp(sig.points ?? 0, 0, max);
+      const key = sig.key || "";
+      const tier = SIGNAL_TIER[key] || "tier3";
+
+      totalRaw += safePoints;
+      tierRaw[tier] += safePoints;
+      tierMax[tier] += max;
+    }
+
+    const weightTotal =
+      typeof TOTAL_WEIGHT === "number" && TOTAL_WEIGHT > 0
+        ? TOTAL_WEIGHT
+        : Object.values(tierMax).reduce((sum, v) => sum + (v || 0), 0);
+
+    const entityScore = weightTotal
+      ? clamp(Math.round((totalRaw * 100) / weightTotal), 0, 100)
+      : 0;
+
+    const tierScores = {
+      tier1: {
+        label: TIER_LABELS.tier1,
+        raw: tierRaw.tier1,
+        maxWeight: tierMax.tier1,
+        normalized: tierMax.tier1
+          ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
+          : 0,
+      },
+      tier2: {
+        label: TIER_LABELS.tier2,
+        raw: tierRaw.tier2,
+        maxWeight: tierMax.tier2,
+        normalized: tierMax.tier2
+          ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
+          : 0,
+      },
+      tier3: {
+        label: TIER_LABELS.tier3,
+        raw: tierRaw.tier3,
+        maxWeight: tierMax.tier3,
+        normalized: tierMax.tier3
+          ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
+          : 0,
+      },
+    };
+
+    // --- Get evolutionary tier info from V5 score ---
     const entityTier = tierFromScore(entityScore);
 
-    // --- Add normalized strengths ---
+    // --- Add normalized strengths per signal ---
     breakdown.forEach((b) => {
       b.strength = b.max
         ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3))
@@ -236,15 +308,17 @@ if (isExternal) {
       title,
       canonical: canonicalHref,
       description,
-      entityScore: Math.round(entityScore),
+      entityScore, // V5-normalized score (0–100)
 
-      // 🌕 Evolutionary Layer Output
+      // 🌕 Evolutionary Layer Output (V5)
       entityStage: entityTier.stage,
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
 
       signals: breakdown,
+      tierScores, // tier1 / tier2 / tier3 breakdown for diagnostics
+
       schemaMeta: {
         schemaBlocks: schemaObjects.length,
         latestISO,
