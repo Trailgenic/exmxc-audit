@@ -1,4 +1,4 @@
-// /api/batch-run.js — EEI v4.1 Batch UI Endpoint (Dynamic Dataset)
+// /api/batch-run.js — EEI v5 Unified Batch Endpoint (Dynamic Dataset)
 import fs from "fs/promises";
 import path from "path";
 import auditHandler from "./audit.js";
@@ -19,11 +19,7 @@ export default async function handler(req, res) {
     // ---------------------------
     // 2) Resolve dataset file path
     // ---------------------------
-    const filePath = path.join(
-      process.cwd(),
-      "data",
-      `${safeDataset}.json`
-    );
+    const filePath = path.join(process.cwd(), "data", `${safeDataset}.json`);
 
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
@@ -57,19 +53,34 @@ export default async function handler(req, res) {
         };
 
         await auditHandler(fakeReq, fakeRes);
-        results.push(out?.success ? out : { url, success: false });
 
+        if (out && out.success) {
+          results.push(out);
+        } else {
+          results.push({
+            url,
+            success: false,
+            error: out?.error || "EEI audit failed",
+          });
+        }
       } catch (err) {
-        results.push({ url, success: false, error: err.message });
+        results.push({
+          url,
+          success: false,
+          error: err.message,
+        });
       }
     }
 
     // ---------------------------
-    // 4) Scoring
+    // 4) Scoring (V5 entityScore)
     // ---------------------------
-    const scored = results.filter((r) => r.entityScore >= 0);
+    const scored = results.filter(
+      (r) => r && r.success && typeof r.entityScore === "number"
+    );
+
     const avg =
-      scored.reduce((sum, r) => sum + r.entityScore, 0) /
+      scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
       (scored.length || 1);
 
     return res.status(200).json({
@@ -81,7 +92,6 @@ export default async function handler(req, res) {
       results,
       timestamp: new Date().toISOString(),
     });
-
   } catch (err) {
     return res.status(500).json({
       error: "Batch run failed",
