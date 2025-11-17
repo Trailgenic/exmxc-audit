@@ -195,6 +195,14 @@
         return r.schemaMeta?.schemaBlocks ?? 0;
       }
 
+      // Safely pick an average score from possible API shapes
+      function getAvgScore(data) {
+        if (typeof data.avgV5Score === "number") return data.avgV5Score;
+        if (typeof data.avgEntityScore === "number") return data.avgEntityScore;
+        if (typeof data.avgScore === "number") return data.avgScore;
+        return null;
+      }
+
       runBatchButton.addEventListener("click", async () => {
         const dataset = datasetSelect.value || "core-web";
         const url = `/api/batch-run?dataset=${dataset}`;
@@ -208,49 +216,69 @@
 
           resultEl.textContent = JSON.stringify(data, null, 2);
 
-          if (!data.success) {
+          if (!data || !data.success) {
             batchStatus.textContent = "Batch failed.";
             setScoreBar(0);
             scoreDisplay.textContent = "EEI: -- / 100";
             return;
           }
 
-          // Summary
+          // Summary fields
           datasetName.textContent = data.dataset || dataset;
-          siteCount.textContent = `${data.totalUrls} sites`;
-          avgScore.textContent = `Avg EEI: ${data.avgV5Score.toFixed(2)}`;
+          siteCount.textContent = `${data.totalUrls ?? 0} sites`;
 
-          scoreDisplay.textContent = `EEI: ${data.avgV5Score.toFixed(2)} / 100`;
-          setScoreBar(data.avgV5Score);
+          const avg = getAvgScore(data);
+
+          if (avg != null) {
+            avgScore.textContent = `Avg EEI: ${avg.toFixed(2)}`;
+            scoreDisplay.textContent = `EEI: ${avg.toFixed(2)} / 100`;
+            setScoreBar(avg);
+          } else {
+            avgScore.textContent = "Avg EEI: --";
+            scoreDisplay.textContent = "EEI: -- / 100";
+            setScoreBar(0);
+          }
 
           batchStatus.textContent = "Completed";
 
-          // Table
-          resultsTableBody.innerHTML = "";
-          data.results.forEach((r) => {
-            const tr = document.createElement("tr");
+          // Table rows
+          if (Array.isArray(data.results) && data.results.length > 0) {
+            resultsTableBody.innerHTML = "";
+            data.results.forEach((r) => {
+              const score =
+                typeof r.v5Score === "number"
+                  ? r.v5Score
+                  : typeof r.entityScore === "number"
+                  ? r.entityScore
+                  : "—";
 
-            tr.innerHTML = `
-              <td class="px-3 py-2 text-xs">
-                <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">
-                  ${r.url}
-                </a>
-              </td>
-              <td class="px-3 py-2 text-xs">${r.v5Score ?? "—"}</td>
-              <td class="px-3 py-2 text-xs">${formatStage(r)}</td>
-              <td class="px-3 py-2 text-xs">${schemaCount(r)}</td>
-              <td class="px-3 py-2 text-xs">${formatMode(r)}</td>
-            `;
-
-            resultsTableBody.appendChild(tr);
-          });
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td class="px-3 py-2 text-xs">
+                  <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">
+                    ${r.url}
+                  </a>
+                </td>
+                <td class="px-3 py-2 text-xs">${score}</td>
+                <td class="px-3 py-2 text-xs">${formatStage(r)}</td>
+                <td class="px-3 py-2 text-xs">${schemaCount(r)}</td>
+                <td class="px-3 py-2 text-xs">${formatMode(r)}</td>
+              `;
+              resultsTableBody.appendChild(tr);
+            });
+          } else {
+            resultsTableBody.innerHTML =
+              "<tr><td colspan='5' class='px-3 py-4 text-center text-gray-400'>No results returned.</td></tr>";
+          }
         } catch (err) {
           batchStatus.textContent = "Batch error.";
           resultEl.textContent = JSON.stringify(
-            { error: err.message },
+            { error: err.message || String(err) },
             null,
             2
           );
+          setScoreBar(0);
+          scoreDisplay.textContent = "EEI: -- / 100";
         }
       });
     </script>
