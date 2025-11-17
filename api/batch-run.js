@@ -1,39 +1,40 @@
-// /api/batch-run.js — EEI v4.1 Batch UI Endpoint (Dynamic Dataset)
+// /api/batch-v5.js — EEI v5 Batch Runner (Parallel to v4 Batch)
+
 import fs from "fs/promises";
 import path from "path";
-import auditHandler from "./audit.js";
+import auditV5Handler from "./audit-v5.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   res.setHeader("Content-Type", "application/json");
 
   try {
-    // ---------------------------
-    // 1) Read dataset, default "core-web"
-    // ---------------------------
-    const datasetName = req.query.dataset?.toLowerCase() || "core-web";
+    // Choose dataset, e.g. ?dataset=core-media → /data/core-media.json
+    let datasetKey = (req.query?.dataset || "core-web").toString().trim();
 
-    // Sanitize input (no traversal)
-    const safeDataset = datasetName.replace(/[^a-z0-9\-]/g, "");
+    // Basic sanitation
+    if (!/^[a-z0-9\-]+$/i.test(datasetKey)) {
+      datasetKey = "core-web";
+    }
 
-    // ---------------------------
-    // 2) Resolve dataset file path
-    // ---------------------------
     const filePath = path.join(
       process.cwd(),
       "data",
-      `${safeDataset}.json`
+      `${datasetKey}.json`
     );
-
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
-
     const urls = dataset.urls || [];
+
     const results = [];
 
-    // ---------------------------
-    // 3) Loop through URLs
-    // ---------------------------
     for (const url of urls) {
       try {
         let out = null;
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
         const fakeReq = {
           query: { url },
           headers: { origin: "http://localhost" },
-          method: "GET",
+          method: "GET"
         };
 
         const fakeRes = {
@@ -53,39 +54,56 @@ export default async function handler(req, res) {
             out = obj;
             return obj;
           },
-          setHeader() {},
+          setHeader() {}
         };
 
-        await auditHandler(fakeReq, fakeRes);
-        results.push(out?.success ? out : { url, success: false });
+        await auditV5Handler(fakeReq, fakeRes);
 
+        if (out && out.success) {
+          results.push(out);
+        } else {
+          results.push({
+            url,
+            success: false,
+            error: out?.error || "EEI v5 audit failed"
+          });
+        }
       } catch (err) {
-        results.push({ url, success: false, error: err.message });
+        results.push({
+          url,
+          success: false,
+          error: err.message || "Internal error in batch-v5"
+        });
       }
     }
 
-    // ---------------------------
-    // 4) Scoring
-    // ---------------------------
-    const scored = results.filter((r) => r.entityScore >= 0);
-    const avg =
-      scored.reduce((sum, r) => sum + r.entityScore, 0) /
+    const scored = results.filter(
+      (r) => typeof r.v5Score === "number"
+    );
+    const avgV5 =
+      scored.reduce((sum, r) => sum + (r.v5Score || 0), 0) /
+      (scored.length || 1);
+
+    const avgV4 =
+      scored.reduce((sum, r) => sum + (r.v4Score || 0), 0) /
       (scored.length || 1);
 
     return res.status(200).json({
       success: true,
-      vertical: dataset.vertical || safeDataset,
+      model: "EEI v5 (parallel batch)",
+      dataset: dataset.vertical || datasetKey,
       totalUrls: urls.length,
       audited: scored.length,
-      avgEntityScore: Number(avg.toFixed(2)),
+      avgV5Score: Number(avgV5.toFixed(2)),
+      avgV4Score: Number(avgV4.toFixed(2)),
       results,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
-
   } catch (err) {
+    console.error("EEI v5 Batch Error:", err);
     return res.status(500).json({
-      error: "Batch run failed",
-      details: err.message,
+      error: "Failed to run EEI v5 batch",
+      details: err.message || String(err)
     });
   }
 }
