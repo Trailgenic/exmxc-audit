@@ -1,1 +1,32 @@
+{
+  "vertical": "Core Health",
+  "description": "Low-tier health/clinic dataset for EEI calibration — weak schema, poor entity structure, mixed authority.",
+  "urls": [
+    "https://betterlivingmedical.com",
+    "https://www.familyhealthcareclinic.com",
+    "https://www.medicinenet.com",
+    "https://www.healthgrades.com",
+    "https://www.mylocalclinic.com.au",
+    "https://www.walkinclinicnearme.us",
+    "https://www.renewmedicalclinic.com",
+    "https://www.quickmd.com",
+    "https://www.afcurgentcare.com",
+    "https://localurgentcare.com",
+    "https://mysmiledoctor.com",
+    "https://www.easyweightlossclinic.com",
+    "https://www.integrativewellnessgroup.com",
+    "https://www.utopiamedspa.com",
+    "https://www.truweightloss.com",
+    "https://www.healingartshealth.com",
+    "https://www.yourfamilyclinic.com",
+    "https://www.bodyrenewalclinic.com",
+    "https://www.healthandwellnesscenter.com",
+    "https://www.healthyspineclinic.com",
+    "https://www.premierurgentcare.com",
+    "https://www.trustedmedicalcenters.com",
+    "https://www.mymedicalclinic.com",
+    "https://www.myclinicnow.com",
+    "https://www.sunriseclinic.com"
+  ]
+}
 
