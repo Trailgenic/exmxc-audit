@@ -1,7 +1,6 @@
 // /api/audit.js — FINAL EEI v5 (standalone, no V4 dependency)
 
 import { tierFromScore } from "../shared/scoring.js";
-import fetch from "node-fetch";
 
 /* -------------------------------------------------------
    Helpers
@@ -87,6 +86,7 @@ const TOTAL_V5_WEIGHT = Object.values(V5_SIGNAL_WEIGHTS).reduce(
 
 /* -------------------------------------------------------
    Minimal Standalone Crawler (V5 only)
+   Uses global fetch (Node 18 / Vercel)
 ------------------------------------------------------- */
 
 async function crawlURL(url) {
@@ -96,6 +96,10 @@ async function crawlURL(url) {
         "Mozilla/5.0 (compatible; exmxc-eei/1.0; +https://exmxc.ai)"
     }
   });
+
+  if (!response.ok) {
+    throw new Error(`Upstream fetch failed with status ${response.status}`);
+  }
 
   const html = await response.text();
 
@@ -120,8 +124,9 @@ function extractSignals(html) {
   }
 
   const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] || "";
-  const desc = get("meta", "name=\"description\"");
-  const canonical = get("link", "rel=\"canonical\"");
+  const desc = get("meta", 'name="description"');
+  const canonical = get("link", 'rel="canonical"');
+
   const hasOrg = html.includes('"@type":"Organization"');
   const hasBreadcrumb = html.includes('"BreadcrumbList"');
   const hasAuthor = html.includes('"@type":"Person"');
@@ -206,8 +211,8 @@ export default async function handler(req, res) {
     signals.forEach((s) => (signalsByKey[s.key] = s));
 
     let total = 0;
-    let tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
-    let tierMax = { tier1: 0, tier2: 0, tier3: 0 };
+    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const [key, weight] of Object.entries(V5_SIGNAL_WEIGHTS)) {
       const s = signalsByKey[key];
@@ -226,7 +231,7 @@ export default async function handler(req, res) {
 
     const v5Tier = tierFromScore(v5Score);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       mode: "EEI v5 (standalone)",
       url,
@@ -237,11 +242,18 @@ export default async function handler(req, res) {
       v5Description: v5Tier.description,
       v5Focus: v5Tier.coreFocus,
       signals,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+
+      // 🔁 Backwards-compat for existing UI (entityScore, etc.)
+      entityScore: v5Score,
+      entityStage: v5Tier.stage,
+      entityVerb: v5Tier.verb,
+      entityDescription: v5Tier.description,
+      entityFocus: v5Tier.coreFocus
     });
   } catch (err) {
     console.error("EEI v5 error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Internal EEI v5 error",
       details: err.message || String(err)
     });
