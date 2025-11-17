@@ -5,12 +5,10 @@
     { "src": "public/**/*", "use": "@vercel/static" }
   ],
   "routes": [
-    /* API ROUTES */
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
     { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
 
-    /* STATIC HTML ROUTES */
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
 
@@ -20,10 +18,8 @@
     { "src": "^/predictive-audit$", "dest": "/public/predictive.html" },
     { "src": "^/predictive.html$", "dest": "/public/predictive.html" },
 
-    /* STATIC FILES */
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
 
-    /* FALLBACK — SERVE HOMEPAGE */
     { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
