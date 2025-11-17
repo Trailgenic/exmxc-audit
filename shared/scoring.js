@@ -1,398 +1,348 @@
-// /shared/scoring.js — EEI v5 Modular Scoring System (TrailGenic × exmxc.ai)
+// =====================================================
+// scoring.js — V5.1 Calibrated Edition (Full File)
+// exmxc.ai | Entity Engineering™
+// Modular scoring engine used by audit.js + batch
+// =====================================================
 
-import { WEIGHTS } from "./weights.js";
+export function scoreAudit(data) {
+  const signals = [];
 
-/* ================================
-   UTILITIES
-   ================================ */
+  // -----------------------------
+  // Tier 1 — Entity Comprehension & Trust (65 pts)
+  // -----------------------------
 
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-/* ================================
-   CORE SCORING FUNCTIONS
-   ================================ */
-
-// --- Meta Layer (15 pts total) ---
-export function scoreTitle($) {
-  const title = ($("title").first().text() || "").trim();
-  let points = 0, notes = "Missing";
-
-  if (title) {
-    const len = title.length;
-    const hasSeparator = / \| | - /.test(title);
-    if (len >= 30 && hasSeparator) {
-      points = WEIGHTS.title;
-      notes = "Specific & contextual";
-    } else if (len >= 15) {
-      points = Math.round(WEIGHTS.title * 0.7);
-      notes = "Present but generic";
-    } else {
-      points = Math.round(WEIGHTS.title * 0.4);
-      notes = "Weak or too short";
-    }
-  }
-
-  return { key: "Title Precision", points, max: WEIGHTS.title, notes, raw: { title } };
-}
-
-export function scoreMetaDescription($) {
-  const md =
-    $('meta[name="description"]').attr("content") ||
-    $('meta[property="og:description"]').attr("content") || "";
-  let points = 0, notes = "Missing";
-
-  if (md) {
-    const len = md.length;
-    if (len >= 120) {
-      points = WEIGHTS.metaDescription;
-      notes = "Descriptive & complete";
-    } else if (len >= 60) {
-      points = Math.round(WEIGHTS.metaDescription * 0.7);
-      notes = "Moderate depth";
-    } else {
-      points = Math.round(WEIGHTS.metaDescription * 0.4);
-      notes = "Too short";
-    }
-  }
-
-  return {
-    key: "Meta Description Integrity",
-    points,
-    max: WEIGHTS.metaDescription,
-    notes,
-    raw: { meta: md }
-  };
-}
-
-export function scoreCanonical($, normalizedUrl) {
-  const href = ($('link[rel="canonical"]').attr("href") || "").trim();
-  let points = 0, notes = "Missing";
-
-  if (href) {
-    try {
-      const can = new URL(href, normalizedUrl);
-      const clean = can.origin === new URL(normalizedUrl).origin && !/[?#]/.test(can.href);
-      points = clean ? WEIGHTS.canonical : Math.round(WEIGHTS.canonical * 0.5);
-      notes = clean ? "Clean absolute canonical" : "Present but inconsistent";
-    } catch {
-      points = Math.round(WEIGHTS.canonical * 0.3);
-      notes = "Invalid canonical URL";
-    }
-  }
-
-  return {
-    key: "Canonical Clarity",
-    points,
-    max: WEIGHTS.canonical,
-    notes,
-    raw: { canonical: href }
-  };
-}
-
-// --- Schema Layer (30 pts total) ---
-export function scoreSchemaPresence(schemaObjects) {
-  const count = schemaObjects.length;
-  const ratio = clamp(Math.min(count, 3) / 3, 0, 1);
-  const points = Math.round(ratio * WEIGHTS.schemaPresence);
-  const notes =
-    count === 0 ? "No JSON-LD found" :
-    count === 1 ? "1 schema block" : "Multiple schema blocks";
-
-  return {
-    key: "Schema Presence & Validity",
-    points,
-    max: WEIGHTS.schemaPresence,
-    notes,
-    raw: { schemaBlocks: count }
-  };
-}
-
-export function scoreOrgSchema(schemaObjects) {
-  const org = schemaObjects.find(
-    o =>
-      o["@type"] === "Organization" ||
-      (Array.isArray(o["@type"]) && o["@type"].includes("Organization"))
-  );
-  let points = 0, notes = "Missing";
-
-  if (org) {
-    const hasName = org.name && org.name.trim();
-    const hasUrl = org.url && org.url.trim();
-    if (hasName && hasUrl) {
-      points = WEIGHTS.orgSchema;
-      notes = "Organization schema valid";
-    } else {
-      points = Math.round(WEIGHTS.orgSchema * 0.5);
-      notes = "Incomplete organization schema";
-    }
-  }
-
-  return {
-    key: "Organization Schema",
-    points,
-    max: WEIGHTS.orgSchema,
-    notes,
-    raw: org || null
-  };
-}
-
-export function scoreBreadcrumbSchema(schemaObjects) {
-  const crumb = schemaObjects.find(
-    o =>
-      o["@type"] === "BreadcrumbList" ||
-      (Array.isArray(o["@type"]) && o["@type"].includes("BreadcrumbList"))
-  );
-  const points = crumb ? WEIGHTS.breadcrumbSchema : 0;
-  const notes = crumb ? "Breadcrumb schema present" : "Missing";
-
-  return {
-    key: "Breadcrumb Schema",
-    points,
-    max: WEIGHTS.breadcrumbSchema,
-    notes,
-    raw: crumb || null
-  };
-}
-
-export function scoreAuthorPerson(schemaObjects, $) {
-  const person = schemaObjects.find(
-    o =>
-      o["@type"] === "Person" ||
-      (Array.isArray(o["@type"]) && o["@type"].includes("Person"))
-  );
-  const metaAuthor =
-    $('meta[name="author"]').attr("content") || $('a[rel="author"]').text() || "";
-  let points = 0, notes = "Missing";
-
-  if (person) {
-    points = WEIGHTS.authorPerson;
-    notes = "Person schema present";
-  } else if (metaAuthor) {
-    points = Math.round(WEIGHTS.authorPerson * 0.5);
-    notes = "Author meta tag present";
-  }
-
-  return {
-    key: "Author/Person Schema",
-    points,
-    max: WEIGHTS.authorPerson,
-    notes,
-    raw: { person: !!person, metaAuthor }
-  };
-}
-
-export function scoreSocialLinks(schemaObjects, pageLinks) {
-  const SOCIAL_HOSTS = [
-    "linkedin.com",
-    "instagram.com",
-    "youtube.com",
-    "x.com",
-    "twitter.com",
-    "facebook.com",
-    "threads.net",
-    "tiktok.com",
-    "wikipedia.org",
-    "github.com"
-  ];
-  const seen = new Set();
-
-  const add = (u) => {
-    try {
-      const host = new URL(u).hostname.replace(/^www\./i, "");
-      if (SOCIAL_HOSTS.some((s) => host.endsWith(s))) seen.add(host);
-    } catch {}
-  };
-
-  schemaObjects.forEach((o) => {
-    if (Array.isArray(o.sameAs)) o.sameAs.forEach(add);
-    else if (o.sameAs) add(o.sameAs);
+  // Title Precision (3)
+  signals.push({
+    key: "Title Precision",
+    max: 3,
+    points: scoreTitle(data.title),
+    raw: { title: data.title }
   });
-  pageLinks.forEach(add);
 
-  const count = seen.size;
-  let points = 0, notes = "None found";
-  if (count >= 3) {
-    points = WEIGHTS.socialLinks;
-    notes = "Strong (3+)";
-  } else if (count >= 1) {
-    points = Math.round(WEIGHTS.socialLinks * 0.5);
-    notes = "Partial (1–2)";
-  }
+  // Meta Description Integrity (3)
+  signals.push({
+    key: "Meta Description Integrity",
+    max: 3,
+    points: scoreMetaDescription(data.description),
+    raw: { meta: data.description }
+  });
 
-  return {
+  // Canonical Clarity (2)
+  signals.push({
+    key: "Canonical Clarity",
+    max: 2,
+    points: scoreCanonical(data.canonical),
+    raw: { canonical: data.canonical }
+  });
+
+  // Schema Presence & Validity (10)
+  signals.push({
+    key: "Schema Presence & Validity",
+    max: 10,
+    points: scoreSchemaPresence(data.schemaMeta),
+    raw: { schemaBlocks: data.schemaMeta.schemaBlocks }
+  });
+
+  // Organization Schema (8)
+  signals.push({
+    key: "Organization Schema",
+    max: 8,
+    points: scoreOrganizationSchema(data),
+    raw: data.orgSchema || null
+  });
+
+  // Breadcrumb Schema (7)
+  signals.push({
+    key: "Breadcrumb Schema",
+    max: 7,
+    points: scoreBreadcrumbSchema(data),
+    raw: data.breadcrumbSchema || null
+  });
+
+  // Author/Person Schema (5)
+  signals.push({
+    key: "Author/Person Schema",
+    max: 5,
+    points: scoreAuthorSchema(data),
+    raw: { person: data.personSchema, metaAuthor: data.metaAuthor }
+  });
+
+  // Social Entity Links (5)
+  signals.push({
     key: "Social Entity Links",
-    points,
-    max: WEIGHTS.socialLinks,
-    notes,
-    raw: { distinctSocialHosts: Array.from(seen) }
-  };
-}
+    max: 5,
+    points: scoreSocialLinks(data),
+    raw: { distinctSocialHosts: data.distinctSocialHosts || [] }
+  });
 
-// --- Trust / Graph Layers (40 pts total) ---
-export function scoreInternalLinks(pageLinks, originHost) {
-  let total = 0,
-    internal = 0;
-  for (const href of pageLinks) {
-    total++;
-    try {
-      const u = new URL(href, `https://${originHost}`);
-      if (u.hostname.replace(/^www\./i, "") === originHost) internal++;
-    } catch {}
-  }
-  const ratio = total ? internal / total : 0;
-  let points = 0,
-    notes = "No internal links";
-
-  if (ratio >= 0.5 && internal >= 10) {
-    points = WEIGHTS.internalLinks;
-    notes = "Strong lattice";
-  } else if (ratio >= 0.2 && internal >= 3) {
-    points = Math.round(WEIGHTS.internalLinks * 0.5);
-    notes = "Some internal linking";
-  }
-
-  return {
-    key: "Internal Lattice Integrity",
-    points,
-    max: WEIGHTS.internalLinks,
-    notes,
-    raw: { total, internal, ratio }
-  };
-}
-
-export function scoreExternalLinks(pageLinks, originHost) {
-  const externalHosts = new Set();
-  for (const href of pageLinks) {
-    try {
-      const u = new URL(href, `https://${originHost}`);
-      const host = u.hostname.replace(/^www\./i, "");
-      if (host !== originHost) externalHosts.add(host);
-    } catch {}
-  }
-  const count = externalHosts.size;
-  const points = count >= 1 ? WEIGHTS.externalLinks : 0;
-  const notes = count >= 1 ? "Outbound credibility present" : "No outbound links";
-
-  return {
-    key: "External Authority Signal",
-    points,
-    max: WEIGHTS.externalLinks,
-    notes,
-    raw: { count, distinctOutboundHosts: Array.from(externalHosts) }
-  };
-}
-
-export function scoreAICrawlSignals($) {
-  const robots = ($('meta[name="robots"]').attr("content") || "").toLowerCase();
-  const aiPing =
-    $('img[src*="ai-crawl-ping"], img[src*="crawl-ping"]').length > 0;
-  const allowIndex = robots === "" || /index/.test(robots);
-  let points = 0,
-    notes = "Blocked";
-
-  if (!allowIndex) {
-    points = 0;
-    notes = "Robots block indexing";
-  } else if (aiPing) {
-    points = WEIGHTS.aiCrawl;
-    notes = "Explicit crawl ping";
-  } else {
-    points = Math.round(WEIGHTS.aiCrawl * 0.6);
-    notes = "Indexable, no explicit ping";
-  }
-
-  return {
+  // AI Crawl Fidelity (10)
+  signals.push({
     key: "AI Crawl Fidelity",
-    points,
-    max: WEIGHTS.aiCrawl,
-    notes,
-    raw: { robots, aiPing }
-  };
-}
+    max: 10,
+    points: scoreAICrawl(data),
+    raw: { robots: data.robots, aiPing: data.aiPing }
+  });
 
-// --- Content / AI Comprehension Layer (15 pts total) ---
-export function scoreContentDepth($) {
-  const text = $("body").text().replace(/\s+/g, " ").trim();
-  const words = text.split(" ").length;
-  let points = 0,
-    notes = "Shallow (<300 words)";
+  // -----------------------------
+  // Tier 2 — Structural Data Fidelity (30 pts)
+  // -----------------------------
 
-  if (words >= 1200) {
-    points = WEIGHTS.contentDepth;
-    notes = "Deep context";
-  } else if (words >= 300) {
-    points = Math.round(WEIGHTS.contentDepth * 0.5);
-    notes = "Moderate";
-  }
-
-  return {
+  // Inference Efficiency (15)
+  signals.push({
     key: "Inference Efficiency",
-    points,
-    max: WEIGHTS.contentDepth,
-    notes,
-    raw: { wordCount: words }
-  };
-}
+    max: 15,
+    points: scoreInferenceEfficiency(data.wordCount),
+    raw: { wordCount: data.wordCount }
+  });
 
-export function scoreFaviconOg($) {
-  const favicon =
-    $('link[rel="icon"]').attr("href") ||
-    $('link[rel="shortcut icon"]').attr("href") || "";
-  const ogImg = $('meta[property="og:image"]').attr("content") || "";
-  const points = favicon || ogImg ? WEIGHTS.faviconOg : 0;
-  const notes = favicon || ogImg ? "Branding consistent" : "Missing";
+  // Internal Lattice Integrity (20)
+  signals.push({
+    key: "Internal Lattice Integrity",
+    max: 20,
+    points: scoreInternalLinks(data.internalLinkRatio),
+    raw: {
+      total: data.totalLinks,
+      internal: data.internalLinks,
+      ratio: data.internalLinkRatio
+    }
+  });
+
+  // External Authority Signal (15)
+  signals.push({
+    key: "External Authority Signal",
+    max: 15,
+    points: scoreExternalAuthority(data),
+    raw: {
+      count: data.outboundCount,
+      distinctOutboundHosts: data.distinctOutboundHosts
+    }
+  });
+
+  // -----------------------------
+  // Tier 3 — Page-Level Hygiene (10 pts)
+  // -----------------------------
+
+  // Brand & Technical Consistency (2)
+  signals.push({
+    key: "Brand & Technical Consistency",
+    max: 2,
+    points: scoreBrandConsistency(data),
+    raw: { favicon: data.favicon, ogImage: data.ogImage }
+  });
+
+  // -----------------------------
+  // Aggregate Scoring
+  // -----------------------------
+
+  const entityScore = signals.reduce((a, b) => a + b.points, 0);
+
+  const tierScores = computeTierBreakdown(signals);
+
+  const stage = computeEntityStage(entityScore);
 
   return {
-    key: "Brand & Technical Consistency",
-    points,
-    max: WEIGHTS.faviconOg,
-    notes,
-    raw: { favicon, ogImage: ogImg }
+    entityScore,
+    entityStage: stage.stage,
+    entityVerb: stage.verb,
+    entityDescription: stage.description,
+    entityFocus: stage.focus,
+    signals,
+    tierScores
   };
 }
 
-/* ================================
-   EVOLUTIONARY STAGE (EEI v5)
-   ================================ */
+// =====================================================
+// === SIGNAL SCORING FUNCTIONS ========================
+// =====================================================
 
-export function tierFromScore(score) {
-  if (score >= 80) {
+// Title Precision
+function scoreTitle(title) {
+  if (!title || title.trim().length < 5) return 0;
+  if (title.length < 30) return 1;
+  if (title.length < 60) return 2;
+  return 3;
+}
+
+// Meta Description
+function scoreMetaDescription(desc) {
+  if (!desc) return 0;
+  if (desc.length < 50) return 1;
+  if (desc.length < 120) return 2;
+  return 3;
+}
+
+// Canonical
+function scoreCanonical(canonical) {
+  if (!canonical) return 0;
+  if (canonical.includes("http")) return 2;
+  return 1;
+}
+
+// Schema Presence
+function scoreSchemaPresence(schemaMeta) {
+  const count = schemaMeta.schemaBlocks || 0;
+  if (count === 0) return 0;
+  if (count === 1) return 4;
+  if (count <= 3) return 7;
+  return 10;
+}
+
+// Org Schema
+function scoreOrganizationSchema(data) {
+  if (!data.orgSchema) return 0;
+  const s = data.orgSchema;
+  let points = 0;
+  if (s.name) points += 3;
+  if (s.url) points += 2;
+  if (s.logo) points += 1;
+  if (s.sameAs && s.sameAs.length > 0) points += 2;
+  return Math.min(points, 8);
+}
+
+// Breadcrumb Schema
+function scoreBreadcrumbSchema(data) {
+  if (!data.breadcrumbSchema) return 0;
+  return 7;
+}
+
+// Author Schema
+function scoreAuthorSchema(data) {
+  if (data.personSchema) return 5;
+  if (data.metaAuthor) return 2;
+  return 0;
+}
+
+// Social Links
+function scoreSocialLinks(data) {
+  const hosts = data.distinctSocialHosts || [];
+  if (hosts.length >= 3) return 5;
+  if (hosts.length >= 1) return 3;
+  return 0;
+}
+
+// AI Crawl Fidelity
+function scoreAICrawl(data) {
+  let score = 0;
+  if (data.robots && !data.robots.includes("noindex")) score += 4;
+  if (data.aiPing === true) score += 6;
+  return score;
+}
+
+// Inference Efficiency (word count)
+function scoreInferenceEfficiency(words) {
+  if (!words) return 0;
+  if (words < 300) return 5;
+  if (words < 1200) return 10;
+  return 15;
+}
+
+// Internal Link Ratio
+function scoreInternalLinks(ratio) {
+  if (!ratio || ratio === 0) return 0;
+  if (ratio < 0.2) return 5;
+  if (ratio < 0.4) return 10;
+  if (ratio < 0.6) return 15;
+  return 20;
+}
+
+// External Authority
+function scoreExternalAuthority(data) {
+  const hosts = data.distinctOutboundHosts || [];
+  if (hosts.length >= 5) return 15;
+  if (hosts.length >= 2) return 10;
+  if (hosts.length >= 1) return 5;
+  return 0;
+}
+
+// Brand Consistency
+function scoreBrandConsistency(data) {
+  if (data.favicon && data.ogImage) return 2;
+  if (data.favicon) return 1;
+  return 0;
+}
+
+// =====================================================
+// === TIER SYSTEM =====================================
+// =====================================================
+
+function computeTierBreakdown(signals) {
+  // Tier 1: first 9 signals (max 65)
+  const tier1 = signals.slice(0, 9);
+  const tier1Raw = tier1.reduce((a, b) => a + b.points, 0);
+
+  // Tier 2: next 3 signals (max 30)
+  const tier2 = signals.slice(9, 12);
+  const tier2Raw = tier2.reduce((a, b) => a + b.points, 0);
+
+  // Tier 3: last signal (max 10 → we use 2 but normalize to 10)
+  const tier3 = signals.slice(12);
+  const tier3Raw = tier3.reduce((a, b) => a + b.points, 0);
+  const tier3Norm = (tier3Raw / 2) * 10; // normalize 2 → 10 scale
+
+  return {
+    tier1: {
+      label: "Entity comprehension & trust",
+      raw: tier1Raw,
+      maxWeight: 65,
+      normalized: Math.round((tier1Raw / 65) * 100)
+    },
+    tier2: {
+      label: "Structural data fidelity",
+      raw: tier2Raw,
+      maxWeight: 30,
+      normalized: Math.round((tier2Raw / 30) * 100)
+    },
+    tier3: {
+      label: "Page-level hygiene",
+      raw: tier3Raw,
+      maxWeight: 10,
+      normalized: Math.round(tier3Norm)
+    }
+  };
+}
+
+// =====================================================
+// === ENTITY STAGE LOGIC ==============================
+// =====================================================
+
+function computeEntityStage(score) {
+  if (score >= 90) {
     return {
       stage: "☀️ Sovereign Entity",
-      verb: "Maintain",
-      description:
-        "Self-propagating identity. Schema-dense and trusted across crawlers.",
-      coreFocus:
-        "Maintain parity, monitor crawl fidelity, and evolve schema depth."
+      verb: "Amplify",
+      description: "Dominant AI identity. Fully trusted.",
+      focus: "Push advanced schema chaining, add knowledge panels."
     };
-  } else if (score >= 60) {
+  }
+  if (score >= 70) {
     return {
       stage: "🌕 Structured Entity",
-      verb: "Expand",
-      description:
-        "AI reconstructs identity reliably. Schema diversity and internal lattice aligned.",
-      coreFocus:
-        "Build graph authority, deepen relationships, expand structured coverage."
+      verb: "Strengthen",
+      description: "Recognized with strong structure.",
+      focus: "Increase schema depth, unify brand identity."
     };
-  } else if (score >= 40) {
+  }
+  if (score >= 40) {
     return {
       stage: "🌗 Visible Entity",
       verb: "Clarify",
-      description:
-        "Recognized but inconsistent. Schema present but incomplete.",
-      coreFocus:
-        "Standardize structure, fix canonicals, and strengthen schema links."
+      description: "Recognized but inconsistent. Schema present but incomplete.",
+      focus: "Standardize structure, fix canonicals, and strengthen schema links."
     };
-  } else {
+  }
+  if (score >= 20) {
     return {
       stage: "🌑 Emergent Entity",
       verb: "Define",
-      description:
-        "Early-stage identity forming. Schema sparse; AI relies on guesses.",
-      coreFocus:
-        "Clarify your signal. Add foundational meta + first JSON-LD."
+      description: "Early-stage identity forming. Schema sparse; AI relies on guesses.",
+      focus: "Clarify your signal. Add foundational meta + first JSON-LD."
     };
   }
+  return {
+    stage: "🫥 Undefined Entity",
+    verb: "Establish",
+    description: "AI cannot determine identity.",
+    focus: "Add title, meta, canonical, and org schema."
+  };
 }
+
