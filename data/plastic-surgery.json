@@ -1,0 +1,62 @@
+{
+  "vertical": "Plastic Surgery / Medical Aesthetic",
+  "description": "Dataset of plastic surgery, medspa, and medical aesthetic clinics spanning local practices, multi-location networks, and national brands. Includes LinePS.com as benchmark anchor for EEI v5.1 stress testing.",
+  "urls": [
+    "https://lineps.com",
+
+    "https://www.beverlyhillsphysicians.com",
+    "https://www.beverlyhillssurgeons.com",
+    "https://www.sadriinstitute.com",
+    "https://www.rodeoderm.com",
+    "https://www.rodeodriveplasticsurgery.com",
+    "https://www.drjaime.com",
+    "https://www.lasky.com",
+    "https://www.synergycosmetic.com",
+    "https://www.delucaplasticsurgery.com",
+
+    "https://www.psurgery.com",
+    "https://www.miadermatology.com",
+    "https://www.marinaplasticsurgery.com",
+    "https://www.premierplasticsurgery.com",
+    "https://www.la-lift.com",
+    "https://www.ghavami.com",
+    "https://www.drkotlus.com",
+    "https://www.drpfeifer.com",
+    "https://www.drdubrow.com",
+
+    "https://www.juventusplasticsurgery.com",
+    "https://www.westlakedermatology.com",
+    "https://www.austin-weston.com",
+    "https://www.torontoplasticsurgeon.com",
+    "https://www.facialplasticsbh.com",
+    "https://www.finesseplasticsurgery.com",
+    "https://www.ogdenclinic.com/plastic-surgery",
+
+    "https://www.flawlessmedspa.com",
+    "https://www.skinspirations.com",
+    "https://www.idealimage.com",
+    "https://www.skinlaundry.com",
+    "https://www.americanboardcosmeticsurgery.org",
+    "https://www.psiatlanta.com",
+    "https://www.plasticsurgery.org",
+
+    "https://www.melindasilverbergmd.com",
+    "https://www.uciplasticsurgery.com",
+    "https://www.massplasticsurgeons.com",
+    "https://www.rahmd.com",
+    "https://www.nygplasticsurgery.com",
+    "https://www.eppleyplasticsurgery.com",
+    "https://www.ondasderm.com",
+
+    "https://www.vegasplasticsurgery.com",
+    "https://www.nashvilleplasticsurgery.com",
+    "https://www.derrickmd.com",
+    "https://www.orangecountycosmeticsurgery.com",
+    "https://www.chicagoplasticsurgery.com",
+    "https://www.houstonplasticsurgery.net",
+    "https://www.sanfranciscoplasticsurgery.com",
+    "https://www.atlplasticsurgery.com",
+    "https://www.bostonplasticsurgerycenter.com",
+    "https://www.seattleplasticsurgery.com"
+  ]
+}
