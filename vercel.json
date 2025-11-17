@@ -5,22 +5,18 @@
     { "src": "public/**/*", "use": "@vercel/static" }
   ],
   "routes": [
-    /* ---------- EEI v4 endpoints (keep for backwards compatibility) ---------- */
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
     { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
 
-    /* ---------- EEI v5 endpoints ---------- */
     { "src": "^/api/audit-v5$", "dest": "/api/audit-v5.js" },
     { "src": "^/api/batch-v5$", "dest": "/api/batch-v5.js" },
 
-    /* ---------- Static UI pages ---------- */
     { "src": "^/batch$", "dest": "/public/batch.html" },
     { "src": "^/batch-v5$", "dest": "/public/batch-v5.html" },
     { "src": "^/predictive$", "dest": "/public/predictive.html" },
     { "src": "^/style.css$", "dest": "/public/style.css" },
 
-    /* ---------- Fallback ---------- */
     { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
