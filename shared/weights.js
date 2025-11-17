@@ -1,34 +1,25 @@
-// /shared/weights.js — EEI v5 Unified Weights (Tiered Entity Model)
+// V5.1 — Entity Engineering™ Weights
 
 export const WEIGHTS = {
-  /* ========== TIER 3 — PAGE HYGIENE (10 pts) ========== */
-  title: 3,                // Title Precision
-  metaDescription: 3,      // Meta Description Integrity
-  canonical: 2,            // Canonical Clarity
-  faviconOg: 2,            // Brand & Technical Consistency
+  // --- Tier 3 (Page-level hygiene)
+  title: 3,
+  meta: 3,
+  canonical: 3, // up from 2
+  brandConsistency: 3, // up from 2
 
-  /* ========== TIER 2 — STRUCTURAL DATA (30 pts) ========== */
-  schemaPresence: 10,      // Schema Presence & Validity
-  orgSchema: 8,            // Organization Schema
-  breadcrumbSchema: 7,     // Breadcrumb Schema
-  authorPerson: 5,         // Author/Person Schema
+  // --- Tier 2 (Structural Schema Fidelity)
+  schemaPresence: 15, // up from 10
+  orgSchema: 12,      // up from 8
+  breadcrumb: 10,     // up from 7
+  author: 8,          // up from 5
 
-  /* ========== TIER 1 — AI COMPREHENSION / GRAPH (60 pts) ========== */
-  internalLinks: 20,       // Internal Lattice Integrity
-  contentDepth: 15,        // Inference Efficiency
-  externalLinks: 15,       // External Authority Signal
-  aiCrawl: 10,             // AI Crawl Fidelity
-
-  /* ========== SOCIAL (CARRIED AT 5) ========== */
-  // Social graph is important for trust, but not the primary comprehension driver.
-  socialLinks: 5           // Social Entity Links (5 pts — sits between tiers)
+  // --- Tier 1 (Entity Comprehension + Trust)
+  social: 5,
+  aiCrawl: 8,          // down from 10
+  inference: 15,
+  internalLinks: 15,   // down from 20
+  externalLinks: 10,   // down from 15
 };
 
-/**
- * TOTAL_WEIGHT is the sum of all rubric weights.
- * Entity-level EEI is normalized to 0–100 in /api/audit.js using this value.
- */
-export const TOTAL_WEIGHT = Object.values(WEIGHTS).reduce(
-  (sum, value) => sum + value,
-  0
-);
+export const TOTAL_WEIGHT =
+  Object.values(WEIGHTS).reduce((a, b) => a + b, 0);
