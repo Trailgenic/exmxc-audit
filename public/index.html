@@ -1,79 +1,128 @@
-<script>
-  const runButton = document.getElementById("runButton");
-  const resultEl = document.getElementById("result");
-  const scoreBar = document.getElementById("scoreBar");
-  const scoreDisplay = document.getElementById("scoreDisplay");
-  const entityStage = document.getElementById("entityStage");
-  const entityVerb = document.getElementById("entityVerb");
-  const signalBreakdown = document.getElementById("signalBreakdown");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>exmxc — EEI Audit</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
 
-  runButton.addEventListener("click", async () => {
-    const input = document.getElementById("urlInput").value.trim();
-    if (!input) return alert("Please enter a URL.");
-    resultEl.textContent = "Loading...";
+<body class="p-8 max-w-3xl mx-auto font-sans">
 
-    try {
-      const url = input.startsWith("http") ? input : `https://${input}`;
+  <h1 class="text-3xl font-bold mb-4">EEI Single URL Audit</h1>
 
-      const res = await fetch(`https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`, {
-        headers: { "x-exmxc-key": "exmxc-internal" }
+  <!-- Input -->
+  <div class="flex gap-2 mb-4">
+    <input
+      id="urlInput"
+      type="text"
+      placeholder="Enter URL…"
+      class="border p-2 flex-1 rounded"
+    />
+    <button
+      id="runButton"
+      class="bg-black text-white px-4 py-2 rounded"
+    >
+      Run Audit
+    </button>
+  </div>
+
+  <!-- Score -->
+  <div class="mb-4">
+    <div id="scoreDisplay" class="font-semibold text-lg mb-1">EEI: —</div>
+    <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+      <div id="scoreBar" class="h-3 bg-green-500" style="width:0%;"></div>
+    </div>
+  </div>
+
+  <!-- Stage + Verb -->
+  <div class="my-4">
+    <div id="entityStage" class="text-xl font-bold"></div>
+    <div id="entityVerb" class="text-gray-600"></div>
+  </div>
+
+  <!-- Breakdown -->
+  <h2 class="text-2xl font-semibold mt-6 mb-2">Signals</h2>
+  <div id="signalBreakdown" class="space-y-4"></div>
+
+  <!-- Raw JSON -->
+  <h2 class="text-xl font-semibold mt-6 mb-2">Raw JSON</h2>
+  <pre
+    id="result"
+    class="bg-gray-900 text-green-300 p-4 rounded max-h-[500px] overflow-auto"
+  >{}</pre>
+
+  <!-- Script -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const runButton = document.getElementById("runButton");
+      const resultEl = document.getElementById("result");
+      const scoreBar = document.getElementById("scoreBar");
+      const scoreDisplay = document.getElementById("scoreDisplay");
+      const entityStage = document.getElementById("entityStage");
+      const entityVerb = document.getElementById("entityVerb");
+      const signalBreakdown = document.getElementById("signalBreakdown");
+
+      runButton.addEventListener("click", async () => {
+        const input = document.getElementById("urlInput").value.trim();
+        if (!input) return alert("Please enter a URL.");
+
+        resultEl.textContent = "Loading…";
+
+        try {
+          const url = input.startsWith("http") ? input : `https://${input}`;
+
+          const res = await fetch(
+            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
+            { headers: { "x-exmxc-key": "exmxc-internal" } }
+          );
+
+          const data = await res.json();
+
+          const score = data.v5Score ?? data.entityScore ?? 0;
+
+          scoreDisplay.textContent = `EEI: ${score} / 100`;
+          scoreBar.style.width = `${score}%`;
+
+          const stage = data.v5Stage || data.entityStage || "";
+          const verb = data.v5Verb || data.entityVerb || "";
+          const desc = data.v5Description || data.entityDescription || "";
+
+          entityStage.textContent = stage;
+          entityVerb.textContent = verb ? `${verb} — ${desc}` : "";
+
+          // Signal breakdown
+          signalBreakdown.innerHTML = "";
+          if (data.signals && data.signals.length > 0) {
+            data.signals.forEach((sig) => {
+              const category = sig.key || sig.category || "Signal";
+              const points = sig.points || 0;
+              const max = sig.max || 10;
+              const percent = Math.round((points / max) * 100);
+
+              const div = document.createElement("div");
+              div.innerHTML = `
+                <div class="flex justify-between items-center">
+                  <span class="font-medium">${category}</span>
+                  <span>${points} / ${max}</span>
+                </div>
+                <div class="w-full h-2 bg-gray-200 rounded-full mt-1 mb-2 overflow-hidden">
+                  <div style="width:${percent}%;"
+                       class="h-2 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 rounded-full">
+                  </div>
+                </div>
+              `;
+              signalBreakdown.appendChild(div);
+            });
+          }
+
+          resultEl.textContent = JSON.stringify(data, null, 2);
+        } catch (err) {
+          resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
+        }
       });
+    });
+  </script>
 
-      const data = await res.json();
-
-      // Choose v5 score if available, fallback to v4
-      const score = data.v5Score ?? data.entityScore ?? 0;
-
-      scoreDisplay.textContent = `EEI: ${score} / 100`;
-      scoreBar.style.width = `${score}%`;
-
-      // Stage + Verb + Description (prefer v5)
-      const stage = data.v5Stage || data.entityStage || "";
-      const verb = data.v5Verb || data.entityVerb || "";
-      const desc =
-        data.v5Description || data.entityDescription || "";
-
-      entityStage.textContent = stage;
-      entityVerb.textContent = verb ? `${verb} — ${desc}` : "";
-
-      // Signal Breakdown (unchanged format)
-      signalBreakdown.innerHTML = "";
-      if (data.signals && data.signals.length > 0) {
-        data.signals.forEach((sig) => {
-          const category = sig.key || sig.category || "Unlabeled Signal";
-          const points = sig.points || 0;
-          const max = sig.max || 10;
-          const percent = Math.round((points / max) * 100);
-          const notes = sig.notes
-            ? `<span class="text-xs text-gray-500">${sig.notes}</span>`
-            : "";
-
-          const div = document.createElement("div");
-          div.innerHTML = `
-            <div class="flex justify-between items-center">
-              <span class="font-medium">${category}</span>
-              <span>${points} / ${max}</span>
-            </div>
-            <div class="w-full h-2 bg-gray-200 rounded-full mt-1 mb-2 overflow-hidden">
-              <div style="width:${percent}%;"
-                   class="h-2 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 rounded-full"></div>
-            </div>
-            ${notes}
-          `;
-          signalBreakdown.appendChild(div);
-        });
-      } else {
-        signalBreakdown.innerHTML =
-          "<p class='text-gray-500'>No signal data available.</p>";
-      }
-
-      resultEl.textContent = JSON.stringify(data, null, 2);
-    } catch (err) {
-      resultEl.textContent = JSON.stringify(
-        { error: err.message },
-        null,
-        2
-      );
-    }
-  });
-</script>
+</body>
+</html>
