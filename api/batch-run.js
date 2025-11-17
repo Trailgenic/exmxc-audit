@@ -1,35 +1,39 @@
-// /api/batch-run.js — EEI v5 Batch Runner
-
+// /api/batch-run.js — EEI v4.1 Batch UI Endpoint (Dynamic Dataset)
 import fs from "fs/promises";
 import path from "path";
 import auditHandler from "./audit.js";
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
-  );
-  if (req.method === "OPTIONS") return res.status(200).end();
-
   res.setHeader("Content-Type", "application/json");
 
   try {
-    // ?dataset=core-media → /data/core-media.json
-    let datasetKey = (req.query?.dataset || "core-web").toString().trim();
-    if (!/^[a-z0-9\-]+$/i.test(datasetKey)) {
-      datasetKey = "core-web";
-    }
+    // ---------------------------
+    // 1) Read dataset, default "core-web"
+    // ---------------------------
+    const datasetName = req.query.dataset?.toLowerCase() || "core-web";
 
-    const filePath = path.join(process.cwd(), "data", `${datasetKey}.json`);
+    // Sanitize input (no traversal)
+    const safeDataset = datasetName.replace(/[^a-z0-9\-]/g, "");
+
+    // ---------------------------
+    // 2) Resolve dataset file path
+    // ---------------------------
+    const filePath = path.join(
+      process.cwd(),
+      "data",
+      `${safeDataset}.json`
+    );
+
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
-    const urls = dataset.urls || [];
 
+    const urls = dataset.urls || [];
     const results = [];
 
+    // ---------------------------
+    // 3) Loop through URLs
+    // ---------------------------
     for (const url of urls) {
       try {
         let out = null;
@@ -53,53 +57,35 @@ export default async function handler(req, res) {
         };
 
         await auditHandler(fakeReq, fakeRes);
+        results.push(out?.success ? out : { url, success: false });
 
-        if (out && out.success) {
-          results.push(out);
-        } else {
-          results.push({
-            url,
-            success: false,
-            error: out?.error || "EEI v5 audit failed",
-          });
-        }
       } catch (err) {
-        results.push({
-          url,
-          success: false,
-          error: err.message || "Internal error in batch-run",
-        });
+        results.push({ url, success: false, error: err.message });
       }
     }
 
-    const scored = results.filter(
-      (r) => r.success && typeof r.v5Score === "number"
-    );
-
+    // ---------------------------
+    // 4) Scoring
+    // ---------------------------
+    const scored = results.filter((r) => r.entityScore >= 0);
     const avg =
-      scored.reduce((sum, r) => sum + (r.v5Score || 0), 0) /
+      scored.reduce((sum, r) => sum + r.entityScore, 0) /
       (scored.length || 1);
-
-    const avgScore = Number(avg.toFixed(2));
-    const siteScore = Math.round(avgScore);
 
     return res.status(200).json({
       success: true,
-      model: "EEI v5 (batch)",
-      dataset: dataset.vertical || datasetKey,
+      vertical: dataset.vertical || safeDataset,
       totalUrls: urls.length,
       audited: scored.length,
-      avgScore,
-      siteScore,
+      avgEntityScore: Number(avg.toFixed(2)),
       results,
       timestamp: new Date().toISOString(),
     });
+
   } catch (err) {
-    console.error("EEI v5 Batch Error:", err);
     return res.status(500).json({
-      success: false,
-      error: "Failed to run EEI v5 batch",
-      details: err.message || String(err),
+      error: "Batch run failed",
+      details: err.message,
     });
   }
 }
