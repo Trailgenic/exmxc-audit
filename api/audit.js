@@ -139,7 +139,7 @@ async function crawlURL(url) {
   return { url, hostname, html };
 }
 
-function extractBetween(html, regex) {
+function extractBetween(regex, html) {
   const m = html.match(regex);
   return m ? m[1].trim() : "";
 }
