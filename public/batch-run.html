@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exmxc.ai Batch EEI Audit</title>
+    <title>exmxc.ai Batch EEI v5 Audit</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
         background-color: #f9fafb;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-          sans-serif;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, sans-serif;
       }
       .json-box {
         background-color: #0f172a;
@@ -36,10 +36,10 @@
   <body class="max-w-6xl mx-auto py-10 px-5">
     <!-- HEADER -->
     <h1 class="text-3xl font-bold text-gray-900 text-center mb-2">
-      exmxc.ai Audit — Batch Mode
+      exmxc.ai Audit — Batch Mode (EEI v5)
     </h1>
     <p class="text-center text-gray-600 text-sm mb-6">
-      Entity Engineering™ Index (EEI) — multi-site, rendered crawl
+      Entity Engineering™ Index (EEI v5) — multi-site crawl
     </p>
 
     <!-- SUMMARY CARD -->
@@ -113,7 +113,7 @@
       <!-- TABLE SUMMARY -->
       <div>
         <h2 class="text-lg font-semibold mb-3 text-gray-900">
-          Site Scores (Batch)
+          Site Scores (EEI v5)
         </h2>
         <div
           id="tableContainer"
@@ -132,17 +132,14 @@
                   Stage
                 </th>
                 <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  Schema
-                </th>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  Mode
+                  Signals
                 </th>
               </tr>
             </thead>
             <tbody id="resultsTableBody" class="divide-y divide-gray-100">
               <tr>
                 <td
-                  colspan="5"
+                  colspan="4"
                   class="px-3 py-4 text-center text-gray-400 text-xs"
                 >
                   No batch run yet. Choose a dataset and click “Run Batch
@@ -164,7 +161,7 @@
     <footer class="text-center text-xs text-gray-500 mt-10">
       Powered by
       <span class="font-semibold text-black">exmxc.ai</span> |
-      Entity Engineering<sup>™</sup> Batch Audit
+      Entity Engineering<sup>™</sup> Batch Audit (EEI v5)
     </footer>
 
     <script>
@@ -175,7 +172,7 @@
       const datasetSelect = document.getElementById("datasetSelect");
       const datasetName = document.getElementById("datasetName");
       const siteCount = document.getElementById("siteCount");
-      const avgScore = document.getElementById("avgScore");
+      const avgScoreSpan = document.getElementById("avgScore");
       const batchStatus = document.getElementById("batchStatus");
       const resultsTableBody = document.getElementById("resultsTableBody");
 
@@ -185,17 +182,9 @@
       }
 
       function formatStage(r) {
-        if (!r.entityStage) return "—";
-        return r.entityStage.replace(/^.+? /, "");
-      }
-
-      function formatMode(r) {
-        if (!r.schemaMeta) return r.mode || "static";
-        return r.mode || (r.schemaMeta.rendered ? "rendered" : "static");
-      }
-
-      function schemaCount(r) {
-        return r.schemaMeta?.schemaBlocks ?? 0;
+        if (!r.v5Stage) return "—";
+        // strip emoji so table stays tight
+        return r.v5Stage.replace(/^.+? /, "");
       }
 
       runBatchButton.addEventListener("click", async () => {
@@ -205,12 +194,15 @@
 
         resultEl.textContent = "// Running batch…";
         batchStatus.textContent = "Running…";
+        setScoreBar(0);
+        scoreDisplay.textContent = "EEI: -- / 100";
+        resultsTableBody.innerHTML =
+          "<tr><td colspan='4' class='px-3 py-4 text-center text-gray-400 text-xs'>Running…</td></tr>";
 
         try {
           const res = await fetch(url);
           const data = await res.json();
 
-          // Raw JSON
           resultEl.textContent = JSON.stringify(data, null, 2);
 
           if (!data || !data.success) {
@@ -221,22 +213,27 @@
             return;
           }
 
-          // Summary
+          const totalUrls = data.totalUrls || 0;
+          const avg = data.avgScore != null ? data.avgScore : 0;
+          const siteScore = data.siteScore != null ? data.siteScore : 0;
+
           datasetName.textContent = data.dataset || dataset;
-          siteCount.textContent = `${data.totalUrls || 0} sites`;
-          avgScore.textContent = `Avg EEI: ${
-            data.avgEntityScore != null ? data.avgEntityScore.toFixed(2) : "--"
+          siteCount.textContent = `${totalUrls} sites`;
+          avgScoreSpan.textContent = `Avg EEI: ${
+            data.avgScore != null ? data.avgScore.toFixed(2) : "--"
           }`;
 
-          const siteScore = data.siteScore || 0;
           scoreDisplay.textContent = `EEI: ${siteScore} / 100`;
           setScoreBar(siteScore);
           batchStatus.textContent = "Completed";
 
-          // Table
-          if (Array.isArray(data.results) && data.results.length > 0) {
+          const results = Array.isArray(data.results) ? data.results : [];
+          if (results.length === 0) {
+            resultsTableBody.innerHTML =
+              "<tr><td colspan='4' class='px-3 py-4 text-center text-gray-400 text-xs'>No results returned.</td></tr>";
+          } else {
             resultsTableBody.innerHTML = "";
-            data.results.forEach((r) => {
+            results.forEach((r) => {
               const tr = document.createElement("tr");
 
               const urlCell = document.createElement("td");
@@ -251,8 +248,8 @@
               const scoreCell = document.createElement("td");
               scoreCell.className = "px-3 py-2 align-top text-xs";
               scoreCell.textContent =
-                r.success && typeof r.entityScore === "number"
-                  ? r.entityScore
+                r.success && typeof r.v5Score === "number"
+                  ? r.v5Score
                   : "—";
               tr.appendChild(scoreCell);
 
@@ -261,21 +258,16 @@
               stageCell.textContent = r.success ? formatStage(r) : "Error";
               tr.appendChild(stageCell);
 
-              const schemaCell = document.createElement("td");
-              schemaCell.className = "px-3 py-2 align-top text-xs";
-              schemaCell.textContent = schemaCount(r);
-              tr.appendChild(schemaCell);
-
-              const modeCell = document.createElement("td");
-              modeCell.className = "px-3 py-2 align-top text-xs";
-              modeCell.textContent = r.rendered ? "rendered" : formatMode(r);
-              tr.appendChild(modeCell);
+              const signalsCell = document.createElement("td");
+              signalsCell.className = "px-3 py-2 align-top text-xs";
+              const sigCount = Array.isArray(r.signals)
+                ? r.signals.length
+                : 0;
+              signalsCell.textContent = sigCount;
+              tr.appendChild(signalsCell);
 
               resultsTableBody.appendChild(tr);
             });
-          } else {
-            resultsTableBody.innerHTML =
-              "<tr><td colspan='5' class='px-3 py-4 text-center text-gray-400 text-xs'>No results returned.</td></tr>";
           }
         } catch (err) {
           batchStatus.textContent = "Batch error";
