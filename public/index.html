@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exmxc.ai Audit — EEI v5</title>
+    <title>exmxc.ai Audit</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
         background-color: #f9fafb;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
-          Arial, sans-serif;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+          sans-serif;
       }
       .score-bar {
         height: 10px;
@@ -38,7 +38,7 @@
       exmxc.ai Audit
     </h1>
     <p class="text-center text-gray-600 text-sm mb-6">
-      Entity Engineering<sup>™</sup> Index (EEI v5) — real-time audit
+      Entity Engineering<sup>™</sup> Index (EEI) — real-time audit
     </p>
 
     <!-- EEI Score Display -->
@@ -86,7 +86,7 @@
       <!-- Signal Breakdown -->
       <div>
         <h2 class="text-lg font-semibold mb-3 text-gray-900">
-          Signal Breakdown (EEI v5)
+          Signal Breakdown
         </h2>
         <div
           id="signalBreakdown"
@@ -104,7 +104,7 @@
     <footer class="text-center text-xs text-gray-500 mt-10">
       Powered by
       <span class="font-semibold text-black">exmxc.ai</span> |
-      Entity Engineering<sup>™</sup> Audit (EEI v5)
+      Entity Engineering<sup>™</sup> Audit
     </footer>
 
     <script>
@@ -116,60 +116,35 @@
       const entityVerb = document.getElementById("entityVerb");
       const signalBreakdown = document.getElementById("signalBreakdown");
 
-      function setScoreBar(score) {
-        const safe = Math.max(0, Math.min(100, score || 0));
-        scoreBar.style.width = safe + "%";
-      }
-
       runButton.addEventListener("click", async () => {
         const input = document.getElementById("urlInput").value.trim();
         if (!input) return alert("Please enter a URL.");
-        resultEl.textContent = "Loading…";
-        signalBreakdown.innerHTML = "";
-        entityStage.textContent = "";
-        entityVerb.textContent = "";
-        setScoreBar(0);
-        scoreDisplay.textContent = "EEI: -- / 100";
+        resultEl.textContent = "Loading...";
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
-          const res = await fetch(
-            `/api/audit?url=${encodeURIComponent(url)}`
-          );
+          const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
           const data = await res.json();
 
-          // Raw JSON output
-          resultEl.textContent = JSON.stringify(data, null, 2);
-
-          if (!data || !data.success) {
-            entityStage.textContent = "Error";
-            entityVerb.textContent =
-              data?.error || "Audit failed. Check API logs.";
-            return;
-          }
-
-          const score = data.v5Score || 0;
+          // Update score bar
+          const score = data.entityScore || 0;
           scoreDisplay.textContent = `EEI: ${score} / 100`;
-          setScoreBar(score);
+          scoreBar.style.width = `${score}%`;
 
-          entityStage.textContent = data.v5Stage || "";
-          entityVerb.textContent = data.v5Verb
-            ? `${data.v5Verb} — ${data.v5Description || ""}`
+          // 🌕 Update evolutionary entity info
+          entityStage.textContent = data.entityStage || "";
+          entityVerb.textContent = data.entityVerb
+            ? `${data.entityVerb} — ${data.entityDescription}`
             : "";
 
           // Signal breakdown
-          const signals = Array.isArray(data.signals) ? data.signals : [];
-          if (signals.length === 0) {
-            signalBreakdown.innerHTML =
-              "<p class='text-gray-500'>No signal data available.</p>";
-          } else {
-            signalBreakdown.innerHTML = "";
-            signals.forEach((sig) => {
-              const category = sig.key || "Unlabeled Signal";
+          signalBreakdown.innerHTML = "";
+          if (data.signals && data.signals.length > 0) {
+            data.signals.forEach((sig) => {
+              const category = sig.key || sig.category || "Unlabeled Signal";
               const points = sig.points || 0;
               const max = sig.max || 10;
-              const percent =
-                max > 0 ? Math.round((points / max) * 100) : 0;
+              const percent = Math.round((points / max) * 100);
               const notes = sig.notes
                 ? `<span class="text-xs text-gray-500">${sig.notes}</span>`
                 : "";
@@ -188,15 +163,15 @@
               `;
               signalBreakdown.appendChild(div);
             });
+          } else {
+            signalBreakdown.innerHTML =
+              "<p class='text-gray-500'>No signal data available.</p>";
           }
+
+          // Raw JSON output
+          resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
-          resultEl.textContent = JSON.stringify(
-            { error: err.message || String(err) },
-            null,
-            2
-          );
-          entityStage.textContent = "Error";
-          entityVerb.textContent = "Client-side error";
+          resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
         }
       });
     </script>
