@@ -1,6 +1,6 @@
-// /api/audit-v5.js — EEI v5 Parallel Scoring (Tiered + Reweighted)
+// /api/audit.js — EEI v5 Parallel Scoring (Tiered + Reweighted)
 
-import auditHandler from "./audit.js";
+import auditHandler from "./audit-v4.js";   // ✅ FIXED — no recursion
 import { tierFromScore } from "../shared/scoring.js";
 
 /* ---------- Helpers ---------- */
@@ -35,24 +35,24 @@ function normalizeOrigin(req, res) {
  * We reuse the 13 existing signals, but recombine them into
  * Tier 1 / Tier 2 / Tier 3 with new weights.
  *
- * Sum of weights = 105, then we normalize down to 100 at the end.
+ * Sum of weights = 105, then normalized to 100.
  */
 const V5_SIGNAL_WEIGHTS = {
-  "Title Precision": 3,               // Tier 3 (Meta)
-  "Meta Description Integrity": 3,    // Tier 3 (Meta)
-  "Canonical Clarity": 2,             // Tier 3 (Meta)
-  "Brand & Technical Consistency": 2, // Tier 3 (Meta)
+  "Title Precision": 3,
+  "Meta Description Integrity": 3,
+  "Canonical Clarity": 2,
+  "Brand & Technical Consistency": 2,
 
-  "Schema Presence & Validity": 10,   // Tier 2 (Structural)
-  "Organization Schema": 8,           // Tier 2
-  "Breadcrumb Schema": 7,             // Tier 2
-  "Author/Person Schema": 5,         // Tier 2
+  "Schema Presence & Validity": 10,
+  "Organization Schema": 8,
+  "Breadcrumb Schema": 7,
+  "Author/Person Schema": 5,
 
-  "Social Entity Links": 5,          // Tier 1 (Trust)
-  "Internal Lattice Integrity": 20,  // Tier 1
-  "External Authority Signal": 15,   // Tier 1
-  "AI Crawl Fidelity": 10,           // Tier 1
-  "Inference Efficiency": 15         // Tier 1 (Content / depth)
+  "Social Entity Links": 5,
+  "Internal Lattice Integrity": 20,
+  "External Authority Signal": 15,
+  "AI Crawl Fidelity": 10,
+  "Inference Efficiency": 15
 };
 
 const V5_TIER_MAP = {
@@ -103,14 +103,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing URL" });
     }
 
-    // 🔁 Call existing V4 audit internally (crawl + v4 scoring)
+    // 🔁 Call V4 audit internally (crawl + scoring)
     let baseOutput = null;
 
     const fakeReq = {
       query: { url: input },
       headers: {
         origin: "http://localhost",
-        "x-exmxc-key": "exmxc-internal" // bypass v4 401 guard safely
+        "x-exmxc-key": "exmxc-internal"
       },
       method: "GET"
     };
@@ -142,10 +142,10 @@ export default async function handler(req, res) {
       : [];
     const byKey = {};
     for (const sig of signals) {
-      if (sig && sig.key) byKey[sig.key] = sig;
+      if (sig?.key) byKey[sig.key] = sig;
     }
 
-    // --- Compute V5 score from normalized signal strengths ---
+    /* ---------- V5 scoring ---------- */
     let rawTotal = 0;
     const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
     const tierWeightTotals = { tier1: 0, tier2: 0, tier3: 0 };
@@ -154,21 +154,16 @@ export default async function handler(req, res) {
       const sig = byKey[key];
       if (!sig || !sig.max) continue;
 
-      const normalized = clamp(
-        (sig.points ?? 0) / sig.max,
-        0,
-        1
-      );
+      const normalized = clamp((sig.points ?? 0) / sig.max, 0, 1);
       const contribution = normalized * weight;
-      rawTotal += contribution;
 
-      const tier = V5_TIER_MAP[key] || "tier3";
+      rawTotal += contribution;
+      const tier = V5_TIER_MAP[key];
       tierRaw[tier] += contribution;
       tierWeightTotals[tier] += weight;
     }
 
-    // Normalize from 105 → 100
-    const scaleFactor = TOTAL_V5_WEIGHT > 0 ? 100 / TOTAL_V5_WEIGHT : 1;
+    const scaleFactor = 100 / TOTAL_V5_WEIGHT;
     const v5Score = clamp(Math.round(rawTotal * scaleFactor), 0, 100);
 
     const v5TierScores = {
@@ -176,38 +171,28 @@ export default async function handler(req, res) {
         label: V5_TIER_LABELS.tier1,
         raw: tierRaw.tier1,
         maxWeight: tierWeightTotals.tier1,
-        normalized: tierWeightTotals.tier1
-          ? Number(
-              ((tierRaw.tier1 * scaleFactor * 100) /
-                (tierWeightTotals.tier1 * scaleFactor)).toFixed(2)
-            )
-          : 0
+        normalized: Number(
+          ((tierRaw.tier1 / tierWeightTotals.tier1) * 100).toFixed(2)
+        )
       },
       tier2: {
         label: V5_TIER_LABELS.tier2,
         raw: tierRaw.tier2,
         maxWeight: tierWeightTotals.tier2,
-        normalized: tierWeightTotals.tier2
-          ? Number(
-              ((tierRaw.tier2 * scaleFactor * 100) /
-                (tierWeightTotals.tier2 * scaleFactor)).toFixed(2)
-            )
-          : 0
+        normalized: Number(
+          ((tierRaw.tier2 / tierWeightTotals.tier2) * 100).toFixed(2)
+        )
       },
       tier3: {
         label: V5_TIER_LABELS.tier3,
         raw: tierRaw.tier3,
         maxWeight: tierWeightTotals.tier3,
-        normalized: tierWeightTotals.tier3
-          ? Number(
-              ((tierRaw.tier3 * scaleFactor * 100) /
-                (tierWeightTotals.tier3 * scaleFactor)).toFixed(2)
-            )
-          : 0
+        normalized: Number(
+          ((tierRaw.tier3 / tierWeightTotals.tier3) * 100).toFixed(2)
+        )
       }
     };
 
-    // Map V5 score back into the same stage model
     const v5Tier = tierFromScore(v5Score);
 
     return res.status(200).json({
@@ -215,9 +200,8 @@ export default async function handler(req, res) {
       mode: "EEI v5 (parallel)",
       url: baseOutput.url,
       hostname: baseOutput.hostname,
-      entityName: baseOutput.entityName || null,
+      entityName: baseOutput.entityName,
 
-      // 🔹 EEI v5 scoring
       v5Score,
       v5Stage: v5Tier.stage,
       v5Verb: v5Tier.verb,
@@ -225,14 +209,12 @@ export default async function handler(req, res) {
       v5Focus: v5Tier.coreFocus,
       v5Tiers: v5TierScores,
 
-      // 🔹 Original v4 score preserved for comparison
       v4Score: baseOutput.entityScore,
       v4Stage: baseOutput.entityStage,
       v4Verb: baseOutput.entityVerb,
       v4Description: baseOutput.entityDescription,
       v4Focus: baseOutput.entityFocus,
 
-      // Pass-through details
       signals: baseOutput.signals,
       schemaMeta: baseOutput.schemaMeta,
       timestamp: new Date().toISOString()
