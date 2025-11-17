@@ -20,19 +20,16 @@ import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
 
 /* ================================
-   CONFIG
+   HELPERS
    ================================ */
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.0 Safari/537.36";
 
-/* ---------- Helpers ---------- */
 function normalizeUrl(input) {
   let url = (input || "").trim();
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   try {
-    const u = new URL(url);
-    if (!u.pathname) u.pathname = "/";
-    return u.toString();
+    return new URL(url).toString();
   } catch {
     return null;
   }
@@ -50,7 +47,9 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-/* ---------- Tier Mapping (for aggregated V5 tiers) ---------- */
+/* ================================
+   TIER MAPPING
+   ================================ */
 const SIGNAL_TIER = {
   "Title Precision": "tier3",
   "Meta Description Integrity": "tier3",
@@ -80,76 +79,53 @@ const TIER_LABELS = {
    ================================ */
 
 export default async function handler(req, res) {
-  // --- Basic CORS handling ---
-  const origin = req.headers.origin || req.headers.referer;
-  let normalizedOrigin = "*";
-  if (origin && origin !== "null") {
-    try {
-      normalizedOrigin = new URL(origin).origin;
-    } catch {
-      normalizedOrigin = "*";
-    }
-  }
-  res.setHeader("Access-Control-Allow-Origin", normalizedOrigin);
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
-  );
-  if (normalizedOrigin !== "*")
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  /* ---------- CORS & ORIGIN FIX ---------- */
+  const origin = req.headers.origin || "";
+  const referer = req.headers.referer || "";
+  const originString = `${origin} ${referer}`.toLowerCase();
 
-  res.setHeader("Content-Type", "application/json");
-
-  /* ================================
-     INTERNAL RELAY BYPASS + SAFELIST
-     ================================ */
-  // Determine internal key (must be defined BEFORE checks)
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
 
-  // Pull referer/origin safely
-  const referer = req.headers.referer || "";
-  const originHeader = req.headers.origin || "";
+  const allowedRoots = [
+    "localhost",
+    "127.0.0.1",
+    "vercel.app",
+    "exmxc.ai",
+    "trailgenic.com",
+  ];
 
-  // Allow localhost, Vercel, and exmxc.ai
-  const allowedOrigins = ["localhost", "127.0.0.1", "vercel.app", "exmxc.ai"];
+  const isAllowed =
+    isInternal ||
+    originString.trim() === "" ||
+    allowedRoots.some((root) => originString.includes(root));
 
-  // Combine for easier detection
-  const originString = `${referer} ${originHeader}`.toLowerCase();
-
-  // External = NOT internal AND NOT in safelist
-  const isExternal =
-    !isInternal &&
-    !allowedOrigins.some((allowed) => originString.includes(allowed));
-
-  if (isExternal) {
+  if (!isAllowed) {
     return res.status(401).json({
       error: "Access denied (401) — origin not allowed",
       originString,
     });
   }
 
-  /* ================================
-     MAIN AUDIT EXECUTION
-     ================================ */
+  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
+  );
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  /* ---------- Input ---------- */
   try {
     const input = req.query?.url;
-    if (!input || typeof input !== "string" || !input.trim()) {
-      return res.status(400).json({ error: "Missing URL" });
-    }
+    if (!input) return res.status(400).json({ error: "Missing URL" });
 
     const normalized = normalizeUrl(input);
-    if (!normalized) {
-      return res.status(400).json({ error: "Invalid URL format" });
-    }
+    if (!normalized) return res.status(400).json({ error: "Invalid URL format" });
 
-    const originHost = hostnameOf(normalized);
-
-    // Support ?mode=static for A/B or debugging; default to rendered
+    const host = hostnameOf(normalized);
     const requestedMode = req.query?.mode === "static" ? "static" : "rendered";
 
-    // --- EEI Crawl v2: rendered-first crawl with static fallback ---
+    /* ---------- Full Crawl ---------- */
     const crawl = await crawlPage({
       url: normalized,
       mode: requestedMode,
@@ -157,12 +133,7 @@ export default async function handler(req, res) {
     });
 
     if (crawl.error || !crawl.html) {
-      const statusCode =
-        (crawl.status && crawl.status >= 400 && crawl.status < 600
-          ? crawl.status
-          : 500) || 500;
-
-      return res.status(statusCode).json({
+      return res.status(crawl.status || 500).json({
         error: crawl.error || "Failed to crawl URL",
         url: normalized,
         mode: crawl.mode,
@@ -185,10 +156,10 @@ export default async function handler(req, res) {
       status: httpStatus,
     } = crawl;
 
-    const $ = cheerio.load(html || "");
+    const $ = cheerio.load(html);
 
-    // Prefer crawl-derived fields, but keep current behavior semantics
-    const title = (crawlTitle || $("title").first().text() || "").trim();
+    /* ---------- Extract Fields ---------- */
+    const title = (crawlTitle || $("title").text() || "").trim();
     const description =
       crawlDescription ||
       $('meta[name="description"]').attr("content") ||
@@ -200,20 +171,14 @@ export default async function handler(req, res) {
       $('link[rel="canonical"]').attr("href") ||
       normalized.replace(/\/$/, "");
 
-    // --- Determine entity name ---
+    /* ---------- Entity Name ---------- */
     let entityName =
-      schemaObjects.find(
-        (o) => o["@type"] === "Organization" && typeof o.name === "string"
-      )?.name ||
-      schemaObjects.find(
-        (o) => o["@type"] === "Person" && typeof o.name === "string"
-      )?.name ||
-      (title.includes(" | ")
-        ? title.split(" | ")[0]
-        : title.split(" - ")[0]);
-    entityName = (entityName || "").trim();
+      schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
+      schemaObjects.find((o) => o["@type"] === "Person")?.name ||
+      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]) ||
+      "";
 
-    // --- Score using modular functions ---
+    /* ---------- 13-Signal Breakdown ---------- */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -225,42 +190,35 @@ export default async function handler(req, res) {
       scoreSocialLinks(schemaObjects, pageLinks),
       scoreAICrawlSignals($),
       scoreContentDepth($),
-      scoreInternalLinks(pageLinks, originHost),
-      scoreExternalLinks(pageLinks, originHost),
+      scoreInternalLinks(pageLinks, host),
+      scoreExternalLinks(pageLinks, host),
       scoreFaviconOg($),
     ];
 
-    // --- Build map by key for tier logic ---
-    const byKey = {};
-    for (const sig of breakdown) {
-      if (sig && sig.key) byKey[sig.key] = sig;
-    }
-
-    // --- V5 aggregation: normalized 0–100 using TOTAL_WEIGHT (105 → 100) ---
+    /* ---------- Aggregate V5 Score ---------- */
     let totalRaw = 0;
     const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
     const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const sig of breakdown) {
       if (!sig || typeof sig.max !== "number") continue;
-      const max = sig.max || 0;
-      const safePoints = clamp(sig.points ?? 0, 0, max);
-      const key = sig.key || "";
-      const tier = SIGNAL_TIER[key] || "tier3";
+      const safe = clamp(sig.points || 0, 0, sig.max);
+      const tier = SIGNAL_TIER[sig.key] || "tier3";
 
-      totalRaw += safePoints;
-      tierRaw[tier] += safePoints;
-      tierMax[tier] += max;
+      totalRaw += safe;
+      tierRaw[tier] += safe;
+      tierMax[tier] += sig.max;
     }
 
     const weightTotal =
-      typeof TOTAL_WEIGHT === "number" && TOTAL_WEIGHT > 0
+      TOTAL_WEIGHT > 0
         ? TOTAL_WEIGHT
-        : Object.values(tierMax).reduce((sum, v) => sum + (v || 0), 0);
+        : Object.values(tierMax).reduce((s, v) => s + v, 0);
 
-    const entityScore = weightTotal
-      ? clamp(Math.round((totalRaw * 100) / weightTotal), 0, 100)
-      : 0;
+    const entityScore =
+      weightTotal > 0
+        ? clamp(Math.round((totalRaw * 100) / weightTotal), 0, 100)
+        : 0;
 
     const tierScores = {
       tier1: {
@@ -289,51 +247,46 @@ export default async function handler(req, res) {
       },
     };
 
-    // --- Get evolutionary tier info from V5 score ---
     const entityTier = tierFromScore(entityScore);
 
-    // --- Add normalized strengths per signal ---
     breakdown.forEach((b) => {
-      b.strength = b.max
-        ? Number((clamp(b.points, 0, b.max) / b.max).toFixed(3))
-        : 0;
+      b.strength = b.max ? Number((b.points / b.max).toFixed(3)) : 0;
     });
 
-    // --- Return results ---
+    /* ---------- Response ---------- */
     return res.status(200).json({
       success: true,
       url: normalized,
-      hostname: originHost,
-      entityName: entityName || null,
+      hostname: host,
+      entityName: entityName.trim() || null,
       title,
       canonical: canonicalHref,
       description,
-      entityScore, // V5-normalized score (0–100)
+      entityScore,
 
-      // 🌕 Evolutionary Layer Output (V5)
       entityStage: entityTier.stage,
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
 
       signals: breakdown,
-      tierScores, // tier1 / tier2 / tier3 breakdown for diagnostics
+      tierScores,
 
       schemaMeta: {
         schemaBlocks: schemaObjects.length,
         latestISO,
         rendered,
         mode: resolvedMode,
-        httpStatus: httpStatus || null,
+        httpStatus,
         fallbackFromRendered: !!fallbackFromRendered,
       },
+
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("EEI Audit Error:", err);
     return res.status(500).json({
       error: "Internal server error",
-      details: err?.message || String(err),
+      details: err.message || String(err),
     });
   }
 }
