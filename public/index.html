@@ -15,7 +15,7 @@
     try {
       const url = input.startsWith("http") ? input : `https://${input}`;
 
-      const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`, {
+      const res = await fetch(`https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`, {
         headers: { "x-exmxc-key": "exmxc-internal" }
       });
 
