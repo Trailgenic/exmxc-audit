@@ -1,10 +1,11 @@
-// /api/audit.js — FINAL EEI v5 (Single URL Audit)
-// V5 scoring layer on top of V4 crawl + signals
+// /api/audit.js — FINAL EEI v5 (standalone, no V4 dependency)
 
-import auditHandler from "./audit-v4.js";  // rename to your actual v4 file
 import { tierFromScore } from "../shared/scoring.js";
+import fetch from "node-fetch";
 
-/* ---------- Helpers ---------- */
+/* -------------------------------------------------------
+   Helpers
+------------------------------------------------------- */
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -33,7 +34,9 @@ function normalizeOrigin(req, res) {
   }
 }
 
-/* ---------- V5 Scoring Weights ---------- */
+/* -------------------------------------------------------
+   V5 Weights
+------------------------------------------------------- */
 
 const V5_SIGNAL_WEIGHTS = {
   "Title Precision": 3,
@@ -82,9 +85,102 @@ const TOTAL_V5_WEIGHT = Object.values(V5_SIGNAL_WEIGHTS).reduce(
   0
 );
 
-/* ================================
-   MAIN HANDLER (EEI v5)
-   ================================ */
+/* -------------------------------------------------------
+   Minimal Standalone Crawler (V5 only)
+------------------------------------------------------- */
+
+async function crawlURL(url) {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; exmxc-eei/1.0; +https://exmxc.ai)"
+    }
+  });
+
+  const html = await response.text();
+
+  return {
+    url,
+    hostname: new URL(url).hostname,
+    html
+  };
+}
+
+/* -------------------------------------------------------
+   Simple Signal Extractors (HTML → signal points)
+------------------------------------------------------- */
+
+function extractSignals(html) {
+  const signals = [];
+
+  function get(tag, prop) {
+    const regex = new RegExp(`<${tag}[^>]*${prop}="([^"]+)"`, "i");
+    const m = html.match(regex);
+    return m ? m[1] : "";
+  }
+
+  const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] || "";
+  const desc = get("meta", "name=\"description\"");
+  const canonical = get("link", "rel=\"canonical\"");
+  const hasOrg = html.includes('"@type":"Organization"');
+  const hasBreadcrumb = html.includes('"BreadcrumbList"');
+  const hasAuthor = html.includes('"@type":"Person"');
+
+  signals.push({
+    key: "Title Precision",
+    points: title ? 3 : 0,
+    max: 3
+  });
+
+  signals.push({
+    key: "Meta Description Integrity",
+    points: desc ? 3 : 0,
+    max: 3
+  });
+
+  signals.push({
+    key: "Canonical Clarity",
+    points: canonical ? 2 : 0,
+    max: 2
+  });
+
+  signals.push({
+    key: "Schema Presence & Validity",
+    points: html.includes("@context") ? 10 : 0,
+    max: 10
+  });
+
+  signals.push({
+    key: "Organization Schema",
+    points: hasOrg ? 8 : 0,
+    max: 8
+  });
+
+  signals.push({
+    key: "Breadcrumb Schema",
+    points: hasBreadcrumb ? 7 : 0,
+    max: 7
+  });
+
+  signals.push({
+    key: "Author/Person Schema",
+    points: hasAuthor ? 5 : 0,
+    max: 5
+  });
+
+  // Basic placeholders for now
+  signals.push({ key: "Social Entity Links", points: 0, max: 5 });
+  signals.push({ key: "Internal Lattice Integrity", points: 0, max: 20 });
+  signals.push({ key: "External Authority Signal", points: 0, max: 15 });
+  signals.push({ key: "AI Crawl Fidelity", points: 5, max: 10 });
+  signals.push({ key: "Inference Efficiency", points: 10, max: 15 });
+
+  return signals;
+}
+
+/* -------------------------------------------------------
+   MAIN HANDLER — FINAL EEI v5
+------------------------------------------------------- */
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -97,69 +193,28 @@ export default async function handler(req, res) {
 
   try {
     const input = req.query?.url;
-
-    if (!input || typeof input !== "string" || !input.trim()) {
+    if (!input) {
       return res.status(400).json({ error: "Missing URL" });
     }
 
-    /* ----------------------------------------------------
-       🔥 UI bypass fix — ensure V4 does NOT block the crawl
-       ---------------------------------------------------- */
-    req.headers["x-exmxc-key"] = "exmxc-internal";
+    const url = input.startsWith("http") ? input : `https://${input}`;
 
-    /* ----------------------------------------------------
-       🔄 Call V4 crawler internally
-       ---------------------------------------------------- */
-    let v4 = null;
+    const crawled = await crawlURL(url);
+    const signals = extractSignals(crawled.html);
 
-    const fakeReq = {
-      query: { url: input },
-      headers: { "x-exmxc-key": "exmxc-internal" },
-      method: "GET"
-    };
-
-    const fakeRes = {
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(obj) {
-        v4 = obj;
-        return obj;
-      },
-      setHeader() {}
-    };
-
-    await auditHandler(fakeReq, fakeRes);
-
-    if (!v4 || !v4.success) {
-      return res.status(fakeRes.statusCode || 500).json({
-        error: "Underlying audit (v4) failed",
-        details: v4?.error || "Unknown",
-        raw: v4 || null
-      });
-    }
-
-    /* ----------------------------------------------------
-       🧮 Recompute signals under V5 weighting system
-       ---------------------------------------------------- */
     const signalsByKey = {};
-    for (const sig of v4.signals || []) {
-      if (sig?.key) signalsByKey[sig.key] = sig;
-    }
+    signals.forEach((s) => (signalsByKey[s.key] = s));
 
-    let rawTotal = 0;
-    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
-    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
+    let total = 0;
+    let tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+    let tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const [key, weight] of Object.entries(V5_SIGNAL_WEIGHTS)) {
-      const sig = signalsByKey[key];
-      const strength = sig?.max
-        ? clamp((sig.points ?? 0) / sig.max, 0, 1)
-        : 0;
-
+      const s = signalsByKey[key];
+      const strength = s?.max ? (s.points / s.max) : 0;
       const contrib = strength * weight;
-      rawTotal += contrib;
+
+      total += contrib;
 
       const tier = V5_TIER_MAP[key] || "tier3";
       tierRaw[tier] += contrib;
@@ -167,70 +222,28 @@ export default async function handler(req, res) {
     }
 
     const scale = 100 / TOTAL_V5_WEIGHT;
-    const v5Score = clamp(Math.round(rawTotal * scale), 0, 100);
-
-    const v5TierScores = {
-      tier1: {
-        label: V5_TIER_LABELS.tier1,
-        raw: tierRaw.tier1,
-        maxWeight: tierMax.tier1,
-        normalized: tierMax.tier1
-          ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
-          : 0
-      },
-      tier2: {
-        label: V5_TIER_LABELS.tier2,
-        raw: tierRaw.tier2,
-        maxWeight: tierMax.tier2,
-        normalized: tierMax.tier2
-          ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
-          : 0
-      },
-      tier3: {
-        label: V5_TIER_LABELS.tier3,
-        raw: tierRaw.tier3,
-        maxWeight: tierMax.tier3,
-        normalized: tierMax.tier3
-          ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
-          : 0
-      }
-    };
+    const v5Score = clamp(Math.round(total * scale), 0, 100);
 
     const v5Tier = tierFromScore(v5Score);
 
-    /* ----------------------------------------------------
-       📤 Final EEI v5 response
-       ---------------------------------------------------- */
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      mode: "EEI v5 (parallel)",
-      url: v4.url,
-      hostname: v4.hostname,
-      entityName: v4.entityName || null,
-
+      mode: "EEI v5 (standalone)",
+      url,
+      hostname: crawled.hostname,
       v5Score,
       v5Stage: v5Tier.stage,
       v5Verb: v5Tier.verb,
       v5Description: v5Tier.description,
       v5Focus: v5Tier.coreFocus,
-      v5Tiers: v5TierScores,
-
-      v4Score: v4.entityScore,
-      v4Stage: v4.entityStage,
-      v4Verb: v4.entityVerb,
-      v4Description: v4.entityDescription,
-      v4Focus: v4.entityFocus,
-
-      signals: v4.signals,
-      schemaMeta: v4.schemaMeta,
+      signals,
       timestamp: new Date().toISOString()
     });
-
   } catch (err) {
     console.error("EEI v5 error:", err);
-    return res.status(500).json({
-      error: "Internal server error (v5)",
-      details: err?.message || String(err)
+    res.status(500).json({
+      error: "Internal EEI v5 error",
+      details: err.message || String(err)
     });
   }
 }
