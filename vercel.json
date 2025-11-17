@@ -8,6 +8,7 @@
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
     { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
+    { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
 
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
