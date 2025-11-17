@@ -2,10 +2,10 @@
   "version": 2,
   "routes": [
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
-    { "src": "^/api/batch$", "dest": "/api/batch-run.js" },
+    { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
 
-    { "src": "^/batch$", "dest": "/public/batch.html" },
-    { "src": "^/predictive$", "dest": "/public/predictive.html" },
+    { "src": "^/batch$", "dest": "/public/batch-run.html" },
+    { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/style.css$", "dest": "/public/style.css" },
 
     { "src": "/(.*)", "dest": "/public/index.html" }
