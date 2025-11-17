@@ -1,12 +1,25 @@
 {
   "version": 2,
+  "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node" },
+    { "src": "public/**/*", "use": "@vercel/static" }
+  ],
   "routes": [
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
+    { "src": "^/api/scan$", "dest": "/api/scan.js" },
+    { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
     { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
 
-    { "src": "^/batch$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
-    { "src": "^/style.css$", "dest": "/public/style.css" },
+    { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
+
+    { "src": "^/batch$", "dest": "/public/batch.html" },
+    { "src": "^/batch.html$", "dest": "/public/batch.html" },
+
+    { "src": "^/predictive-audit$", "dest": "/public/predictive.html" },
+    { "src": "^/predictive.html$", "dest": "/public/predictive.html" },
+
+    { "src": "^/styles.css$", "dest": "/public/styles.css" },
 
     { "src": "/(.*)", "dest": "/public/index.html" }
   ]
