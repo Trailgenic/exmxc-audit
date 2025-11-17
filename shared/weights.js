@@ -1,4 +1,4 @@
-// /shared/weights.js — EEI v2 (AI Comprehension–Weighted Model)
+// /shared/weights.js — EEI v5 Unified Weights (Tiered Entity Model)
 
 export const WEIGHTS = {
   /* ========== TIER 3 — PAGE HYGIENE (10 pts) ========== */
@@ -19,9 +19,16 @@ export const WEIGHTS = {
   externalLinks: 15,       // External Authority Signal
   aiCrawl: 10,             // AI Crawl Fidelity
 
-  /* ========== SOCIAL (NEUTRAL CARRYOVER—STAYS 5) ========== */
-  // We preserve Social Links at 5 because:
-  // - Copilot, Google AI, GPT all check social graph
-  // - But it's not a core comprehension driver
+  /* ========== SOCIAL (CARRIED AT 5) ========== */
+  // Social graph is important for trust, but not the primary comprehension driver.
   socialLinks: 5           // Social Entity Links (5 pts — sits between tiers)
 };
+
+/**
+ * TOTAL_WEIGHT is the sum of all rubric weights.
+ * Entity-level EEI is normalized to 0–100 in /api/audit.js using this value.
+ */
+export const TOTAL_WEIGHT = Object.values(WEIGHTS).reduce(
+  (sum, value) => sum + value,
+  0
+);
