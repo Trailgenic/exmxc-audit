@@ -1,8 +1,8 @@
-// /api/batch-v5.js — EEI v5 Batch Runner (Parallel to v4 Batch)
+// /api/batch-run.js — EEI v5 Batch Runner (Parallel to v4 Batch)
 
 import fs from "fs/promises";
 import path from "path";
-import auditV5Handler from "./audit-v5.js";
+import auditV5Handler from "./audit.js";   // ✅ FIXED — now calling EEI v5 main handler
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -16,19 +16,14 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
 
   try {
-    // Choose dataset, e.g. ?dataset=core-media → /data/core-media.json
+    // Dataset selector: /api/batch-run?dataset=core-media
     let datasetKey = (req.query?.dataset || "core-web").toString().trim();
 
-    // Basic sanitation
     if (!/^[a-z0-9\-]+$/i.test(datasetKey)) {
       datasetKey = "core-web";
     }
 
-    const filePath = path.join(
-      process.cwd(),
-      "data",
-      `${datasetKey}.json`
-    );
+    const filePath = path.join(process.cwd(), "data", `${datasetKey}.json`);
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
     const urls = dataset.urls || [];
@@ -72,14 +67,13 @@ export default async function handler(req, res) {
         results.push({
           url,
           success: false,
-          error: err.message || "Internal error in batch-v5"
+          error: err.message || "Internal error in batch-run"
         });
       }
     }
 
-    const scored = results.filter(
-      (r) => typeof r.v5Score === "number"
-    );
+    const scored = results.filter((r) => typeof r.v5Score === "number");
+
     const avgV5 =
       scored.reduce((sum, r) => sum + (r.v5Score || 0), 0) /
       (scored.length || 1);
@@ -99,6 +93,7 @@ export default async function handler(req, res) {
       results,
       timestamp: new Date().toISOString()
     });
+
   } catch (err) {
     console.error("EEI v5 Batch Error:", err);
     return res.status(500).json({
