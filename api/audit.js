@@ -1,10 +1,8 @@
-// /api/audit.js — FINAL EEI v5 (standalone, no V4 dependency)
+// /api/audit.js — EEI v5 (standalone, single URL audit)
 
-import { tierFromScore } from "../shared/scoring.js";
+import { URL } from "url";
 
-/* -------------------------------------------------------
-   Helpers
-------------------------------------------------------- */
+/* ---------------- Helpers ---------------- */
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -33,9 +31,7 @@ function normalizeOrigin(req, res) {
   }
 }
 
-/* -------------------------------------------------------
-   V5 Weights
-------------------------------------------------------- */
+/* ---------------- V5 Weights & Tiers ---------------- */
 
 const V5_SIGNAL_WEIGHTS = {
   "Title Precision": 3,
@@ -52,7 +48,7 @@ const V5_SIGNAL_WEIGHTS = {
   "Internal Lattice Integrity": 20,
   "External Authority Signal": 15,
   "AI Crawl Fidelity": 10,
-  "Inference Efficiency": 15
+  "Inference Efficiency": 15,
 };
 
 const V5_TIER_MAP = {
@@ -70,13 +66,13 @@ const V5_TIER_MAP = {
   "Internal Lattice Integrity": "tier1",
   "External Authority Signal": "tier1",
   "AI Crawl Fidelity": "tier1",
-  "Inference Efficiency": "tier1"
+  "Inference Efficiency": "tier1",
 };
 
 const V5_TIER_LABELS = {
   tier1: "Entity comprehension & trust",
   tier2: "Structural data fidelity",
-  tier3: "Page-level hygiene"
+  tier3: "Page-level hygiene",
 };
 
 const TOTAL_V5_WEIGHT = Object.values(V5_SIGNAL_WEIGHTS).reduce(
@@ -84,108 +80,409 @@ const TOTAL_V5_WEIGHT = Object.values(V5_SIGNAL_WEIGHTS).reduce(
   0
 );
 
-/* -------------------------------------------------------
-   Minimal Standalone Crawler (V5 only)
-   Uses global fetch (Node 18 / Vercel)
-------------------------------------------------------- */
+/* --------- V5 Stage Mapping (local tierFromScore) --------- */
+
+function tierFromScore(score) {
+  if (score >= 80) {
+    return {
+      stage: "☀️ Sovereign Entity",
+      verb: "Maintain",
+      description:
+        "Self-propagating identity. Schema-dense and trusted across crawlers.",
+      coreFocus:
+        "Maintain parity, monitor crawl fidelity, and evolve schema depth.",
+    };
+  } else if (score >= 60) {
+    return {
+      stage: "🌕 Structured Entity",
+      verb: "Expand",
+      description:
+        "AI reconstructs identity reliably. Schema diversity and internal lattice aligned.",
+      coreFocus:
+        "Build graph authority, deepen relationships, expand structured coverage.",
+    };
+  } else if (score >= 40) {
+    return {
+      stage: "🌗 Visible Entity",
+      verb: "Clarify",
+      description:
+        "Recognized but inconsistent. Schema present but incomplete.",
+      coreFocus:
+        "Standardize structure, fix canonicals, and strengthen schema links.",
+    };
+  } else {
+    return {
+      stage: "🌑 Emergent Entity",
+      verb: "Define",
+      description:
+        "Early-stage identity forming. Schema sparse; AI relies on guesses.",
+      coreFocus:
+        "Clarify your signal. Add foundational meta + first JSON-LD.",
+    };
+  }
+}
+
+/* ---------------- Crawl + Parse ---------------- */
 
 async function crawlURL(url) {
-  const response = await fetch(url, {
+  const res = await fetch(url, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-eei/1.0; +https://exmxc.ai)"
-    }
+        "Mozilla/5.0 (compatible; exmxc-eei/1.0; +https://exmxc.ai)",
+      Accept: "text/html,application/xhtml+xml",
+    },
   });
 
-  if (!response.ok) {
-    throw new Error(`Upstream fetch failed with status ${response.status}`);
-  }
+  const html = await res.text();
+  const hostname = new URL(url).hostname.replace(/^www\./i, "");
 
-  const html = await response.text();
-
-  return {
-    url,
-    hostname: new URL(url).hostname,
-    html
-  };
+  return { url, hostname, html };
 }
 
-/* -------------------------------------------------------
-   Simple Signal Extractors (HTML → signal points)
-------------------------------------------------------- */
+function extractBetween(html, regex) {
+  const m = html.match(regex);
+  return m ? m[1].trim() : "";
+}
 
-function extractSignals(html) {
+function extractSignals(html, url) {
+  const u = new URL(url);
+  const originHost = u.hostname.replace(/^www\./i, "");
+
+  const title = extractBetween(/<title[^>]*>([^<]+)<\/title>/i, html);
+  const metaDesc =
+    extractBetween(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      html
+    ) ||
+    extractBetween(
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      html
+    );
+
+  const canonicalHref = extractBetween(
+    /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["'][^>]*>/i,
+    html
+  );
+
+  const faviconHref =
+    extractBetween(
+      /<link[^>]+rel=["']icon["'][^>]+href=["']([^"']+)["'][^>]*>/i,
+      html
+    ) ||
+    extractBetween(
+      /<link[^>]+rel=["']shortcut icon["'][^>]+href=["']([^"']+)["'][^>]*>/i,
+      html
+    );
+
+  const ogImage =
+    extractBetween(
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      html
+    ) || "";
+
+  const robots =
+    extractBetween(
+      /<meta[^>]+name=["']robots["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      html
+    ).toLowerCase() || "";
+
+  const aiPing = /img[^>]+src=["'][^"']*(ai-crawl-ping|crawl-ping)[^"']*["']/i.test(
+    html
+  );
+
+  // JSON-LD blocks (very simple parser)
+  const ldMatches = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const schemaBlocks = [];
+  for (const m of ldMatches) {
+    const raw = m[1].trim();
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) schemaBlocks.push(...parsed);
+      else schemaBlocks.push(parsed);
+    } catch {
+      // ignore bad JSON
+    }
+  }
+
+  const hasOrg = schemaBlocks.some((o) => {
+    const t = o["@type"];
+    if (!t) return false;
+    if (typeof t === "string") return t === "Organization";
+    if (Array.isArray(t)) return t.includes("Organization");
+    return false;
+  });
+
+  const hasBreadcrumb = schemaBlocks.some((o) => {
+    const t = o["@type"];
+    if (!t) return false;
+    if (typeof t === "string") return t === "BreadcrumbList";
+    if (Array.isArray(t)) return t.includes("BreadcrumbList");
+    return false;
+  });
+
+  const hasPerson = schemaBlocks.some((o) => {
+    const t = o["@type"];
+    if (!t) return false;
+    if (typeof t === "string") return t === "Person";
+    if (Array.isArray(t)) return t.includes("Person");
+    return false;
+  });
+
+  const metaAuthor = extractBetween(
+    /<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    html
+  );
+
+  // All hrefs
+  const hrefMatches = [
+    ...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>/gi),
+  ];
+  const hrefs = hrefMatches.map((m) => m[1]);
+
+  // Social links
+  const SOCIAL_HOSTS = [
+    "linkedin.com",
+    "instagram.com",
+    "youtube.com",
+    "x.com",
+    "twitter.com",
+    "facebook.com",
+    "threads.net",
+    "tiktok.com",
+    "wikipedia.org",
+    "github.com",
+  ];
+
+  const socialHosts = new Set();
+  const addHost = (h) => {
+    try {
+      const host = new URL(h, url).hostname.replace(/^www\./i, "");
+      if (SOCIAL_HOSTS.some((s) => host.endsWith(s))) {
+        socialHosts.add(host);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // from hrefs
+  hrefs.forEach(addHost);
+  // from sameAs in schema
+  schemaBlocks.forEach((o) => {
+    if (Array.isArray(o.sameAs)) o.sameAs.forEach(addHost);
+    else if (o.sameAs) addHost(o.sameAs);
+  });
+
+  // Internal vs external links
+  let totalLinks = 0;
+  let internal = 0;
+  const externalHosts = new Set();
+
+  for (const href of hrefs) {
+    try {
+      const linkUrl = new URL(href, url);
+      const host = linkUrl.hostname.replace(/^www\./i, "");
+      totalLinks++;
+      if (host === originHost) {
+        internal++;
+      } else {
+        externalHosts.add(host);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Content depth (rough)
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const wordCount = text ? text.split(" ").length : 0;
+
   const signals = [];
 
-  function get(tag, prop) {
-    const regex = new RegExp(`<${tag}[^>]*${prop}="([^"]+)"`, "i");
-    const m = html.match(regex);
-    return m ? m[1] : "";
+  /* ---- Title Precision ---- */
+  let titlePoints = 0;
+  if (title) {
+    const len = title.length;
+    const hasSep = / \| | - /.test(title);
+    if (len >= 30 && hasSep) titlePoints = 3;
+    else if (len >= 15) titlePoints = 2;
+    else titlePoints = 1;
   }
-
-  const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] || "";
-  const desc = get("meta", 'name="description"');
-  const canonical = get("link", 'rel="canonical"');
-
-  const hasOrg = html.includes('"@type":"Organization"');
-  const hasBreadcrumb = html.includes('"BreadcrumbList"');
-  const hasAuthor = html.includes('"@type":"Person"');
-
   signals.push({
     key: "Title Precision",
-    points: title ? 3 : 0,
-    max: 3
+    points: titlePoints,
+    max: 3,
+    notes: title ? "Present" : "Missing",
   });
 
+  /* ---- Meta Description Integrity ---- */
+  let mdPoints = 0;
+  if (metaDesc) {
+    const len = metaDesc.length;
+    if (len >= 120) mdPoints = 3;
+    else if (len >= 60) mdPoints = 2;
+    else mdPoints = 1;
+  }
   signals.push({
     key: "Meta Description Integrity",
-    points: desc ? 3 : 0,
-    max: 3
+    points: mdPoints,
+    max: 3,
+    notes: metaDesc ? "Present" : "Missing",
   });
 
+  /* ---- Canonical Clarity ---- */
+  let canPoints = 0;
+  if (canonicalHref) {
+    try {
+      const canUrl = new URL(canonicalHref, url);
+      const sameHost =
+        canUrl.hostname.replace(/^www\./i, "") === originHost &&
+        !/[?#]/.test(canUrl.href);
+      canPoints = sameHost ? 2 : 1;
+    } catch {
+      canPoints = 1;
+    }
+  }
   signals.push({
     key: "Canonical Clarity",
-    points: canonical ? 2 : 0,
-    max: 2
+    points: canPoints,
+    max: 2,
+    notes: canonicalHref ? "Present" : "Missing",
   });
 
+  /* ---- Brand & Technical Consistency ---- */
+  const brandPoints = faviconHref || ogImage ? 2 : 0;
+  signals.push({
+    key: "Brand & Technical Consistency",
+    points: brandPoints,
+    max: 2,
+    notes: faviconHref || ogImage ? "Branding present" : "Missing OG/favicon",
+  });
+
+  /* ---- Schema Presence & Validity ---- */
+  const schemaPoints =
+    schemaBlocks.length === 0
+      ? 0
+      : schemaBlocks.length === 1
+      ? 7
+      : 10;
   signals.push({
     key: "Schema Presence & Validity",
-    points: html.includes("@context") ? 10 : 0,
-    max: 10
+    points: schemaPoints,
+    max: 10,
+    notes:
+      schemaBlocks.length === 0
+        ? "No JSON-LD"
+        : `${schemaBlocks.length} JSON-LD block(s)`,
   });
 
+  /* ---- Organization Schema ---- */
+  let orgPoints = 0;
+  if (hasOrg) orgPoints = 8;
   signals.push({
     key: "Organization Schema",
-    points: hasOrg ? 8 : 0,
-    max: 8
+    points: orgPoints,
+    max: 8,
+    notes: hasOrg ? "Organization schema present" : "Missing",
   });
 
+  /* ---- Breadcrumb Schema ---- */
+  const crumbPoints = hasBreadcrumb ? 7 : 0;
   signals.push({
     key: "Breadcrumb Schema",
-    points: hasBreadcrumb ? 7 : 0,
-    max: 7
+    points: crumbPoints,
+    max: 7,
+    notes: hasBreadcrumb ? "BreadcrumbList present" : "Missing",
   });
 
+  /* ---- Author/Person Schema ---- */
+  let authorPoints = 0;
+  if (hasPerson) authorPoints = 5;
+  else if (metaAuthor) authorPoints = 3;
   signals.push({
     key: "Author/Person Schema",
-    points: hasAuthor ? 5 : 0,
-    max: 5
+    points: authorPoints,
+    max: 5,
+    notes: hasPerson ? "Person schema" : metaAuthor ? "Meta author" : "Missing",
   });
 
-  // Basic placeholders for now
-  signals.push({ key: "Social Entity Links", points: 0, max: 5 });
-  signals.push({ key: "Internal Lattice Integrity", points: 0, max: 20 });
-  signals.push({ key: "External Authority Signal", points: 0, max: 15 });
-  signals.push({ key: "AI Crawl Fidelity", points: 5, max: 10 });
-  signals.push({ key: "Inference Efficiency", points: 10, max: 15 });
+  /* ---- Social Entity Links ---- */
+  const socialCount = socialHosts.size;
+  let socialPoints = 0;
+  if (socialCount >= 3) socialPoints = 5;
+  else if (socialCount >= 1) socialPoints = 3;
+  signals.push({
+    key: "Social Entity Links",
+    points: socialPoints,
+    max: 5,
+    notes:
+      socialCount === 0
+        ? "No social graph"
+        : `${socialCount} distinct social host(s)`,
+  });
 
-  return signals;
+  /* ---- Internal Lattice Integrity ---- */
+  let latticePoints = 0;
+  const ratio = totalLinks ? internal / totalLinks : 0;
+  if (internal >= 10 && ratio >= 0.5) latticePoints = 20;
+  else if (internal >= 3 && ratio >= 0.2) latticePoints = 10;
+  signals.push({
+    key: "Internal Lattice Integrity",
+    points: latticePoints,
+    max: 20,
+    notes: `${internal} internal / ${totalLinks} total`,
+  });
+
+  /* ---- External Authority Signal ---- */
+  const extCount = externalHosts.size;
+  const extPoints = extCount >= 1 ? 15 : 0;
+  signals.push({
+    key: "External Authority Signal",
+    points: extPoints,
+    max: 15,
+    notes:
+      extCount === 0
+        ? "No outbound hosts"
+        : `${extCount} distinct outbound host(s)`,
+  });
+
+  /* ---- AI Crawl Fidelity ---- */
+  let aiPoints = 0;
+  const allowIndex = !robots || /index/.test(robots);
+  if (!allowIndex) aiPoints = 0;
+  else if (aiPing) aiPoints = 10;
+  else aiPoints = 6;
+  signals.push({
+    key: "AI Crawl Fidelity",
+    points: aiPoints,
+    max: 10,
+    notes: !allowIndex
+      ? "Robots blocking"
+      : aiPing
+      ? "Explicit AI crawl ping"
+      : "Indexable",
+  });
+
+  /* ---- Inference Efficiency (content depth) ---- */
+  let infPoints = 0;
+  if (wordCount >= 1200) infPoints = 15;
+  else if (wordCount >= 300) infPoints = 8;
+  signals.push({
+    key: "Inference Efficiency",
+    points: infPoints,
+    max: 15,
+    notes: `${wordCount} words`,
+  });
+
+  return { signals, meta: { title, metaDesc, canonicalHref, wordCount } };
 }
 
-/* -------------------------------------------------------
-   MAIN HANDLER — FINAL EEI v5
-------------------------------------------------------- */
+/* ---------------- Main Handler ---------------- */
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -198,25 +495,29 @@ export default async function handler(req, res) {
 
   try {
     const input = req.query?.url;
-    if (!input) {
-      return res.status(400).json({ error: "Missing URL" });
+    if (!input || typeof input !== "string" || !input.trim()) {
+      return res.status(400).json({ success: false, error: "Missing URL" });
     }
 
-    const url = input.startsWith("http") ? input : `https://${input}`;
+    const normalizedUrl = input.startsWith("http")
+      ? input
+      : `https://${input}`;
 
-    const crawled = await crawlURL(url);
-    const signals = extractSignals(crawled.html);
+    const crawled = await crawlURL(normalizedUrl);
+    const { signals, meta } = extractSignals(crawled.html, normalizedUrl);
 
     const signalsByKey = {};
-    signals.forEach((s) => (signalsByKey[s.key] = s));
+    for (const s of signals) {
+      if (s && s.key) signalsByKey[s.key] = s;
+    }
 
     let total = 0;
     const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
     const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const [key, weight] of Object.entries(V5_SIGNAL_WEIGHTS)) {
-      const s = signalsByKey[key];
-      const strength = s?.max ? (s.points / s.max) : 0;
+      const sig = signalsByKey[key];
+      const strength = sig?.max ? clamp(sig.points / sig.max, 0, 1) : 0;
       const contrib = strength * weight;
 
       total += contrib;
@@ -228,34 +529,58 @@ export default async function handler(req, res) {
 
     const scale = 100 / TOTAL_V5_WEIGHT;
     const v5Score = clamp(Math.round(total * scale), 0, 100);
-
     const v5Tier = tierFromScore(v5Score);
+
+    const v5Tiers = {
+      tier1: {
+        label: V5_TIER_LABELS.tier1,
+        raw: tierRaw.tier1,
+        maxWeight: tierMax.tier1,
+        normalized: tierMax.tier1
+          ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
+          : 0,
+      },
+      tier2: {
+        label: V5_TIER_LABELS.tier2,
+        raw: tierRaw.tier2,
+        maxWeight: tierMax.tier2,
+        normalized: tierMax.tier2
+          ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
+          : 0,
+      },
+      tier3: {
+        label: V5_TIER_LABELS.tier3,
+        raw: tierRaw.tier3,
+        maxWeight: tierMax.tier3,
+        normalized: tierMax.tier3
+          ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
+          : 0,
+      },
+    };
 
     return res.status(200).json({
       success: true,
       mode: "EEI v5 (standalone)",
-      url,
+      url: normalizedUrl,
       hostname: crawled.hostname,
       v5Score,
       v5Stage: v5Tier.stage,
       v5Verb: v5Tier.verb,
       v5Description: v5Tier.description,
       v5Focus: v5Tier.coreFocus,
+      v5Tiers,
       signals,
+      meta,
       timestamp: new Date().toISOString(),
-
-      // 🔁 Backwards-compat for existing UI (entityScore, etc.)
-      entityScore: v5Score,
-      entityStage: v5Tier.stage,
-      entityVerb: v5Tier.verb,
-      entityDescription: v5Tier.description,
-      entityFocus: v5Tier.coreFocus
+      // simple flag so UI can show mode if needed
+      renderMode: "static",
     });
   } catch (err) {
     console.error("EEI v5 error:", err);
     return res.status(500).json({
+      success: false,
       error: "Internal EEI v5 error",
-      details: err.message || String(err)
+      details: err?.message || String(err),
     });
   }
 }
