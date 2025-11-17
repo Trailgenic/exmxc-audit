@@ -1,60 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>exmxc — EEI Audit</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EEI Single URL Audit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 
-<body class="p-8 max-w-3xl mx-auto font-sans">
+    <style>
+      body {
+        background-color: #f9fafb;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+      .json-box {
+        background-color: #0f172a;
+        color: #e2e8f0;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
 
-  <h1 class="text-3xl font-bold mb-4">EEI Single URL Audit</h1>
+  <body class="max-w-5xl mx-auto py-10 px-5">
+    <h1 class="text-3xl font-bold text-gray-900 text-center mb-4">
+      EEI Single URL Audit
+    </h1>
 
-  <!-- Input -->
-  <div class="flex gap-2 mb-4">
-    <input
-      id="urlInput"
-      type="text"
-      placeholder="Enter URL…"
-      class="border p-2 flex-1 rounded"
-    />
-    <button
-      id="runButton"
-      class="bg-black text-white px-4 py-2 rounded"
-    >
-      Run Audit
-    </button>
-  </div>
-
-  <!-- Score -->
-  <div class="mb-4">
-    <div id="scoreDisplay" class="font-semibold text-lg mb-1">EEI: —</div>
-    <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-      <div id="scoreBar" class="h-3 bg-green-500" style="width:0%;"></div>
+    <!-- Input -->
+    <div class="flex justify-center gap-2 mb-6">
+      <input
+        id="urlInput"
+        type="text"
+        placeholder="example.com"
+        class="border border-gray-300 rounded-lg px-3 py-2 w-2/3 text-sm focus:ring-2 focus:ring-black"
+      />
+      <button
+        id="runButton"
+        class="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+      >
+        Run Audit
+      </button>
     </div>
-  </div>
 
-  <!-- Stage + Verb -->
-  <div class="my-4">
-    <div id="entityStage" class="text-xl font-bold"></div>
-    <div id="entityVerb" class="text-gray-600"></div>
-  </div>
+    <!-- Score Box -->
+    <div
+      class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-10 text-center shadow-sm"
+    >
+      <div id="scoreDisplay" class="text-xl font-semibold mb-2">
+        EEI: -- / 100
+      </div>
 
-  <!-- Breakdown -->
-  <h2 class="text-2xl font-semibold mt-6 mb-2">Signals</h2>
-  <div id="signalBreakdown" class="space-y-4"></div>
+      <div class="relative w-full h-3 bg-gray-200 rounded-full overflow-hidden mb-2">
+        <div id="scoreBar" class="h-3 w-0 rounded-full"></div>
+      </div>
 
-  <!-- Raw JSON -->
-  <h2 class="text-xl font-semibold mt-6 mb-2">Raw JSON</h2>
-  <pre
-    id="result"
-    class="bg-gray-900 text-green-300 p-4 rounded max-h-[500px] overflow-auto"
-  >{}</pre>
+      <div id="entityStage" class="text-lg font-semibold text-gray-900"></div>
+      <div id="entityVerb" class="text-sm text-gray-700 mt-1"></div>
+    </div>
 
-  <!-- Script -->
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
+    <!-- Signals -->
+    <h2 class="text-xl font-bold text-gray-900 text-center mb-4">Signals</h2>
+    <div id="signalBreakdown" class="mb-10 text-sm text-gray-800"></div>
+
+    <!-- Raw JSON -->
+    <h2 class="text-xl font-bold text-gray-900 text-center mt-10 mb-2">
+      Raw JSON
+    </h2>
+    <pre id="result" class="json-box">// Awaiting input...</pre>
+
+    <footer class="text-center text-xs text-gray-500 mt-10">
+      Powered by <span class="font-semibold text-black">exmxc.ai</span>
+    </footer>
+
+    <!-- SCRIPT -->
+    <script>
       const runButton = document.getElementById("runButton");
       const resultEl = document.getElementById("result");
       const scoreBar = document.getElementById("scoreBar");
@@ -67,62 +89,89 @@
         const input = document.getElementById("urlInput").value.trim();
         if (!input) return alert("Please enter a URL.");
 
-        resultEl.textContent = "Loading…";
+        resultEl.textContent = "Loading...";
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
 
           const res = await fetch(
-            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
-            { headers: { "x-exmxc-key": "exmxc-internal" } }
+            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(
+              url
+            )}`,
+            {
+              headers: { "x-exmxc-key": "exmxc-internal" },
+            }
           );
 
           const data = await res.json();
 
-          const score = data.v5Score ?? data.entityScore ?? 0;
-
+          // Score
+          const score = data.entityScore ?? 0;
           scoreDisplay.textContent = `EEI: ${score} / 100`;
           scoreBar.style.width = `${score}%`;
+          scoreBar.style.background =
+            "linear-gradient(90deg, #dc2626 0%, #facc15 40%, #22c55e 80%)";
 
-          const stage = data.v5Stage || data.entityStage || "";
-          const verb = data.v5Verb || data.entityVerb || "";
-          const desc = data.v5Description || data.entityDescription || "";
+          // Stage + Verb
+          entityStage.textContent = data.entityStage || "";
+          entityVerb.textContent = data.entityVerb
+            ? `${data.entityVerb} — ${data.entityDescription}`
+            : "";
 
-          entityStage.textContent = stage;
-          entityVerb.textContent = verb ? `${verb} — ${desc}` : "";
-
-          // Signal breakdown
+          /* ------------------------------------
+             SIGNAL BREAKDOWN (full gradient bars)
+          ------------------------------------ */
           signalBreakdown.innerHTML = "";
           if (data.signals && data.signals.length > 0) {
             data.signals.forEach((sig) => {
-              const category = sig.key || sig.category || "Signal";
+              const category = sig.key || "Signal";
               const points = sig.points || 0;
               const max = sig.max || 10;
               const percent = Math.round((points / max) * 100);
+              const notes = sig.notes
+                ? `<div class="text-xs text-gray-500 mt-1">${sig.notes}</div>`
+                : "";
 
-              const div = document.createElement("div");
-              div.innerHTML = `
-                <div class="flex justify-between items-center">
+              const row = document.createElement("div");
+              row.className = "mb-4";
+
+              row.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
                   <span class="font-medium">${category}</span>
                   <span>${points} / ${max}</span>
                 </div>
-                <div class="w-full h-2 bg-gray-200 rounded-full mt-1 mb-2 overflow-hidden">
-                  <div style="width:${percent}%;"
-                       class="h-2 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 rounded-full">
-                  </div>
+
+                <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    class="h-3 rounded-full"
+                    style="
+                      width:${percent}%;
+                      background: linear-gradient(
+                        90deg,
+                        #dc2626 0%,
+                        #facc15 40%,
+                        #22c55e 80%
+                      );
+                    "
+                  ></div>
                 </div>
+
+                ${notes}
               `;
-              signalBreakdown.appendChild(div);
+
+              signalBreakdown.appendChild(row);
             });
           }
 
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
-          resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
+          resultEl.textContent = JSON.stringify(
+            { error: err.message },
+            null,
+            2
+          );
         }
       });
-    });
-  </script>
-
-</body>
+    </script>
+  </body>
 </html>
