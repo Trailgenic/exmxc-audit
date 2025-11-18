@@ -174,22 +174,23 @@
       const batchStatus = document.getElementById("batchStatus");
       const resultsTableBody = document.getElementById("resultsTableBody");
 
-      /* ===========================================
-         LOAD VERTICALS FROM verticals.json
-      ============================================ */
+      /* ================================
+         LOAD VERTICALS FROM /api/verticals
+      ================================== */
       async function loadDatasets() {
         try {
-          const res = await fetch("/verticals.json");
-          const data = await res.json();
+          const res = await fetch("/api/verticals");
+          const api = await res.json();
 
-          datasetSelect.innerHTML = ""; // clear
+          datasetSelect.innerHTML = ""; 
 
-          data.datasets.forEach((v) => {
+          api.verticals.forEach(v => {
             const opt = document.createElement("option");
-            opt.value = v.key;
-            opt.textContent = v.label;
+            opt.value = v.value; 
+            opt.textContent = v.label || v.value;
             datasetSelect.appendChild(opt);
           });
+
         } catch (e) {
           datasetSelect.innerHTML =
             "<option value='core-web'>core-web (fallback)</option>";
