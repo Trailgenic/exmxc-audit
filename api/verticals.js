@@ -1,53 +1,29 @@
-// verticals.js — Auto-generate vertical list from /data directory
+// /api/verticals.js — Return the generated vertical list
 import fs from "fs/promises";
 import path from "path";
 
-async function buildVerticals() {
-  const dataDir = path.join(process.cwd(), "data");
-
-  const files = await fs.readdir(dataDir);
-
-  // Filter only dataset json files
-  const datasetFiles = files.filter((file) => {
-    // ignore drift-history folder
-    if (file === "drift-history") return false;
-
-    // ignore predictive model files
-    if (file.includes("predictive")) return false;
-
-    // ignore anything not JSON
-    if (!file.endsWith(".json")) return false;
-
-    // ignore verticals.json itself to avoid recursion
-    if (file === "verticals.json") return false;
-
-    return true;
-  });
-
-  const verticals = {};
-
-  for (const file of datasetFiles) {
-    const filePath = path.join(dataDir, file);
+export default async function handler(req, res) {
+  try {
+    const filePath = path.join(process.cwd(), "data", "verticals.json");
     const raw = await fs.readFile(filePath, "utf8");
-    const json = JSON.parse(raw);
+    const verticals = JSON.parse(raw);
 
-    const verticalKey = file.replace(".json", "");
+    // Convert into dropdown-friendly list
+    const list = Object.keys(verticals).map((key) => ({
+      value: key,
+      label: verticals[key].name || key
+    }));
 
-    verticals[verticalKey] = {
-      name: json.vertical || verticalKey,
-      file: file,
-      count: json.urls?.length || 0
-    };
+    res.status(200).json({
+      success: true,
+      verticals: list
+    });
+
+  } catch (err) {
+    console.error("API /verticals error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to load verticals"
+    });
   }
-
-  // write output
-  const outPath = path.join(dataDir, "verticals.json");
-  await fs.writeFile(outPath, JSON.stringify(verticals, null, 2));
-
-  console.log("✓ verticals.json updated:");
-  console.log(verticals);
 }
-
-buildVerticals().catch((err) => {
-  console.error("Error building verticals.json:", err);
-});
