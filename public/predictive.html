@@ -95,17 +95,20 @@
     const bottom5List = document.getElementById("bottom5");
     const notesList = document.getElementById("notesList");
 
-    // Load verticals.json dynamically
+    /* ================================
+       LOAD VERTICALS FROM /api/verticals
+    =================================== */
     async function loadVerticals() {
       try {
-        const res = await fetch("/verticals.json");
-        const data = await res.json();
+        const res = await fetch("/api/verticals");
+        const api = await res.json();
 
         datasetSelect.innerHTML = "";
-        data.verticals.forEach(v => {
+
+        api.verticals.forEach(v => {
           const opt = document.createElement("option");
-          opt.value = v.key;
-          opt.textContent = v.label;
+          opt.value = v.value;     // "core-web", "tg-strategic", etc.
+          opt.textContent = v.label; // Human readable label
           datasetSelect.appendChild(opt);
         });
 
@@ -118,7 +121,9 @@
     loadVerticals();
 
 
-    // Run predictive audit
+    /* ================================
+       RUN PREDICTIVE AUDIT
+    =================================== */
     runBtn.addEventListener("click", async () => {
       const dataset = datasetSelect.value;
       runBtn.disabled = true;
@@ -126,7 +131,7 @@
       statusEl.textContent = "Running batch…";
 
       try {
-        // 1) Run batch audit
+        // 1) Batch audit
         const batchRes = await fetch(`/api/batch-run?dataset=${dataset}`);
         const batchData = await batchRes.json();
 
@@ -166,6 +171,9 @@
     });
 
 
+    /* ================================
+       RENDER RESULTS
+    =================================== */
     function renderResults(data) {
       resultsDiv.classList.remove("hidden");
 
