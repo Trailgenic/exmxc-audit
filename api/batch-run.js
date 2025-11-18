@@ -83,15 +83,27 @@ export default async function handler(req, res) {
       scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
       (scored.length || 1);
 
-    return res.status(200).json({
-      success: true,
-      vertical: dataset.vertical || safeDataset,
-      totalUrls: urls.length,
-      audited: scored.length,
-      avgEntityScore: Number(avg.toFixed(2)),
-      results,
-      timestamp: new Date().toISOString(),
-    });
+    import { saveDriftSnapshot } from "../lib/drift-db.js";
+
+// ...
+
+const payload = {
+  vertical: dataset.vertical || safeDataset,
+  totalUrls: urls.length,
+  audited: scored.length,
+  avgEntityScore: Number(avg.toFixed(2)),
+  results,
+  timestamp: new Date().toISOString()
+};
+
+// store drift snapshot
+await saveDriftSnapshot(payload.vertical, payload);
+
+return res.status(200).json({
+  success: true,
+  ...payload
+});
+
   } catch (err) {
     return res.status(500).json({
       error: "Batch run failed",
