@@ -1,58 +1,53 @@
-import fs from "fs";
+// verticals.js — Auto-generate vertical list from /data directory
+import fs from "fs/promises";
 import path from "path";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+async function buildVerticals() {
+  const dataDir = path.join(process.cwd(), "data");
 
-// Load the list of vertical names
-export function getVerticalList() {
-  const verticalsPath = path.join(DATA_DIR, "verticals.json");
-  const raw = fs.readFileSync(verticalsPath, "utf-8");
-  const parsed = JSON.parse(raw);
-  return parsed.verticals || [];
-}
+  const files = await fs.readdir(dataDir);
 
-// Load all vertical definitions
-export function getAllVerticals() {
-  const verticalNames = getVerticalList();
-  const verticals = {};
+  // Filter only dataset json files
+  const datasetFiles = files.filter((file) => {
+    // ignore drift-history folder
+    if (file === "drift-history") return false;
 
-  verticalNames.forEach((v) => {
-    const filePath = path.join(DATA_DIR, `${v}.json`);
+    // ignore predictive model files
+    if (file.includes("predictive")) return false;
 
-    // Skip non-existent definitions
-    if (!fs.existsSync(filePath)) {
-      console.warn(`⚠️ Missing vertical JSON: ${v}.json`);
-      return;
-    }
+    // ignore anything not JSON
+    if (!file.endsWith(".json")) return false;
 
-    // Skip known ignored files
-    if (v === "drift-history") return;
+    // ignore verticals.json itself to avoid recursion
+    if (file === "verticals.json") return false;
 
-    try {
-      const raw = fs.readFileSync(filePath, "utf-8");
-      verticals[v] = JSON.parse(raw);
-    } catch (err) {
-      console.error(`Error loading vertical ${v}:`, err);
-    }
+    return true;
   });
 
-  return verticals;
-}
+  const verticals = {};
 
-// Helper to load a single vertical by name
-export function getVertical(name) {
-  const filePath = path.join(DATA_DIR, `${name}.json`);
+  for (const file of datasetFiles) {
+    const filePath = path.join(dataDir, file);
+    const raw = await fs.readFile(filePath, "utf8");
+    const json = JSON.parse(raw);
 
-  if (!fs.existsSync(filePath)) {
-    console.warn(`⚠️ Vertical not found: ${name}`);
-    return null;
+    const verticalKey = file.replace(".json", "");
+
+    verticals[verticalKey] = {
+      name: json.vertical || verticalKey,
+      file: file,
+      count: json.urls?.length || 0
+    };
   }
 
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error(`Error loading ${name}:`, err);
-    return null;
-  }
+  // write output
+  const outPath = path.join(dataDir, "verticals.json");
+  await fs.writeFile(outPath, JSON.stringify(verticals, null, 2));
+
+  console.log("✓ verticals.json updated:");
+  console.log(verticals);
 }
+
+buildVerticals().catch((err) => {
+  console.error("Error building verticals.json:", err);
+});
