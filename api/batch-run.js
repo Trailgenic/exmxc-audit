@@ -1,7 +1,9 @@
 // /api/batch-run.js — EEI v5 Unified Batch Endpoint (Dynamic Dataset)
+
 import fs from "fs/promises";
 import path from "path";
 import auditHandler from "./audit.js";
+import { saveDriftSnapshot } from "../lib/drift-db.js";   // ✅ Correct placement
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -83,26 +85,30 @@ export default async function handler(req, res) {
       scored.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
       (scored.length || 1);
 
-    import { saveDriftSnapshot } from "../lib/drift-db.js";
+    // ---------------------------
+    // 5) Construct payload
+    // ---------------------------
+    const payload = {
+      vertical: dataset.vertical || safeDataset,
+      totalUrls: urls.length,
+      audited: scored.length,
+      avgEntityScore: Number(avg.toFixed(2)),
+      results,
+      timestamp: new Date().toISOString(),
+    };
 
-// ...
+    // ---------------------------
+    // 6) Save drift snapshot (Upstash KV)
+    // ---------------------------
+    await saveDriftSnapshot(payload.vertical, payload);
 
-const payload = {
-  vertical: dataset.vertical || safeDataset,
-  totalUrls: urls.length,
-  audited: scored.length,
-  avgEntityScore: Number(avg.toFixed(2)),
-  results,
-  timestamp: new Date().toISOString()
-};
-
-// store drift snapshot
-await saveDriftSnapshot(payload.vertical, payload);
-
-return res.status(200).json({
-  success: true,
-  ...payload
-});
+    // ---------------------------
+    // 7) Return result
+    // ---------------------------
+    return res.status(200).json({
+      success: true,
+      ...payload,
+    });
 
   } catch (err) {
     return res.status(500).json({
