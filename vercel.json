@@ -5,14 +5,12 @@
     { "src": "public/**/*", "use": "@vercel/static" }
   ],
   "routes": [
-    /* API ROUTES */
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
     { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
     { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
     { "src": "^/api/verticals$", "dest": "/api/verticals.js" },
 
-    /* STATIC HTML PAGES */
     { "src": "^/batch$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
@@ -25,7 +23,6 @@
 
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
 
-    /* CATCH-ALL (MUST BE LAST) */
     { "src": "^/(.*)$", "dest": "/public/index.html" }
   ]
 }
