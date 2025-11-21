@@ -1,19 +1,52 @@
-// /api/core-scan.js — EEI Crawl v2 (Rendered + Static Fallback + Schema Normalization)
+// /api/core-scan.js — EEI Crawl v2.1 (Scaffolding Upgrade for 45% AI-Crawl Realism)
+
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-/** Lightweight helper to detect plain objects */
+/* ===============================
+   CRAWL CONFIG (Fortress v1.0)
+   =============================== */
+export const CRAWL_CONFIG = {
+  USER_AGENT:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (exmxc-ai-eei-crawler)",
+
+  TIMEOUT_MS: 12000,
+  RENDER_TIMEOUT_MS: 15000,
+  NETWORK_IDLE_MS: 2000,
+
+  RETRIES: 2,
+  RETRY_DELAY_MS: 250,
+
+  MAX_REDIRECTS: 5,
+
+  RENDER_STRATEGY: "prefer-rendered",
+  // prefer-rendered → rendered first, fallback to static
+  // static-only     → skip Playwright
+  // rendered-only   → no fallback
+
+  COLLECT_LINK_COUNTS: true,
+  COLLECT_SCRIPT_COUNTS: true,
+  COLLECT_SCHEMA_BLOCKS: true,
+
+  HTML_SIZE_LIMIT: 2_000_000, // ~2MB
+};
+
+/* ===============================
+   HELPERS
+   =============================== */
+
 function isPlainObject(val) {
   return val && typeof val === "object" && !Array.isArray(val);
 }
 
-/**
- * Parse and normalize JSON-LD blocks:
- * - Accepts an array of raw <script type="application/ld+json"> strings
- * - Parses JSON
- * - Flattens @graph containers
- * - Merges objects with the same @id
- */
+/** Sleep helper for retry logic */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* =====================================================
+   JSON-LD PARSER (unchanged from your existing version)
+   ===================================================== */
 function parseAndNormalizeJsonLd(ldTexts = []) {
   const allNodes = [];
 
@@ -28,7 +61,6 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 
     const pushNode = (node, rootCtx) => {
       if (!node || typeof node !== "object") return;
-      // inherit @context if missing but present at root
       if (rootCtx && !node["@context"]) {
         node["@context"] = rootCtx;
       }
@@ -94,7 +126,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 
   const mergedNodes = [...byId.values(), ...loose];
 
-  // Compute latestISO from any date fields
+  // Compute latestISO
   let latestISO = null;
   const dateKeys = [
     "dateModified",
@@ -122,16 +154,26 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
   return { schemaObjects: mergedNodes, latestISO };
 }
 
-/**
- * STATIC crawl: axios + cheerio.
- * Used for:
- *   - mode: 'static'
- *   - fallback when rendered mode fails
- */
+/* =====================================================
+   STATIC CRAWL (unchanged logic, scaffolding added)
+   ===================================================== */
 async function staticCrawl({ url, timeoutMs, userAgent }) {
+  const result = {
+    _type: "static",
+    html: "",
+    status: null,
+    title: "",
+    description: "",
+    canonicalHref: url.replace(/\/$/, ""),
+    pageLinks: [],
+    ldTexts: [],
+    schemaObjects: [],
+    latestISO: null,
+  };
+
   const resp = await axios.get(url, {
     timeout: timeoutMs,
-    maxRedirects: 5,
+    maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
       "User-Agent": userAgent,
       Accept: "text/html,application/xhtml+xml",
@@ -139,79 +181,77 @@ async function staticCrawl({ url, timeoutMs, userAgent }) {
     validateStatus: (s) => s >= 200 && s < 400,
   });
 
-  const status = resp.status || 200;
-  const html = resp.data || "";
-  const $ = cheerio.load(html);
+  result.status = resp.status || 200;
+  result.html = resp.data || "";
 
-  const title = ($("title").first().text() || "").trim();
-  const description =
+  const $ = cheerio.load(result.html);
+
+  result.title = ($("title").first().text() || "").trim();
+  result.description =
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
     "";
-  const canonicalHref =
+  result.canonicalHref =
     $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, "");
 
-  const pageLinks = $("a[href]")
+  result.pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
-  const ldTexts = $("script[type='application/ld+json']")
+  result.ldTexts = $("script[type='application/ld+json']")
     .map((_, el) => $(el).contents().text())
     .get();
 
-  const { schemaObjects, latestISO } = parseAndNormalizeJsonLd(ldTexts);
+  const parsed = parseAndNormalizeJsonLd(result.ldTexts);
+  result.schemaObjects = parsed.schemaObjects;
+  result.latestISO = parsed.latestISO;
 
-  return {
-    mode: "static",
-    rendered: false,
-    status,
-    html,
-    title,
-    description,
-    canonicalHref,
-    pageLinks,
-    schemaObjects,
-    latestISO,
-    renderError: null,
-    fallbackFromRendered: false,
-  };
+  return result;
 }
 
-/**
- * RENDERED crawl: Playwright-based (AI-like DOM, JS executed).
- * If anything fails (import, launch, navigation, etc.), caller can fallback.
- */
+/* =====================================================
+   RENDERED CRAWL (unchanged logic, scaffolding added)
+   ===================================================== */
 async function renderedCrawl({ url, timeoutMs, userAgent }) {
+  const result = {
+    _type: "rendered",
+    html: "",
+    status: null,
+    title: "",
+    description: "",
+    canonicalHref: url.replace(/\/$/, ""),
+    pageLinks: [],
+    ldTexts: [],
+    schemaObjects: [],
+    latestISO: null,
+  };
+
   let chromium;
   try {
-    // dynamic import so project can run without Playwright during setup
     const pw = await import("playwright-core");
     chromium = pw.chromium;
   } catch (err) {
     throw new Error(
-      `Playwright not available (install 'playwright-core'): ${err.message || String(
-        err
-      )}`
+      `Playwright not available: ${err.message || String(err)}`
     );
   }
 
   const browser = await chromium.launch({ headless: true });
+
   try {
-    const page = await browser.newPage({
-      userAgent,
-    });
+    const page = await browser.newPage({ userAgent });
 
     await page.goto(url, {
       waitUntil: "networkidle",
       timeout: timeoutMs,
     });
 
-    const status = page.response()?.status() || 200;
-    const html = await page.content();
+    result.status = page.response()?.status() || 200;
+    result.html = await page.content();
 
-    const title = (await page.title()) || "";
-    const description =
+    result.title = ((await page.title()) || "").trim();
+    result.description =
       (await page
         .$eval(
           'meta[name="description"], meta[property="og:description"]',
@@ -219,120 +259,163 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
         )
         .catch(() => "")) || "";
 
-    const canonicalHref =
+    result.canonicalHref =
       (await page
         .$eval('link[rel="canonical"]', (el) => el.getAttribute("href") || "")
         .catch(() => "")) || url.replace(/\/$/, "");
 
-    const pageLinks =
+    result.pageLinks =
       (await page.$$eval("a[href]", (nodes) =>
-        nodes
-          .map((n) => n.getAttribute("href"))
-          .filter(Boolean)
+        nodes.map((n) => n.getAttribute("href")).filter(Boolean)
       )) || [];
 
-    const ldTexts =
+    result.ldTexts =
       (await page.$$eval(
         'script[type="application/ld+json"]',
-        (nodes) =>
-          nodes.map((n) => n.textContent || n.innerText || "").filter(Boolean)
+        (nodes) => nodes.map((n) => n.textContent || "").filter(Boolean)
       )) || [];
 
-    const { schemaObjects, latestISO } = parseAndNormalizeJsonLd(ldTexts);
+    const parsed = parseAndNormalizeJsonLd(result.ldTexts);
+    result.schemaObjects = parsed.schemaObjects;
+    result.latestISO = parsed.latestISO;
 
-    return {
-      mode: "rendered",
-      rendered: true,
-      status,
-      html,
-      title: title.trim(),
-      description: description.trim(),
-      canonicalHref,
-      pageLinks,
-      schemaObjects,
-      latestISO,
-      renderError: null,
-      fallbackFromRendered: false,
-    };
+    return result;
   } finally {
     await browser.close();
   }
 }
 
-/**
- * Public API: crawlPage
- *
- * - Tries rendered mode first (if requested)
- * - Falls back to static crawl if rendered fails
- * - Always returns a normalized object for audit.js
- */
+/* =====================================================
+   NORMALIZER — guaranteed consistent response
+   ===================================================== */
+function normalizeCrawlResult({
+  url,
+  mode,
+  rendered,
+  error,
+  fallbackFromRendered,
+  renderError,
+  internalResult,
+  diagnostics,
+}) {
+  const r = internalResult || {};
+
+  return {
+    url,
+    mode,
+    rendered,
+    fallbackFromRendered: !!fallbackFromRendered,
+    status: r.status || null,
+    error: error || null,
+    renderError: renderError || null,
+
+    html: r.html || "",
+    title: r.title || "",
+    description: r.description || "",
+    canonicalHref: r.canonicalHref || url.replace(/\/$/, ""),
+    pageLinks: Array.isArray(r.pageLinks) ? r.pageLinks : [],
+    schemaObjects: Array.isArray(r.schemaObjects) ? r.schemaObjects : [],
+    latestISO: r.latestISO || null,
+
+    // Future-proof container for phase A.2 (counts, block detection, redirect chain)
+    diagnostics: diagnostics || {},
+  };
+}
+
+/* =====================================================
+   PUBLIC: crawlPage (scaffolding)
+   ===================================================== */
 export async function crawlPage({
   url,
   mode = "rendered",
-  timeoutMs = 20000,
-  userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.0 Safari/537.36",
+  timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
+  userAgent = CRAWL_CONFIG.USER_AGENT,
 }) {
-  const baseResult = {
-    url,
-    mode,
-    rendered: false,
-    status: null,
-    html: "",
-    title: "",
-    description: "",
-    canonicalHref: url.replace(/\/$/, ""),
-    pageLinks: [],
-    schemaObjects: [],
-    latestISO: null,
-    error: null,
-    renderError: null,
-    fallbackFromRendered: false,
-  };
+  let diagnostics = {};
+  let internalResult = null;
 
-  // If explicit static mode requested → no rendered attempt
-  if (mode === "static") {
+  // ---- Static-only mode ----
+  if (mode === "static" || CRAWL_CONFIG.RENDER_STRATEGY === "static-only") {
     try {
-      const staticResult = await staticCrawl({ url, timeoutMs, userAgent });
-      return { ...baseResult, ...staticResult, mode: "static" };
-    } catch (err) {
-      return {
-        ...baseResult,
+      internalResult = await staticCrawl({
+        url,
+        timeoutMs,
+        userAgent,
+      });
+      return normalizeCrawlResult({
+        url,
         mode: "static",
-        error:
-          err?.message ||
-          "Static crawl failed (network, timeout, or blocked request)",
-      };
+        rendered: false,
+        internalResult,
+        diagnostics,
+      });
+    } catch (err) {
+      return normalizeCrawlResult({
+        url,
+        mode: "static",
+        rendered: false,
+        error: err?.message || "Static crawl failed",
+        diagnostics,
+      });
     }
   }
 
-  // Default: rendered-first with static fallback
+  // ---- Rendered-first strategy ----
   try {
-    const renderedResult = await renderedCrawl({ url, timeoutMs, userAgent });
-    return { ...baseResult, ...renderedResult, mode: "rendered" };
+    internalResult = await renderedCrawl({
+      url,
+      timeoutMs: CRAWL_CONFIG.RENDER_TIMEOUT_MS,
+      userAgent,
+    });
+
+    return normalizeCrawlResult({
+      url,
+      mode: "rendered",
+      rendered: true,
+      internalResult,
+      diagnostics,
+    });
   } catch (renderErr) {
-    // fallback to static
-    let staticResult;
+    // If rendered-only mode → no fallback
+    if (CRAWL_CONFIG.RENDER_STRATEGY === "rendered-only") {
+      return normalizeCrawlResult({
+        url,
+        mode: "rendered",
+        rendered: false,
+        error: renderErr?.message || "Rendered mode failed",
+        renderError: renderErr?.message || null,
+        diagnostics,
+      });
+    }
+
+    // ---- Static fallback ----
     try {
-      staticResult = await staticCrawl({ url, timeoutMs, userAgent });
-      return {
-        ...baseResult,
-        ...staticResult,
+      internalResult = await staticCrawl({
+        url,
+        timeoutMs,
+        userAgent,
+      });
+
+      return normalizeCrawlResult({
+        url,
         mode: "static",
         rendered: false,
         fallbackFromRendered: true,
-        renderError:
-          renderErr?.message || "Rendered crawl failed; using static mode",
-      };
+        internalResult,
+        renderError: renderErr?.message || null,
+        diagnostics,
+      });
     } catch (staticErr) {
-      return {
-        ...baseResult,
+      return normalizeCrawlResult({
+        url,
         mode: "rendered",
+        rendered: false,
         error:
           staticErr?.message ||
-          `Rendered and static crawls both failed (${renderErr?.message || "rendered error"})`,
+          `Rendered & static crawl both failed (${renderErr?.message || "rendered error"})`,
         renderError: renderErr?.message || null,
-      };
+        diagnostics,
+      });
     }
   }
 }
-
