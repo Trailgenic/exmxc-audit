@@ -1,35 +1,69 @@
-// /shared/weights.js — EEI v5.1 (Calibrated 100-Point Rubric)
+// weights.js — Updated per C.1 calibration (Nov 21 2025)
 
-export const WEIGHTS = {
-  /* ============================
-     TIER 3 — PAGE HYGIENE (10)
-     ============================ */
-  title: 3,                // Title Precision
-  metaDescription: 3,      // Meta Description Integrity
-  canonical: 2,            // Canonical Clarity
-  faviconOg: 2,            // Brand & Technical Consistency
+// -----------------------------
+// TIER WEIGHTING SYSTEM
+// -----------------------------
+module.exports = {
+  tiers: {
+    tier1: {
+      label: "Entity comprehension & trust",
+      maxWeight: 53,
+      keys: [
+        "Title Precision",
+        "Meta Description Integrity",
+        "Canonical Clarity",
+        "Schema Presence & Validity",
+        "Organization Schema",
+        "Breadcrumb Schema",
+        "Author/Person Schema",
+        "Social Entity Links",
+        "AI Crawl Fidelity"
+      ]
+    },
 
-  /* ============================
-     TIER 2 — STRUCTURAL DATA (25)
-     ============================ */
-  schemaPresence: 8,       // Schema Presence & Validity (reduced from 10)
-  orgSchema: 7,            // Organization Schema
-  breadcrumbSchema: 5,     // Breadcrumb Schema (reduced from 7)
-  authorPerson: 5,         // Author/Person Schema
+    tier2: {
+      label: "Structural data fidelity",
+      maxWeight: 25,
+      keys: [
+        "Inference Efficiency",
+        "Internal Lattice Integrity",
+        "External Authority Signal"
+      ]
+    },
 
-  /* ============================
-     SOCIAL SIGNAL (Now boosted slightly to 8)
-     ============================ */
-  socialLinks: 8,          // Social Entity Links (+3 to align w/ real-world authority)
+    tier3: {
+      label: "Page-level hygiene",
+      maxWeight: 10,
+      keys: [
+        "Brand & Technical Consistency"
+      ]
+    }
+  },
 
-  /* ============================
-     TIER 1 — AI COMPREHENSION / GRAPH (45)
-     ============================ */
-  internalLinks: 15,       // Internal Lattice Integrity (reduced from 20)
-  contentDepth: 12,        // Inference Efficiency (reduced from 15)
-  externalLinks: 12,       // External Authority Signal (reduced from 15)
-  aiCrawl: 6               // AI Crawl Fidelity (reduced from 10)
+  // -----------------------------
+  // PARAMETER WEIGHTS
+  // These weights determine how much each parameter contributes
+  // to its tier's maximum score.
+  // (We leave these ints flexible; scoring.js handles normalization)
+  // -----------------------------
+
+  parameters: {
+    "Title Precision": 3,
+    "Meta Description Integrity": 3,
+    "Canonical Clarity": 2,
+    "Schema Presence & Validity": 8,
+    "Organization Schema": 7,
+    "Breadcrumb Schema": 5,
+    "Author/Person Schema": 5,
+    "Social Entity Links": 8,
+    "AI Crawl Fidelity": 6,
+
+    // Tier 2
+    "Inference Efficiency": 12,
+    "Internal Lattice Integrity": 15,
+    "External Authority Signal": 12,
+
+    // Tier 3
+    "Brand & Technical Consistency": 2
+  }
 };
-
-/* Total = 100 exactly (no normalization needed) */
-export const TOTAL_WEIGHT = 100;
