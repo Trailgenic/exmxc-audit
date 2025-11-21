@@ -113,7 +113,7 @@ export default async function handler(req, res) {
         error: crawl.error || "Failed to crawl URL",
         url: normalized,
         mode: crawl.mode,
-        diagnostics: crawl.diagnostics || null,
+        diagnostics: crawl.crawlHealth || null,
       });
     }
 
