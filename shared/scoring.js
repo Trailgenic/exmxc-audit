@@ -402,28 +402,33 @@ export function tierFromScore(score) {
       stage: "☀️ Sovereign Entity",
       verb: "Maintain",
       description: "Self-propagating identity. Schema-dense and trusted across crawlers.",
-      coreFocus: "Maintain parity, monitor crawl fidelity, and evolve schema depth."
+      coreFocus: "Maintain parity, monitor crawl fidelity, and evolve schema depth.",
+      truth: "AI trusts you and elevates you."
     };
   } else if (score >= 60) {
     return {
       stage: "🌕 Structured Entity",
       verb: "Expand",
       description: "AI reconstructs identity reliably. Schema diversity and internal lattice aligned.",
-      coreFocus: "Build graph authority, deepen relationships, expand structured coverage."
+      coreFocus: "Build graph authority, deepen relationships, expand structured coverage.",
+      truth: "AI understands you but won’t rely on you."
     };
   } else if (score >= 40) {
     return {
       stage: "🌗 Visible Entity",
       verb: "Clarify",
       description: "Recognized but inconsistent. Schema present but incomplete.",
-      coreFocus: "Standardize structure, fix canonicals, and strengthen schema links."
+      coreFocus: "Standardize structure, fix canonicals, and strengthen schema links.",
+      truth: "AI sees you but doesn’t believe you."
     };
   } else {
     return {
       stage: "🌑 Emergent Entity",
       verb: "Define",
       description: "Early-stage identity forming. Schema sparse; AI relies on guesses.",
-      coreFocus: "Clarify your signal. Add foundational meta + first JSON-LD."
+      coreFocus: "Clarify your signal. Add foundational meta + first JSON-LD.",
+      truth: "AI can’t see you."
     };
   }
 }
+
