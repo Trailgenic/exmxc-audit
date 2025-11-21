@@ -1,52 +1,55 @@
-// /api/core-scan.js — EEI Crawl v2.1 (Scaffolding Upgrade for 45% AI-Crawl Realism)
-
+// /api/core-scan.js — EEI Crawl v2.1 (Rendered + Static Fallback + Schema Normalization + Diagnostics)
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-/* ===============================
-   CRAWL CONFIG (Fortress v1.0)
-   =============================== */
-export const CRAWL_CONFIG = {
-  USER_AGENT:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (exmxc-ai-eei-crawler)",
-
-  TIMEOUT_MS: 12000,
-  RENDER_TIMEOUT_MS: 15000,
-  NETWORK_IDLE_MS: 2000,
-
-  RETRIES: 2,
-  RETRY_DELAY_MS: 250,
-
-  MAX_REDIRECTS: 5,
-
-  RENDER_STRATEGY: "prefer-rendered",
-  // prefer-rendered → rendered first, fallback to static
-  // static-only     → skip Playwright
-  // rendered-only   → no fallback
-
-  COLLECT_LINK_COUNTS: true,
-  COLLECT_SCRIPT_COUNTS: true,
-  COLLECT_SCHEMA_BLOCKS: true,
-
-  HTML_SIZE_LIMIT: 2_000_000, // ~2MB
-};
-
-/* ===============================
-   HELPERS
-   =============================== */
+/* ============================================================
+   0. HELPERS
+   ============================================================ */
 
 function isPlainObject(val) {
   return val && typeof val === "object" && !Array.isArray(val);
 }
 
-/** Sleep helper for retry logic */
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((res) => setTimeout(res, ms));
 }
 
-/* =====================================================
-   JSON-LD PARSER (unchanged from your existing version)
-   ===================================================== */
+function classifyError(err) {
+  if (!err) return "unknown-error";
+  const msg = err.message || String(err);
+
+  if (/timeout/i.test(msg)) return "timeout";
+  if (/network/i.test(msg)) return "network-error";
+  if (/ECONNREFUSED/i.test(msg)) return "network-error";
+  if (/navigation timeout/i.test(msg)) return "timeout";
+  if (/blocked/i.test(msg)) return "blocked";
+  if (/net::/i.test(msg)) return "network-error";
+  if (/rate limit/i.test(msg)) return "blocked-rate-limit";
+
+  return "unknown-error";
+}
+
+function countLinks(pageLinks, originHost) {
+  let internal = 0,
+    external = 0;
+
+  for (const href of pageLinks || []) {
+    try {
+      const u = new URL(href, `https://${originHost}`);
+      const host = u.hostname.replace(/^www\./, "");
+      if (host === originHost) internal++;
+      else external++;
+    } catch {}
+  }
+
+  const total = internal + external;
+  return { internal, external, ratio: total ? internal / total : 0 };
+}
+
+/* ============================================================
+   1. JSON-LD PARSER + NORMALIZER
+   ============================================================ */
+
 function parseAndNormalizeJsonLd(ldTexts = []) {
   const allNodes = [];
 
@@ -61,30 +64,20 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 
     const pushNode = (node, rootCtx) => {
       if (!node || typeof node !== "object") return;
-      if (rootCtx && !node["@context"]) {
-        node["@context"] = rootCtx;
-      }
+      if (rootCtx && !node["@context"]) node["@context"] = rootCtx;
       allNodes.push(node);
     };
 
-    const handleParsed = (obj) => {
+    const handle = (obj) => {
       if (!obj || typeof obj !== "object") return;
       const rootCtx = obj["@context"];
-
-      if (Array.isArray(obj)) {
-        obj.forEach((n) => pushNode(n, rootCtx));
-      } else if (Array.isArray(obj["@graph"])) {
+      if (Array.isArray(obj)) obj.forEach((n) => pushNode(n, rootCtx));
+      else if (Array.isArray(obj["@graph"]))
         obj["@graph"].forEach((n) => pushNode(n, rootCtx));
-      } else {
-        pushNode(obj, rootCtx);
-      }
+      else pushNode(obj, rootCtx);
     };
 
-    if (Array.isArray(parsed)) {
-      parsed.forEach((node) => handleParsed(node));
-    } else {
-      handleParsed(parsed);
-    }
+    Array.isArray(parsed) ? parsed.forEach(handle) : handle(parsed);
   }
 
   // Merge by @id
@@ -97,36 +90,27 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
       if (val === undefined || val === null) continue;
       const existing = result[key];
 
-      if (existing === undefined) {
-        result[key] = val;
-      } else if (Array.isArray(existing) && Array.isArray(val)) {
+      if (existing === undefined) result[key] = val;
+      else if (Array.isArray(existing) && Array.isArray(val))
         result[key] = [...existing, ...val];
-      } else if (isPlainObject(existing) && isPlainObject(val)) {
+      else if (isPlainObject(existing) && isPlainObject(val))
         result[key] = deepMerge(existing, val);
-      } else {
-        result[key] = val;
-      }
+      else result[key] = val;
     }
     return result;
   };
 
   for (const node of allNodes) {
     const id = node["@id"];
-    if (id && typeof id === "string") {
-      if (!byId.has(id)) {
-        byId.set(id, { ...node });
-      } else {
-        const merged = deepMerge(byId.get(id), node);
-        byId.set(id, merged);
-      }
-    } else {
-      loose.push(node);
-    }
+    if (id) {
+      if (!byId.has(id)) byId.set(id, { ...node });
+      else byId.set(id, deepMerge(byId.get(id), node));
+    } else loose.push(node);
   }
 
-  const mergedNodes = [...byId.values(), ...loose];
+  const merged = [...byId.values(), ...loose];
 
-  // Compute latestISO
+  // compute latestISO
   let latestISO = null;
   const dateKeys = [
     "dateModified",
@@ -136,7 +120,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
     "lastReviewed",
   ];
 
-  for (const obj of mergedNodes) {
+  for (const obj of merged) {
     if (!obj || typeof obj !== "object") continue;
     for (const key of dateKeys) {
       const raw = obj[key];
@@ -144,36 +128,22 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
       const d = new Date(raw);
       if (!Number.isNaN(d.getTime())) {
         const iso = d.toISOString();
-        if (!latestISO || d > new Date(latestISO)) {
-          latestISO = iso;
-        }
+        if (!latestISO || d > new Date(latestISO)) latestISO = iso;
       }
     }
   }
 
-  return { schemaObjects: mergedNodes, latestISO };
+  return { schemaObjects: merged, latestISO };
 }
 
-/* =====================================================
-   STATIC CRAWL (unchanged logic, scaffolding added)
-   ===================================================== */
-async function staticCrawl({ url, timeoutMs, userAgent }) {
-  const result = {
-    _type: "static",
-    html: "",
-    status: null,
-    title: "",
-    description: "",
-    canonicalHref: url.replace(/\/$/, ""),
-    pageLinks: [],
-    ldTexts: [],
-    schemaObjects: [],
-    latestISO: null,
-  };
+/* ============================================================
+   2. STATIC CRAWL
+   ============================================================ */
 
+async function staticCrawl({ url, timeoutMs, userAgent }) {
   const resp = await axios.get(url, {
     timeout: timeoutMs,
-    maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
+    maxRedirects: 5,
     headers: {
       "User-Agent": userAgent,
       Accept: "text/html,application/xhtml+xml",
@@ -181,59 +151,62 @@ async function staticCrawl({ url, timeoutMs, userAgent }) {
     validateStatus: (s) => s >= 200 && s < 400,
   });
 
-  result.status = resp.status || 200;
-  result.html = resp.data || "";
+  const html = resp.data || "";
+  const $ = cheerio.load(html);
 
-  const $ = cheerio.load(result.html);
-
-  result.title = ($("title").first().text() || "").trim();
-  result.description =
+  const title = ($("title").first().text() || "").trim();
+  const description =
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
     "";
-  result.canonicalHref =
+  const canonicalHref =
     $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, "");
 
-  result.pageLinks = $("a[href]")
+  const pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
-  result.ldTexts = $("script[type='application/ld+json']")
+  const ldTexts = $("script[type='application/ld+json']")
     .map((_, el) => $(el).contents().text())
     .get();
 
-  const parsed = parseAndNormalizeJsonLd(result.ldTexts);
-  result.schemaObjects = parsed.schemaObjects;
-  result.latestISO = parsed.latestISO;
+  const { schemaObjects, latestISO } = parseAndNormalizeJsonLd(ldTexts);
 
-  return result;
+  return {
+    _type: "static",
+    status: resp.status,
+    html,
+    title,
+    description,
+    canonicalHref,
+    pageLinks,
+    ldTexts,
+    schemaObjects,
+    latestISO,
+
+    diagnostics: {
+      redirectCount: resp.request?.res?.redirects?.length || 0,
+      finalUrl: resp.request?.res?.responseUrl || url,
+      htmlSize: html.length || 0,
+      scriptCount: $("script").length,
+      jsonLdCount: ldTexts.length,
+    },
+  };
 }
 
-/* =====================================================
-   RENDERED CRAWL (unchanged logic, scaffolding added)
-   ===================================================== */
-async function renderedCrawl({ url, timeoutMs, userAgent }) {
-  const result = {
-    _type: "rendered",
-    html: "",
-    status: null,
-    title: "",
-    description: "",
-    canonicalHref: url.replace(/\/$/, ""),
-    pageLinks: [],
-    ldTexts: [],
-    schemaObjects: [],
-    latestISO: null,
-  };
+/* ============================================================
+   3. RENDERED CRAWL
+   ============================================================ */
 
+async function renderedCrawl({ url, timeoutMs, userAgent }) {
   let chromium;
   try {
     const pw = await import("playwright-core");
     chromium = pw.chromium;
   } catch (err) {
     throw new Error(
-      `Playwright not available: ${err.message || String(err)}`
+      `Playwright not available (install 'playwright-core'): ${err.message}`
     );
   }
 
@@ -241,17 +214,12 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
 
   try {
     const page = await browser.newPage({ userAgent });
+    await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
 
-    await page.goto(url, {
-      waitUntil: "networkidle",
-      timeout: timeoutMs,
-    });
-
-    result.status = page.response()?.status() || 200;
-    result.html = await page.content();
-
-    result.title = ((await page.title()) || "").trim();
-    result.description =
+    const status = page.response()?.status() || 200;
+    const html = await page.content();
+    const title = (await page.title()) || "";
+    const description =
       (await page
         .$eval(
           'meta[name="description"], meta[property="og:description"]',
@@ -259,163 +227,111 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
         )
         .catch(() => "")) || "";
 
-    result.canonicalHref =
+    const canonicalHref =
       (await page
         .$eval('link[rel="canonical"]', (el) => el.getAttribute("href") || "")
         .catch(() => "")) || url.replace(/\/$/, "");
 
-    result.pageLinks =
+    const pageLinks =
       (await page.$$eval("a[href]", (nodes) =>
-        nodes.map((n) => n.getAttribute("href")).filter(Boolean)
+        nodes
+          .map((n) => n.getAttribute("href"))
+          .filter(Boolean)
       )) || [];
 
-    result.ldTexts =
+    const ldTexts =
       (await page.$$eval(
         'script[type="application/ld+json"]',
-        (nodes) => nodes.map((n) => n.textContent || "").filter(Boolean)
+        (nodes) =>
+          nodes.map((n) => n.textContent || n.innerText || "").filter(Boolean)
       )) || [];
 
-    const parsed = parseAndNormalizeJsonLd(result.ldTexts);
-    result.schemaObjects = parsed.schemaObjects;
-    result.latestISO = parsed.latestISO;
+    const { schemaObjects, latestISO } = parseAndNormalizeJsonLd(ldTexts);
 
-    return result;
+    return {
+      _type: "rendered",
+      status,
+      html,
+      title: title.trim(),
+      description: description.trim(),
+      canonicalHref,
+      pageLinks,
+      ldTexts,
+      schemaObjects,
+      latestISO,
+
+      diagnostics: {
+        finalUrl: page.url(),
+        htmlSize: html.length || 0,
+        scriptCount: await page.$$eval("script", (nodes) => nodes.length).catch(() => 0),
+        jsonLdCount: ldTexts.length,
+      },
+    };
   } finally {
     await browser.close();
   }
 }
 
-/* =====================================================
-   NORMALIZER — guaranteed consistent response
-   ===================================================== */
-function normalizeCrawlResult({
-  url,
-  mode,
-  rendered,
-  error,
-  fallbackFromRendered,
-  renderError,
-  internalResult,
-  diagnostics,
-}) {
-  const r = internalResult || {};
+/* ============================================================
+   4. PUBLIC: crawlPage()
+   ============================================================ */
 
-  return {
-    url,
-    mode,
-    rendered,
-    fallbackFromRendered: !!fallbackFromRendered,
-    status: r.status || null,
-    error: error || null,
-    renderError: renderError || null,
-
-    html: r.html || "",
-    title: r.title || "",
-    description: r.description || "",
-    canonicalHref: r.canonicalHref || url.replace(/\/$/, ""),
-    pageLinks: Array.isArray(r.pageLinks) ? r.pageLinks : [],
-    schemaObjects: Array.isArray(r.schemaObjects) ? r.schemaObjects : [],
-    latestISO: r.latestISO || null,
-
-    // Future-proof container for phase A.2 (counts, block detection, redirect chain)
-    diagnostics: diagnostics || {},
-  };
-}
-
-/* =====================================================
-   PUBLIC: crawlPage (scaffolding)
-   ===================================================== */
 export async function crawlPage({
   url,
   mode = "rendered",
-  timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
-  userAgent = CRAWL_CONFIG.USER_AGENT,
+  timeoutMs = 20000,
+  userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.1 Safari/537.36",
 }) {
-  let diagnostics = {};
-  let internalResult = null;
+  let retryAttempts = 0;
+  const maxRetries = 0; // Phase A.3 will activate retries.
 
-  // ---- Static-only mode ----
-  if (mode === "static" || CRAWL_CONFIG.RENDER_STRATEGY === "static-only") {
+  const diagnostics = {};
+
+  const attempt = async () => {
     try {
-      internalResult = await staticCrawl({
-        url,
-        timeoutMs,
-        userAgent,
-      });
-      return normalizeCrawlResult({
-        url,
-        mode: "static",
-        rendered: false,
-        internalResult,
-        diagnostics,
-      });
+      if (mode === "static")
+        return await staticCrawl({ url, timeoutMs, userAgent });
+      return await renderedCrawl({ url, timeoutMs, userAgent });
     } catch (err) {
-      return normalizeCrawlResult({
-        url,
-        mode: "static",
-        rendered: false,
-        error: err?.message || "Static crawl failed",
-        diagnostics,
-      });
+      diagnostics.errorType = classifyError(err);
+      if (retryAttempts < maxRetries) {
+        retryAttempts++;
+        await sleep(300);
+        return await attempt();
+      }
+      throw err;
     }
-  }
+  };
 
-  // ---- Rendered-first strategy ----
   try {
-    internalResult = await renderedCrawl({
-      url,
-      timeoutMs: CRAWL_CONFIG.RENDER_TIMEOUT_MS,
-      userAgent,
-    });
+    const result = await attempt();
 
-    return normalizeCrawlResult({
-      url,
-      mode: "rendered",
-      rendered: true,
-      internalResult,
-      diagnostics,
-    });
-  } catch (renderErr) {
-    // If rendered-only mode → no fallback
-    if (CRAWL_CONFIG.RENDER_STRATEGY === "rendered-only") {
-      return normalizeCrawlResult({
-        url,
-        mode: "rendered",
-        rendered: false,
-        error: renderErr?.message || "Rendered mode failed",
-        renderError: renderErr?.message || null,
-        diagnostics,
-      });
-    }
-
-    // ---- Static fallback ----
-    try {
-      internalResult = await staticCrawl({
-        url,
-        timeoutMs,
-        userAgent,
-      });
-
-      return normalizeCrawlResult({
-        url,
-        mode: "static",
-        rendered: false,
-        fallbackFromRendered: true,
-        internalResult,
-        renderError: renderErr?.message || null,
-        diagnostics,
-      });
-    } catch (staticErr) {
-      return normalizeCrawlResult({
-        url,
-        mode: "rendered",
-        rendered: false,
-        error:
-          staticErr?.message ||
-          `Rendered & static crawl both failed (${renderErr?.message || "rendered error"})`,
-        renderError: renderErr?.message || null,
-        diagnostics,
-      });
-    }
+    // Integrate error diagnostics metadata
+    return {
+      ...result,
+      diagnostics: {
+        ...(result.diagnostics || {}),
+        retryAttempts,
+        errorType: diagnostics.errorType || null,
+      },
+    };
+  } catch (err) {
+    return {
+      _type: mode,
+      status: null,
+      html: "",
+      title: "",
+      description: "",
+      canonicalHref: url.replace(/\/$/, ""),
+      pageLinks: [],
+      ldTexts: [],
+      schemaObjects: [],
+      latestISO: null,
+      diagnostics: {
+        retryAttempts,
+        errorType: classifyError(err),
+      },
+      error: err.message || "Crawl failed",
+    };
   }
 }
