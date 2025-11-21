@@ -1,4 +1,4 @@
-// /api/core-scan.js — EEI Crawl v2.2 (Dual-Path + Config + Static Hardening + Diagnostics)
+// /api/core-scan.js — EEI Crawl v2.3 (Dual-Path + Config + Static Hardening + Diagnostics + Crawl Health)
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -12,7 +12,7 @@ export const CRAWL_CONFIG = {
   RETRIES: 1,
   RETRY_DELAY_MS: 300,
   USER_AGENT:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.2 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.3 Safari/537.36",
 
   // Detect if running on Vercel → disable rendered mode
   IS_VERCEL:
@@ -66,7 +66,7 @@ function countLinks(pageLinks, originHost) {
 }
 
 /* ============================================================
-   JSON-LD PARSER (same as your v2.1)
+   JSON-LD PARSER (same logic as v2.1)
    ============================================================ */
 
 function parseAndNormalizeJsonLd(ldTexts = []) {
@@ -157,7 +157,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 }
 
 /* ============================================================
-   STATIC CRAWL (Phase A.3 hardened version)
+   STATIC CRAWL (Phase A.3 hardened)
    ============================================================ */
 
 async function staticCcrawl({ url, timeoutMs, userAgent }) {
@@ -234,15 +234,16 @@ async function staticCcrawl({ url, timeoutMs, userAgent }) {
       finalUrl: resp.request?.res?.responseUrl || url,
       htmlBytes: html.length,
       textBytes: bodyText.length,
-      wordCount: bodyText.split(" ").length,
+      wordCount: bodyText ? bodyText.split(" ").length : 0,
       domNodes: $("*").length,
       imageCount: $("img").length,
       linkCount: rawLinks.length,
       scripts: {
         scriptCount: scriptTags.length,
-        inlineScriptCount: scriptTags.length -
-          scriptTags.filter((i, el) => $(el).attr("src")).length,
         scriptSrcCount: scriptTags.filter((i, el) => $(el).attr("src")).length,
+        inlineScriptCount:
+          scriptTags.length -
+          scriptTags.filter((i, el) => $(el).attr("src")).length,
         schemaScriptCount: ldTexts.length,
       },
       meta: {
@@ -262,7 +263,7 @@ async function staticCcrawl({ url, timeoutMs, userAgent }) {
 }
 
 /* ============================================================
-   RENDERED CRAWL (untouched, except config)
+   RENDERED CRAWL (same as v2.2, uses config)
    ============================================================ */
 
 async function renderedCrawl({ url, timeoutMs, userAgent }) {
@@ -341,6 +342,108 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
 }
 
 /* ============================================================
+   CRAWL HEALTH (Phase A.4)
+   ============================================================ */
+
+function computeCrawlHealth(result) {
+  const status = result?.status ?? null;
+  const diagnostics = result?.diagnostics || {};
+  const schemaCount = Array.isArray(result?.schemaObjects)
+    ? result.schemaObjects.length
+    : 0;
+
+  const htmlBytes = diagnostics.htmlBytes ?? 0;
+  const wordCount = diagnostics.wordCount ?? 0;
+  const robots = (diagnostics.meta?.robots || "").toLowerCase();
+  const scriptCount = diagnostics.scripts?.scriptCount ?? null;
+
+  const flags = {
+    isOk: false,
+    isBlocked: false,
+    isThinContent: false,
+    isJsHeavy: false,
+    isSchemaSparse: false,
+  };
+
+  const notes = [];
+  let category = "ok";
+  let score = 100;
+
+  // HTTP status-based classification
+  if (status && status >= 500) {
+    category = "server-error";
+    flags.isBlocked = true;
+    score = 10;
+    notes.push("5xx server error.");
+  } else if (status && status >= 400) {
+    category = "client-error";
+    flags.isBlocked = true;
+    score = 20;
+    notes.push("4xx client error.");
+  }
+
+  // Robots blocking
+  if (robots.includes("noindex") || robots.includes("nofollow")) {
+    flags.isBlocked = true;
+    category = "robots-blocked";
+    score = Math.min(score, 30);
+    notes.push(`Robots meta tag may block indexing: "${robots}".`);
+  }
+
+  // Thin content
+  if (htmlBytes > 0 && wordCount > 0 && wordCount < 200) {
+    flags.isThinContent = true;
+    category = category === "ok" ? "thin-content" : category;
+    score = Math.min(score, 60);
+    notes.push(`Low word count (${wordCount}); page may be thin for AI.`);
+  }
+
+  // JS-heavy heuristic (only if we have scriptCount)
+  if (scriptCount !== null && scriptCount > 60) {
+    flags.isJsHeavy = true;
+    if (category === "ok") category = "js-heavy";
+    score = Math.min(score, 55);
+    notes.push(
+      `High script count (${scriptCount}); page likely JS-heavy for crawling.`
+    );
+  }
+
+  // Schema-sparse
+  if (schemaCount === 0) {
+    flags.isSchemaSparse = true;
+    if (category === "ok") category = "schema-sparse";
+    score = Math.min(score, 65);
+    notes.push("No JSON-LD schema detected on page.");
+  }
+
+  // If nothing problematic triggered
+  if (
+    !flags.isBlocked &&
+    !flags.isThinContent &&
+    !flags.isJsHeavy &&
+    !flags.isSchemaSparse &&
+    status &&
+    status >= 200 &&
+    status < 400
+  ) {
+    flags.isOk = true;
+    notes.push("Crawl appears healthy with sufficient content and no blockers.");
+  }
+
+  // Clamp score
+  if (score < 0) score = 0;
+  if (score > 100) score = 100;
+
+  return {
+    status,
+    category,
+    score,
+    flags,
+    notes,
+  };
+}
+
+/* ============================================================
    PUBLIC — crawlPage()
    ============================================================ */
 
@@ -375,12 +478,15 @@ export async function crawlPage({
 
   try {
     const result = await tryOnce();
+    const crawlHealth = computeCrawlHealth(result);
+
     return {
       ...result,
       diagnostics: {
         ...(result.diagnostics || {}),
         retryAttempts: attempts,
       },
+      crawlHealth,
     };
   } catch (err) {
     return {
@@ -398,6 +504,19 @@ export async function crawlPage({
       diagnostics: {
         retryAttempts: attempts,
         errorType: classifyError(err),
+      },
+      crawlHealth: {
+        status: null,
+        category: "error",
+        score: 0,
+        flags: {
+          isOk: false,
+          isBlocked: false,
+          isThinContent: false,
+          isJsHeavy: false,
+          isSchemaSparse: false,
+        },
+        notes: ["Crawl failed before health could be fully assessed."],
       },
     };
   }
