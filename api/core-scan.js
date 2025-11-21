@@ -1,9 +1,28 @@
-// /api/core-scan.js — EEI Crawl v2.1 (Rendered + Static Fallback + Schema Normalization + Diagnostics)
+// /api/core-scan.js — EEI Crawl v2.2 (Dual-Path + Config + Static Hardening + Diagnostics)
 import axios from "axios";
 import * as cheerio from "cheerio";
 
 /* ============================================================
-   0. HELPERS
+   0. GLOBAL CRAWL CONFIG (Phase A.2)
+   ============================================================ */
+
+export const CRAWL_CONFIG = {
+  TIMEOUT_MS: 20000,
+  MAX_REDIRECTS: 5,
+  RETRIES: 1,
+  RETRY_DELAY_MS: 300,
+  USER_AGENT:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.2 Safari/537.36",
+
+  // Detect if running on Vercel → disable rendered mode
+  IS_VERCEL:
+    !!process.env.VERCEL ||
+    !!process.env.NOW_REGION ||
+    !!process.env.VERCEL_ENV,
+};
+
+/* ============================================================
+   HELPERS
    ============================================================ */
 
 function isPlainObject(val) {
@@ -47,7 +66,7 @@ function countLinks(pageLinks, originHost) {
 }
 
 /* ============================================================
-   1. JSON-LD PARSER + NORMALIZER
+   JSON-LD PARSER (same as your v2.1)
    ============================================================ */
 
 function parseAndNormalizeJsonLd(ldTexts = []) {
@@ -80,7 +99,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
     Array.isArray(parsed) ? parsed.forEach(handle) : handle(parsed);
   }
 
-  // Merge by @id
+  // merge by @id
   const byId = new Map();
   const loose = [];
 
@@ -110,7 +129,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 
   const merged = [...byId.values(), ...loose];
 
-  // compute latestISO
+  // latestISO
   let latestISO = null;
   const dateKeys = [
     "dateModified",
@@ -122,6 +141,7 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 
   for (const obj of merged) {
     if (!obj || typeof obj !== "object") continue;
+
     for (const key of dateKeys) {
       const raw = obj[key];
       if (!raw) continue;
@@ -137,13 +157,13 @@ function parseAndNormalizeJsonLd(ldTexts = []) {
 }
 
 /* ============================================================
-   2. STATIC CRAWL
+   STATIC CRAWL (Phase A.3 hardened version)
    ============================================================ */
 
-async function staticCrawl({ url, timeoutMs, userAgent }) {
+async function staticCcrawl({ url, timeoutMs, userAgent }) {
   const resp = await axios.get(url, {
     timeout: timeoutMs,
-    maxRedirects: 5,
+    maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
       "User-Agent": userAgent,
       Accept: "text/html,application/xhtml+xml",
@@ -159,19 +179,43 @@ async function staticCrawl({ url, timeoutMs, userAgent }) {
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
     "";
+
   const canonicalHref =
     $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, "");
 
-  const pageLinks = $("a[href]")
+  const rawLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
-  const ldTexts = $("script[type='application/ld+json']")
+  const absLinks = [];
+  const internalLinks = [];
+  const externalLinks = [];
+  let originHost;
+  try {
+    originHost = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    originHost = "";
+  }
+
+  for (const href of rawLinks) {
+    try {
+      const abs = new URL(href, url).toString();
+      const host = new URL(abs).hostname.replace(/^www\./, "");
+      absLinks.push(abs);
+      if (host === originHost) internalLinks.push(abs);
+      else externalLinks.push(abs);
+    } catch {}
+  }
+
+  const scriptTags = $("script");
+  const ldTexts = $('script[type="application/ld+json"]')
     .map((_, el) => $(el).contents().text())
     .get();
 
   const { schemaObjects, latestISO } = parseAndNormalizeJsonLd(ldTexts);
+
+  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
 
   return {
     _type: "static",
@@ -180,7 +224,7 @@ async function staticCrawl({ url, timeoutMs, userAgent }) {
     title,
     description,
     canonicalHref,
-    pageLinks,
+    pageLinks: rawLinks,
     ldTexts,
     schemaObjects,
     latestISO,
@@ -188,15 +232,37 @@ async function staticCrawl({ url, timeoutMs, userAgent }) {
     diagnostics: {
       redirectCount: resp.request?.res?.redirects?.length || 0,
       finalUrl: resp.request?.res?.responseUrl || url,
-      htmlSize: html.length || 0,
-      scriptCount: $("script").length,
-      jsonLdCount: ldTexts.length,
+      htmlBytes: html.length,
+      textBytes: bodyText.length,
+      wordCount: bodyText.split(" ").length,
+      domNodes: $("*").length,
+      imageCount: $("img").length,
+      linkCount: rawLinks.length,
+      scripts: {
+        scriptCount: scriptTags.length,
+        inlineScriptCount: scriptTags.length -
+          scriptTags.filter((i, el) => $(el).attr("src")).length,
+        scriptSrcCount: scriptTags.filter((i, el) => $(el).attr("src")).length,
+        schemaScriptCount: ldTexts.length,
+      },
+      meta: {
+        robots:
+          $('meta[name="robots"]').attr("content") ||
+          "",
+        ogTagCount: $('meta[property^="og:"]').length,
+        twitterTagCount: $('meta[name^="twitter:"]').length,
+      },
+      normalizedLinks: {
+        absolute: absLinks,
+        internal: internalLinks,
+        external: externalLinks,
+      },
     },
   };
 }
 
 /* ============================================================
-   3. RENDERED CRAWL
+   RENDERED CRAWL (untouched, except config)
    ============================================================ */
 
 async function renderedCrawl({ url, timeoutMs, userAgent }) {
@@ -262,8 +328,10 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
 
       diagnostics: {
         finalUrl: page.url(),
-        htmlSize: html.length || 0,
-        scriptCount: await page.$$eval("script", (nodes) => nodes.length).catch(() => 0),
+        htmlBytes: html.length,
+        scriptCount: await page
+          .$$eval("script", (nodes) => nodes.length)
+          .catch(() => 0),
         jsonLdCount: ldTexts.length,
       },
     };
@@ -273,46 +341,45 @@ async function renderedCrawl({ url, timeoutMs, userAgent }) {
 }
 
 /* ============================================================
-   4. PUBLIC: crawlPage()
+   PUBLIC — crawlPage()
    ============================================================ */
 
 export async function crawlPage({
   url,
   mode = "rendered",
-  timeoutMs = 20000,
-  userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.1 Safari/537.36",
+  timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
+  userAgent = CRAWL_CONFIG.USER_AGENT,
 }) {
-  let retryAttempts = 0;
-  const maxRetries = 0; // Phase A.3 will activate retries.
+  let attempts = 0;
+  const maxRetries = CRAWL_CONFIG.RETRIES;
 
-  const diagnostics = {};
+  // Auto-disable rendered mode on Vercel
+  if (CRAWL_CONFIG.IS_VERCEL && mode === "rendered") {
+    mode = "static";
+  }
 
-  const attempt = async () => {
+  const tryOnce = async () => {
     try {
       if (mode === "static")
-        return await staticCrawl({ url, timeoutMs, userAgent });
+        return await staticCcrawl({ url, timeoutMs, userAgent });
       return await renderedCrawl({ url, timeoutMs, userAgent });
     } catch (err) {
-      diagnostics.errorType = classifyError(err);
-      if (retryAttempts < maxRetries) {
-        retryAttempts++;
-        await sleep(300);
-        return await attempt();
+      if (attempts < maxRetries) {
+        attempts++;
+        await sleep(CRAWL_CONFIG.RETRY_DELAY_MS);
+        return tryOnce();
       }
       throw err;
     }
   };
 
   try {
-    const result = await attempt();
-
-    // Integrate error diagnostics metadata
+    const result = await tryOnce();
     return {
       ...result,
       diagnostics: {
         ...(result.diagnostics || {}),
-        retryAttempts,
-        errorType: diagnostics.errorType || null,
+        retryAttempts: attempts,
       },
     };
   } catch (err) {
@@ -327,11 +394,11 @@ export async function crawlPage({
       ldTexts: [],
       schemaObjects: [],
       latestISO: null,
+      error: err.message || "Crawl failed",
       diagnostics: {
-        retryAttempts,
+        retryAttempts: attempts,
         errorType: classifyError(err),
       },
-      error: err.message || "Crawl failed",
     };
   }
 }
