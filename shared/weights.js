@@ -1,35 +1,31 @@
-// /shared/weights.js — EEI v5.1 (Calibrated 100-Point Rubric — ESM Format)
+// /shared/weights.js — EEI v5.1 (C.1 Calibrated Weights, 88-Point Universe — ESM Format)
 
-// ------------------------------------
-// TIER 3 — PAGE HYGIENE (10 total)
-// ------------------------------------
 export const WEIGHTS = {
-  title: 3,                 // Title Precision
-  metaDescription: 3,       // Meta Description Integrity
-  canonical: 2,             // Canonical Clarity
-  faviconOg: 2,             // Brand & Technical Consistency
+  // ------------------------------------
+  // Tier 1 — Entity comprehension & trust (53)
+  // ------------------------------------
+  title: 3,                    // Title Precision
+  metaDescription: 3,          // Meta Description Integrity
+  canonical: 2,                // Canonical Clarity
+  schemaPresence: 8,           // Schema Presence & Validity
+  orgSchema: 7,                // Organization Schema
+  breadcrumbSchema: 5,         // Breadcrumb Schema
+  authorPerson: 5,             // Author/Person Schema
+  socialLinks: 8,              // Social Entity Links
+  aiCrawl: 6,                  // AI Crawl Fidelity
 
   // ------------------------------------
-  // TIER 2 — STRUCTURAL DATA (25 total)
+  // Tier 2 — Structural data fidelity (25)
   // ------------------------------------
-  schemaPresence: 8,        // Schema Presence & Validity
-  orgSchema: 7,             // Organization Schema
-  breadcrumbSchema: 5,      // Breadcrumb Schema
-  authorPerson: 5,          // Author/Person Schema
+  contentDepth: 12,            // Inference Efficiency
+  internalLinks: 15,           // Internal Lattice Integrity
+  externalLinks: 12,           // External Authority Signal
 
   // ------------------------------------
-  // SOCIAL SIGNALS (8 total)
+  // Tier 3 — Page-level hygiene (10)
   // ------------------------------------
-  socialLinks: 8,           // Social Entity Links
-
-  // ------------------------------------
-  // TIER 1 — AI COMPREHENSION / GRAPH (45 total)
-  // ------------------------------------
-  internalLinks: 15,        // Internal Lattice Integrity
-  contentDepth: 12,         // Inference Efficiency
-  externalLinks: 12,        // External Authority Signal
-  aiCrawl: 6                // AI Crawl Fidelity
+  faviconOg: 2                 // Brand & Technical Consistency
 };
 
-// Total = 100
-export const TOTAL_WEIGHT = 100;
+// Total = 88
+export const TOTAL_WEIGHT = 88;
