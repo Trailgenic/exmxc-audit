@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EEI Public Audit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      body {
+        background-color: #fafafa;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+    </style>
+  </head>
+
+  <body class="max-w-5xl mx-auto py-10 px-5">
+    <!-- PAGE TITLE -->
+    <h1 class="text-3xl font-bold text-gray-900 text-center mb-6">
+      EEI Public Entity Audit
+    </h1>
+
+    <!-- INPUT -->
+    <div class="flex justify-center gap-2 mb-8">
+      <input
+        id="urlInput"
+        type="text"
+        placeholder="example.com"
+        class="border border-gray-300 rounded-lg px-3 py-2 w-2/3 text-sm focus:ring-2 focus:ring-black"
+      />
+      <button
+        id="runButton"
+        class="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+      >
+        Run Audit
+      </button>
+    </div>
+
+    <!-- SCORE BOX -->
+    <div
+      class="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-10 text-center shadow-sm"
+    >
+      <div id="scoreDisplay" class="text-2xl font-semibold mb-2">
+        EEI: -- / 100
+      </div>
+
+      <div class="relative w-full h-3 bg-gray-200 rounded-full overflow-hidden mb-3">
+        <div id="scoreBar" class="h-3 w-0 rounded-full"></div>
+      </div>
+
+      <div id="entityStage" class="text-xl font-semibold text-gray-900"></div>
+
+      <div id="entityDescription" class="text-sm text-gray-700 mt-1"></div>
+    </div>
+
+    <!-- 3-TIER SUMMARY -->
+    <section class="mb-12">
+      <h2 class="text-xl font-bold mb-4 text-gray-900">Tier Summary</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div id="tier1Box" class="border p-4 rounded-lg bg-white shadow"></div>
+        <div id="tier2Box" class="border p-4 rounded-lg bg-white shadow"></div>
+        <div id="tier3Box" class="border p-4 rounded-lg bg-white shadow"></div>
+      </div>
+    </section>
+
+    <!-- MICRO-STATE INTERPRETATION TABLE -->
+    <section class="mb-12">
+      <h2 class="text-xl font-bold mb-4 text-gray-900">Scoring Interpretation</h2>
+      <div class="border rounded-lg bg-white shadow p-6">
+        <table class="w-full text-sm">
+          <thead class="text-left font-semibold text-gray-700">
+            <tr>
+              <th class="py-2">Score Range</th>
+              <th class="py-2">Meaning</th>
+            </tr>
+          </thead>
+          <tbody class="text-gray-800">
+            <tr>
+              <td class="py-2 font-medium">0–39</td>
+              <td>Unstructured — AI cannot reliably interpret your entity.</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-medium">40–49</td>
+              <td>Weakly visible — AI sees you but lacks confidence.</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-medium">50–59</td>
+              <td>Visible — AI sees you but doesn’t believe you.</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-medium">60–69</td>
+              <td>Fragile Structure — AI can collapse this interpretation anytime.</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-medium">70–79</td>
+              <td>Stable Structure — AI can use it but may not cite it.</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-medium">80+</td>
+              <td>Trusted — AI trusts you and elevates you.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 13-SIGNAL LIST (NAMES ONLY) -->
+    <section class="mb-16">
+      <h2 class="text-xl font-bold mb-4 text-gray-900">Signals Evaluated</h2>
+
+      <div class="border rounded-lg bg-white shadow p-6 text-sm text-gray-800">
+        <ul class="list-disc pl-5 space-y-1">
+          <li>Title Precision</li>
+          <li>Meta Description Integrity</li>
+          <li>Canonical Clarity</li>
+          <li>Schema Presence & Validity</li>
+          <li>Organization Schema</li>
+          <li>Breadcrumb Schema</li>
+          <li>Author/Person Schema</li>
+          <li>Social Entity Links</li>
+          <li>AI Crawl Fidelity</li>
+          <li>Inference Efficiency</li>
+          <li>Internal Lattice Integrity</li>
+          <li>External Authority Signal</li>
+          <li>Brand & Technical Consistency</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- FOOTER CTA -->
+    <footer class="text-center text-sm text-gray-600 mt-12 pb-10">
+      For detailed strategic review:  
+      <span class="font-semibold text-black">mike@trailgenic.com</span><br />
+      Powered by <span class="font-semibold text-black">exmxc.ai</span>
+    </footer>
+
+    <!-- SCRIPT -->
+    <script>
+      const runButton = document.getElementById("runButton");
+
+      runButton.addEventListener("click", async () => {
+        const input = document.getElementById("urlInput").value.trim();
+        if (!input) return alert("Please enter a URL.");
+
+        const url = input.startsWith("http") ? input : `https://${input}`;
+
+        const scoreDisplay = document.getElementById("scoreDisplay");
+        const scoreBar = document.getElementById("scoreBar");
+        const entityStage = document.getElementById("entityStage");
+        const entityDescription = document.getElementById("entityDescription");
+
+        scoreDisplay.textContent = "Loading...";
+        entityStage.textContent = "";
+        entityDescription.textContent = "";
+
+        try {
+          const res = await fetch(
+            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(
+              url
+            )}`,
+            { headers: { "x-exmxc-key": "exmxc-internal" } }
+          );
+
+          const data = await res.json();
+
+          // Score
+          const score = data.entityScore ?? 0;
+          scoreDisplay.textContent = `EEI: ${score} / 100`;
+
+          scoreBar.style.width = `${score}%`;
+          scoreBar.style.background =
+            "linear-gradient(90deg, #dc2626 0%, #facc15 40%, #22c55e 80%)";
+
+          // Stage & Description
+          entityStage.textContent = data.entityStage || "";
+          entityDescription.textContent = data.entityDescription || "";
+
+          // Tiers
+          const tiers = data.tierScores || {};
+          document.getElementById("tier1Box").innerHTML = `
+            <div class="font-semibold mb-1">Tier 1</div>
+            <div class="text-xs text-gray-600 mb-2">Entity comprehension & trust</div>
+            <div class="text-sm font-medium">${tiers.tier1?.normalized || 0}%</div>
+          `;
+          document.getElementById("tier2Box").innerHTML = `
+            <div class="font-semibold mb-1">Tier 2</div>
+            <div class="text-xs text-gray-600 mb-2">Structural data fidelity</div>
+            <div class="text-sm font-medium">${tiers.tier2?.normalized || 0}%</div>
+          `;
+          document.getElementById("tier3Box").innerHTML = `
+            <div class="font-semibold mb-1">Tier 3</div>
+            <div class="text-xs text-gray-600 mb-2">Page-level hygiene</div>
+            <div class="text-sm font-medium">${tiers.tier3?.normalized || 0}%</div>
+          `;
+        } catch (err) {
+          scoreDisplay.textContent = "Error loading audit.";
+        }
+      });
+    </script>
+  </body>
+</html>
