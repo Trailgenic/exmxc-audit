@@ -23,7 +23,6 @@
 
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
 
-    /* ⭐ ADDED THIS ROUTE — THE ONLY CHANGE */
     { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
 
     { "src": "^/(.*)$", "dest": "/public/index.html" }
