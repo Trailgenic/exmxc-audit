@@ -1,6 +1,7 @@
-// /api/core-scan.js — EEI Crawl v2.4 (Option B Clean Rebuild)
+// /api/core-scan.js — EEI Crawl v2.5 (Minimal AI Crawl Upgrade)
 // Unified Static + Rendered Crawl Engine with Normalized Signals
-// Clean diagnostics, stable schema parsing, crawlHealth pipeline preserved
+// Adds AI UA rotation, robots.txt acknowledgement, JSON-LD health,
+// thin-content + schema sparsity signals, and AI confidence scoring.
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -14,7 +15,7 @@ export const CRAWL_CONFIG = {
   RETRIES: 1,
   RETRY_DELAY_MS: 300,
   USER_AGENT:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.4 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.5 Safari/537.36",
 
   IS_VERCEL:
     !!process.env.VERCEL ||
@@ -46,17 +47,44 @@ function classifyError(err) {
 }
 
 /* ============================================================
-   JSON-LD PARSER (clean variant)
+   AI USER-AGENT ROTATION (GPTBot / ClaudeBot / Googlebot / exmxc)
+   ============================================================ */
+
+const AI_USER_AGENTS = [
+  // Approx GPTBot UA
+  "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
+  // Approx ClaudeBot UA
+  "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
+  // Googlebot
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  // exmxc internal crawler
+  "Mozilla/5.0 (compatible; exmxc-crawl/2.5; +https://exmxc.ai/eei)",
+];
+
+function getRandomAiUserAgent() {
+  return AI_USER_AGENTS[Math.floor(Math.random() * AI_USER_AGENTS.length)];
+}
+
+/* ============================================================
+   JSON-LD PARSER (clean variant + error stats)
    ============================================================ */
 function parseJsonLd(ldTexts = []) {
   const nodes = [];
 
+  let ldJsonCount = 0;
+  let ldJsonValidCount = 0;
+  let ldJsonErrorCount = 0;
+
   for (const raw of ldTexts) {
     if (!raw || typeof raw !== "string") continue;
+    ldJsonCount++;
+
     let parsed;
     try {
       parsed = JSON.parse(raw);
+      ldJsonValidCount++;
     } catch {
+      ldJsonErrorCount++;
       continue;
     }
 
@@ -127,7 +155,92 @@ function parseJsonLd(ldTexts = []) {
     }
   }
 
-  return { schemaObjects: all, latestISO };
+  return {
+    schemaObjects: all,
+    latestISO,
+    schemaStats: {
+      ldJsonCount,
+      ldJsonValidCount,
+      ldJsonErrorCount,
+    },
+  };
+}
+
+/* ============================================================
+   robots.txt (acknowledgement only, no enforcement)
+   ============================================================ */
+
+async function fetchRobotsTxt(origin) {
+  try {
+    const robotsUrl = new URL("/robots.txt", origin).toString();
+    const resp = await axios.get(robotsUrl, {
+      timeout: 8000,
+      maxRedirects: 2,
+      headers: {
+        "User-Agent": CRAWL_CONFIG.USER_AGENT,
+      },
+      validateStatus: (s) => s >= 200 && s < 400,
+    });
+    return resp.data || "";
+  } catch {
+    return null;
+  }
+}
+
+function analyzeRobotsTxt(robotsTxt, url) {
+  if (!robotsTxt) {
+    return {
+      checked: false,
+      isDisallowedForGeneric: false,
+      isDisallowedForGooglebot: false,
+    };
+  }
+
+  const lines = robotsTxt.split(/\r?\n/);
+  const parsed = [];
+  let currentUA = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const uaMatch = line.match(/^user-agent:\s*(.+)$/i);
+    if (uaMatch) {
+      currentUA = uaMatch[1].toLowerCase();
+      parsed.push({ ua: currentUA, disallow: [] });
+      continue;
+    }
+
+    const disMatch = line.match(/^disallow:\s*(.*)$/i);
+    if (disMatch && parsed.length > 0) {
+      const path = disMatch[1].trim();
+      parsed[parsed.length - 1].disallow.push(path);
+    }
+  }
+
+  const { pathname } = new URL(url);
+
+  function isDisallowedForAgent(targetUA) {
+    let rules = parsed.filter((p) => p.ua === targetUA);
+    if (rules.length === 0 && targetUA !== "*") {
+      rules = parsed.filter((p) => p.ua === "*");
+    }
+    if (rules.length === 0) return false;
+
+    for (const r of rules) {
+      for (const path of r.disallow) {
+        if (!path) continue; // empty disallow = allow all
+        if (pathname.startsWith(path)) return true;
+      }
+    }
+    return false;
+  }
+
+  return {
+    checked: true,
+    isDisallowedForGeneric: isDisallowedForAgent("*"),
+    isDisallowedForGooglebot: isDisallowedForAgent("googlebot"),
+  };
 }
 
 /* ============================================================
@@ -151,15 +264,42 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     .map((_, el) => $(el).contents().text())
     .get();
 
-  const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
+  const { schemaObjects, latestISO, schemaStats } = parseJsonLd(ldTexts);
 
   const rawLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
+  // Internal vs external link signals
+  let internalLinks = 0;
+  let externalLinks = 0;
+  let totalLinks = rawLinks.length;
+  let origin = null;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    origin = null;
+  }
+
+  for (const href of rawLinks) {
+    try {
+      const absolute = new URL(href, url).href;
+      const linkOrigin = new URL(absolute).origin;
+      if (origin && linkOrigin === origin) internalLinks++;
+      else externalLinks++;
+    } catch {
+      // ignore malformed URLs
+    }
+  }
+
   const scriptTags = $("script");
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+  const wordCount = bodyText ? bodyText.split(" ").length : 0;
+
+  const robotsMeta =
+    $('meta[name="robots"]').attr("content") ||
+    "";
 
   return {
     _type: "static",
@@ -177,19 +317,26 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     schemaObjects,
     latestISO,
 
+    userAgentUsed: userAgent,
+
     diagnostics: {
       finalUrl: resp.request?.res?.responseUrl || url,
       htmlBytes: html.length,
       textBytes: bodyText.length,
-      wordCount: bodyText ? bodyText.split(" ").length : 0,
+      wordCount,
       domNodes: $("*").length,
       scriptCount: scriptTags.length,
       schemaScriptCount: ldTexts.length,
       imageCount: $("img").length,
       linkCount: rawLinks.length,
-      robots:
-        $('meta[name="robots"]').attr("content") ||
-        "",
+      internalLinkCount: internalLinks,
+      externalLinkCount: externalLinks,
+      internalLinkRatio:
+        totalLinks > 0 ? internalLinks / totalLinks : 0,
+      robots: robotsMeta,
+      jsonLdCount: schemaStats.ldJsonCount,
+      jsonLdValidCount: schemaStats.ldJsonValidCount,
+      jsonLdErrorCount: schemaStats.ldJsonErrorCount,
     },
   };
 }
@@ -217,7 +364,41 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
       (nodes) => nodes.map((n) => n.textContent || "").filter(Boolean)
     );
 
-    const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
+    const { schemaObjects, latestISO, schemaStats } = parseJsonLd(ldTexts);
+
+    const pageLinks =
+      (await page.$$eval("a[href]", (nodes) =>
+        nodes.map((n) => n.getAttribute("href")).filter(Boolean)
+      )) || [];
+
+    // For rendered we also compute basic diagnostics via cheerio
+    const $ = cheerio.load(html);
+    const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+    const wordCount = bodyText ? bodyText.split(" ").length : 0;
+    const robotsMeta =
+      $('meta[name="robots"]').attr("content") ||
+      "";
+
+    let internalLinks = 0;
+    let externalLinks = 0;
+    let totalLinks = pageLinks.length;
+    let origin = null;
+    try {
+      origin = new URL(url).origin;
+    } catch {
+      origin = null;
+    }
+
+    for (const href of pageLinks) {
+      try {
+        const absolute = new URL(href, url).href;
+        const linkOrigin = new URL(absolute).origin;
+        if (origin && linkOrigin === origin) internalLinks++;
+        else externalLinks++;
+      } catch {
+        // ignore
+      }
+    }
 
     return {
       _type: "rendered",
@@ -235,20 +416,28 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
         (await page
           .$eval('link[rel="canonical"]', (el) => el.getAttribute("href") || "")
           .catch(() => "")) || url.replace(/\/$/, ""),
-      pageLinks:
-        (await page.$$eval("a[href]", (nodes) =>
-          nodes.map((n) => n.getAttribute("href")).filter(Boolean)
-        )) || [],
-
+      pageLinks,
       ldTexts,
       schemaObjects,
       latestISO,
 
+      userAgentUsed: userAgent,
+
       diagnostics: {
         finalUrl: page.url(),
         htmlBytes: html.length,
+        wordCount,
         scriptCount: await page.$$eval("script", (nodes) => nodes.length),
-        jsonLdCount: ldTexts.length,
+        schemaScriptCount: ldTexts.length,
+        jsonLdCount: schemaStats.ldJsonCount,
+        jsonLdValidCount: schemaStats.ldJsonValidCount,
+        jsonLdErrorCount: schemaStats.ldJsonErrorCount,
+        linkCount: totalLinks,
+        internalLinkCount: internalLinks,
+        externalLinkCount: externalLinks,
+        internalLinkRatio:
+          totalLinks > 0 ? internalLinks / totalLinks : 0,
+        robots: robotsMeta,
       },
     };
   } finally {
@@ -341,19 +530,63 @@ function computeCrawlHealth(result) {
 }
 
 /* ============================================================
+   AI CONFIDENCE (Lite Mode)
+   ============================================================ */
+function computeAiConfidence(result, robotsSignals) {
+  const d = result?.diagnostics || {};
+  const schemaCount = Array.isArray(result?.schemaObjects)
+    ? result.schemaObjects.length
+    : 0;
+
+  const robotsMeta = (d.robots || "").toLowerCase();
+  const hasNoindex =
+    robotsMeta.includes("noindex") || robotsMeta.includes("none");
+
+  const wordCount = d.wordCount || 0;
+  const scriptCount = d.scriptCount || 0;
+  const jsonLdErrorCount = d.jsonLdErrorCount || 0;
+
+  let score = 1.0;
+
+  if (scriptCount > 60) score -= 0.15;
+  if (schemaCount === 0) score -= 0.2;
+  if (wordCount < 200) score -= 0.2;
+  if (
+    hasNoindex ||
+    robotsSignals?.isDisallowedForGeneric ||
+    robotsSignals?.isDisallowedForGooglebot
+  ) {
+    score -= 0.15;
+  }
+  if (jsonLdErrorCount > 0) score -= 0.1;
+
+  if (score < 0) score = 0;
+
+  let level = "high";
+  if (score < 0.45) level = "low";
+  else if (score < 0.75) level = "medium";
+
+  return { score, level };
+}
+
+/* ============================================================
    PUBLIC — crawlPage()
    ============================================================ */
 export async function crawlPage({
   url,
   mode = "rendered",
   timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
-  userAgent = CRAWL_CONFIG.USER_AGENT,
 }) {
   let attempts = 0;
 
+  // Minimal upgrade: we still *support* rendered,
+  // but Vercel enforces static mode.
   if (CRAWL_CONFIG.IS_VERCEL && mode === "rendered") {
     mode = "static";
   }
+
+  // Universal AI-style UA rotation
+  const userAgent = getRandomAiUserAgent();
 
   const tryOnce = async () => {
     try {
@@ -372,16 +605,42 @@ export async function crawlPage({
 
   try {
     const result = await tryOnce();
-    const health = computeCrawlHealth(result);
+
+    // robots.txt acknowledgement (no blocking)
+    let robotsSignals = {
+      checked: false,
+      isDisallowedForGeneric: false,
+      isDisallowedForGooglebot: false,
+    };
+    try {
+      const origin = new URL(url).origin;
+      const robotsTxt = await fetchRobotsTxt(origin);
+      robotsSignals = analyzeRobotsTxt(robotsTxt, url);
+    } catch {
+      // ignore robots errors
+    }
+
+    const diagnostics = {
+      ...(result.diagnostics || {}),
+      retryAttempts: attempts,
+      robotsTxt: robotsSignals,
+    };
+
+    const health = computeCrawlHealth({ ...result, diagnostics });
+    const aiConfidence = computeAiConfidence(
+      { ...result, diagnostics },
+      robotsSignals
+    );
 
     return {
       ...result,
       mode,
       diagnostics: {
-        ...(result.diagnostics || {}),
-        retryAttempts: attempts,
+        ...diagnostics,
+        aiConfidence,
       },
       crawlHealth: health,
+      aiConfidence,
     };
   } catch (err) {
     return {
@@ -412,6 +671,10 @@ export async function crawlPage({
           isSchemaSparse: false,
         },
         notes: ["Crawl failed."],
+      },
+      aiConfidence: {
+        score: 0,
+        level: "low",
       },
     };
   }
