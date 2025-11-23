@@ -229,7 +229,7 @@ function analyzeRobotsTxt(robotsTxt, url) {
 
     for (const r of rules) {
       for (const path of r.disallow) {
-        if (!path) continue; // empty disallow = allow all
+        if (!path) continue;
         if (pathname.startsWith(path)) return true;
       }
     }
@@ -271,7 +271,6 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     .get()
     .filter(Boolean);
 
-  // Internal vs external link signals
   let internalLinks = 0;
   let externalLinks = 0;
   let totalLinks = rawLinks.length;
@@ -288,9 +287,7 @@ async function staticCrawl(url, timeoutMs, userAgent) {
       const linkOrigin = new URL(absolute).origin;
       if (origin && linkOrigin === origin) internalLinks++;
       else externalLinks++;
-    } catch {
-      // ignore malformed URLs
-    }
+    } catch {}
   }
 
   const scriptTags = $("script");
@@ -298,8 +295,7 @@ async function staticCrawl(url, timeoutMs, userAgent) {
   const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
   const robotsMeta =
-    $('meta[name="robots"]').attr("content") ||
-    "";
+    $('meta[name="robots"]').attr("content") || "";
 
   return {
     _type: "static",
@@ -371,13 +367,11 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
         nodes.map((n) => n.getAttribute("href")).filter(Boolean)
       )) || [];
 
-    // For rendered we also compute basic diagnostics via cheerio
     const $ = cheerio.load(html);
     const bodyText = $("body").text().replace(/\s+/g, " ").trim();
     const wordCount = bodyText ? bodyText.split(" ").length : 0;
     const robotsMeta =
-      $('meta[name="robots"]').attr("content") ||
-      "";
+      $('meta[name="robots"]').attr("content") || "";
 
     let internalLinks = 0;
     let externalLinks = 0;
@@ -395,9 +389,7 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
         const linkOrigin = new URL(absolute).origin;
         if (origin && linkOrigin === origin) internalLinks++;
         else externalLinks++;
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     return {
@@ -446,7 +438,7 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
 }
 
 /* ============================================================
-   CRAWL HEALTH (same logic, cleaner structure)
+   CRAWL HEALTH
    ============================================================ */
 function computeCrawlHealth(result) {
   const status = result?.status ?? null;
@@ -579,14 +571,18 @@ export async function crawlPage({
 }) {
   let attempts = 0;
 
-  // Minimal upgrade: we still *support* rendered,
-  // but Vercel enforces static mode.
+  // Vercel forces static mode for stability
   if (CRAWL_CONFIG.IS_VERCEL && mode === "rendered") {
     mode = "static";
   }
 
-  // Universal AI-style UA rotation
-  const userAgent = getRandomAiUserAgent();
+  // ⭐ FIX APPLIED:
+  // static crawl = SAFE exmxc UA
+  // rendered crawl = AI rotation
+  const userAgent =
+    mode === "static"
+      ? CRAWL_CONFIG.USER_AGENT
+      : getRandomAiUserAgent();
 
   const tryOnce = async () => {
     try {
@@ -606,7 +602,6 @@ export async function crawlPage({
   try {
     const result = await tryOnce();
 
-    // robots.txt acknowledgement (no blocking)
     let robotsSignals = {
       checked: false,
       isDisallowedForGeneric: false,
@@ -616,9 +611,7 @@ export async function crawlPage({
       const origin = new URL(url).origin;
       const robotsTxt = await fetchRobotsTxt(origin);
       robotsSignals = analyzeRobotsTxt(robotsTxt, url);
-    } catch {
-      // ignore robots errors
-    }
+    } catch {}
 
     const diagnostics = {
       ...(result.diagnostics || {}),
