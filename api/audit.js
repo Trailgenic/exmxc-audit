@@ -95,7 +95,8 @@ export default async function handler(req, res) {
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
     const normalized = normalizeUrl(input);
-    if (!normalized) return res.status(400).json({ error: "Invalid URL format" });
+    if (!normalized)
+      return res.status(400).json({ error: "Invalid URL format" });
 
     const host = hostnameOf(normalized);
     const requestedMode = req.query?.mode === "static" ? "static" : "rendered";
@@ -104,7 +105,8 @@ export default async function handler(req, res) {
     const crawl = await crawlPage({
       url: normalized,
       mode: requestedMode,
-      userAgent: UA,
+      // NOTE: UA is now rotated inside core-scan (AI UA set there)
+      // userAgent: UA,
     });
 
     if (crawl.error || !crawl.html) {
@@ -247,7 +249,7 @@ export default async function handler(req, res) {
       entityFocus: entityTier.coreFocus,
 
       breakdown: results,
-      scoringBars,            // ⭐ RESTORED UX BARS
+      scoringBars,
       tierScores,
 
       schemaMeta: {
@@ -257,7 +259,8 @@ export default async function handler(req, res) {
         httpStatus,
       },
 
-      crawlHealth: crawlDiagnostics || null,   // ⭐ PHASE A: DIAGNOSTICS PIPELINE
+      crawlHealth: crawlDiagnostics || null, // ⭐ still passing diagnostics
+      // Note: aiConfidence is attached inside crawlDiagnostics.aiConfidence
 
       timestamp: new Date().toISOString(),
     });
