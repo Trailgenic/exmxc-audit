@@ -89,8 +89,8 @@ export default async function handler(req, res) {
   );
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  /* ---------- Input ---------- */
   try {
+    /* ---------- Input ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -105,8 +105,6 @@ export default async function handler(req, res) {
     const crawl = await crawlPage({
       url: normalized,
       mode: requestedMode,
-      // NOTE: UA is now rotated inside core-scan (AI UA set there)
-      // userAgent: UA,
     });
 
     if (crawl.error || !crawl.html) {
@@ -119,6 +117,7 @@ export default async function handler(req, res) {
       });
     }
 
+    /* ⭐ CORRECTED: now including crawlHealth */
     const {
       html,
       title: crawlTitle,
@@ -130,6 +129,7 @@ export default async function handler(req, res) {
       mode: resolvedMode,
       status: httpStatus,
       diagnostics: crawlDiagnostics,
+      crawlHealth, // ⭐ ADDED HERE
     } = crawl;
 
     const $ = cheerio.load(html);
@@ -232,7 +232,7 @@ export default async function handler(req, res) {
       notes: r.notes,
     }));
 
-    /* ---------- Response ---------- */
+    /* ---------- Response (⭐ corrected crawlHealth mapping) ---------- */
     return res.status(200).json({
       success: true,
       url: normalized,
@@ -259,8 +259,7 @@ export default async function handler(req, res) {
         httpStatus,
       },
 
-      crawlHealth: crawlDiagnostics || null, // ⭐ still passing diagnostics
-      // Note: aiConfidence is attached inside crawlDiagnostics.aiConfidence
+      crawlHealth, // ⭐ FIXED — frontend now receives real health object
 
       timestamp: new Date().toISOString(),
     });
