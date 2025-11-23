@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v5.1B (Unified + CrawlHealth + UX ScoringBars)
+// /api/audit.js — EEI v5.1C (Unified + CrawlHealth + UX ScoringBars)
 import * as cheerio from "cheerio";
 import {
   scoreTitle,
@@ -89,8 +89,8 @@ export default async function handler(req, res) {
   );
   if (req.method === "OPTIONS") return res.status(200).end();
 
+  /* ---------- Input ---------- */
   try {
-    /* ---------- Input ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -105,6 +105,8 @@ export default async function handler(req, res) {
     const crawl = await crawlPage({
       url: normalized,
       mode: requestedMode,
+      // UA rotation handled inside core-scan now
+      // userAgent: UA,
     });
 
     if (crawl.error || !crawl.html) {
@@ -117,7 +119,6 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ⭐ CORRECTED: now including crawlHealth */
     const {
       html,
       title: crawlTitle,
@@ -128,8 +129,8 @@ export default async function handler(req, res) {
       latestISO,
       mode: resolvedMode,
       status: httpStatus,
+      crawlHealth: crawlHealthRaw,
       diagnostics: crawlDiagnostics,
-      crawlHealth, // ⭐ ADDED HERE
     } = crawl;
 
     const $ = cheerio.load(html);
@@ -232,7 +233,7 @@ export default async function handler(req, res) {
       notes: r.notes,
     }));
 
-    /* ---------- Response (⭐ corrected crawlHealth mapping) ---------- */
+    /* ---------- Response ---------- */
     return res.status(200).json({
       success: true,
       url: normalized,
@@ -259,7 +260,8 @@ export default async function handler(req, res) {
         httpStatus,
       },
 
-      crawlHealth, // ⭐ FIXED — frontend now receives real health object
+      // ⭐ Prefer structured crawlHealth if present, otherwise fallback to diagnostics
+      crawlHealth: crawlHealthRaw || crawlDiagnostics || null,
 
       timestamp: new Date().toISOString(),
     });
