@@ -1,1 +1,39 @@
+[
+  {
+    "from": "Entity",
+    "to": "Organization Schema",
+    "type": "defines",
+    "description": "Organization schema should define the primary entity identity."
+  },
+  {
+    "from": "Entity",
+    "to": "Canonical Clarity",
+    "type": "anchored_by",
+    "description": "Canonical URL should reflect a stable root identity."
+  },
+  {
+    "from": "Entity",
+    "to": "Breadcrumb Schema",
+    "type": "structured_by",
+    "description": "Breadcrumb schema should place the current page inside a coherent site tree."
+  },
+  {
+    "from": "Entity",
+    "to": "Social Entity Links",
+    "type": "mirrored_by",
+    "description": "Social links should mirror the same entity identity as on-site schema."
+  },
+  {
+    "from": "Signal",
+    "to": "Inference Efficiency",
+    "type": "supports",
+    "description": "Clean signals improve AI inference efficiency."
+  },
+  {
+    "from": "Schema",
+    "to": "AI Crawl Fidelity",
+    "type": "supports",
+    "description": "Valid schema improves crawl and interpretation."
+  }
+]
 
