@@ -1,62 +1,112 @@
-[
-  {
-    "id": "CR1",
-    "description": "Canonical root must match the normalized homepage root.",
-    "check": "canonicalRoot == identityRoot"
-  },
-  {
-    "id": "CR2",
-    "description": "Organization.name must match the extracted entity name when Organization schema is present.",
-    "check": "orgSchemaName == entityName"
-  },
-  {
-    "id": "CR3",
-    "description": "Breadcrumb root must resolve to the homepage canonical.",
-    "check": "breadcrumbRoot == canonicalRoot"
-  },
-  {
-    "id": "CR4",
-    "description": "Multiple Organization schemas must not conflict on name.",
-    "check": "orgSchemasAllHaveSameName == true"
-  },
-  {
-    "id": "CR5",
-    "description": "Canonical URLs must not represent multiple competing entity roots.",
-    "check": "canonicalRoots.count == 1"
-  },
-  {
-    "id": "CR6",
-    "description": "Entity root must not be undefined when schema objects indicate an Organization or Person.",
-    "check": "entityName != null"
-  },
-  {
-    "id": "CR7",
-    "description": "Schema.org vocabulary must be used for structural definition.",
-    "check": "allSchemaUseSchemaOrg == true"
-  },
-  {
-    "id": "CR8",
-    "description": "If Person schema is present, it must not contradict the owning organization identity.",
-    "check": "personSchemaDoesNotConflict == true"
-  },
-  {
-    "id": "CR9",
-    "description": "Breadcrumb path hierarchy must be structurally consistent (no logical jumps or unauthorized root substitutions).",
-    "check": "breadcrumbHierarchyValid == true"
-  },
-  {
-    "id": "CR10",
-    "description": "Canonical URL must not contain unnecessary query parameters, tracking tags, or trailing variants.",
-    "check": "canonicalIsClean == true"
-  },
-  {
-    "id": "CR11",
-    "description": "Top-level identity declaration (title root, canonical, organization.name) must not conflict across surfaces.",
-    "check": "identityRootsUnified == true"
-  },
-  {
-    "id": "CR12",
-    "description": "Schema-detected identity must not conflict with the hostname-level entity root.",
-    "check": "hostnameMatchesIdentityRoot == true"
-  }
-]
+{
+  "ontologyVersion": "0.0.1",
+  "constraints": [
+    {
+      "id": "CR1",
+      "description": "Canonical root must match the normalized homepage root.",
+      "test": {
+        "type": "equality",
+        "left": "canonicalRoot",
+        "right": "identityRoot"
+      }
+    },
+    {
+      "id": "CR2",
+      "description": "Organization.name must match the extracted entity name when Organization schema is present.",
+      "test": {
+        "type": "equality",
+        "left": "orgSchemaName",
+        "right": "entityName"
+      }
+    },
+    {
+      "id": "CR3",
+      "description": "Breadcrumb root must resolve to the homepage canonical.",
+      "test": {
+        "type": "equality",
+        "left": "breadcrumbRoot",
+        "right": "canonicalRoot"
+      }
+    },
+    {
+      "id": "CR4",
+      "description": "Multiple Organization schemas must not conflict on name.",
+      "test": {
+        "type": "boolean",
+        "field": "orgSchemasAllHaveSameName",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR5",
+      "description": "Canonical URLs must not represent multiple competing entity roots.",
+      "test": {
+        "type": "countEquals",
+        "field": "canonicalRoots.count",
+        "expected": 1
+      }
+    },
+    {
+      "id": "CR6",
+      "description": "Entity root must not be undefined when schema objects indicate an Organization or Person.",
+      "test": {
+        "type": "notNull",
+        "field": "entityName"
+      }
+    },
+    {
+      "id": "CR7",
+      "description": "Schema.org vocabulary must be used for structural definition.",
+      "test": {
+        "type": "boolean",
+        "field": "allSchemaUseSchemaOrg",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR8",
+      "description": "If Person schema is present, it must not contradict the owning organization identity.",
+      "test": {
+        "type": "boolean",
+        "field": "personSchemaDoesNotConflict",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR9",
+      "description": "Breadcrumb path hierarchy must be structurally consistent (no logical jumps or unauthorized root substitutions).",
+      "test": {
+        "type": "boolean",
+        "field": "breadcrumbHierarchyValid",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR10",
+      "description": "Canonical URL must not contain unnecessary query parameters, tracking tags, or trailing variants.",
+      "test": {
+        "type": "boolean",
+        "field": "canonicalIsClean",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR11",
+      "description": "Top-level identity declaration (title root, canonical, organization.name) must not conflict across surfaces.",
+      "test": {
+        "type": "boolean",
+        "field": "identityRootsUnified",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR12",
+      "description": "Schema-detected identity must not conflict with the hostname-level entity root.",
+      "test": {
+        "type": "boolean",
+        "field": "hostnameMatchesIdentityRoot",
+        "expected": true
+      }
+    }
+  ]
+}
