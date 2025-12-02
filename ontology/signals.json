@@ -1,1 +1,94 @@
+[
+  {
+    "id": "Title Precision",
+    "domain": "Signal",
+    "cluster": "identity",
+    "description": "How precisely the title expresses the entity and page purpose.",
+    "weight": 1
+  },
+  {
+    "id": "Meta Description Integrity",
+    "domain": "Signal",
+    "cluster": "identity",
+    "description": "Whether meta description aligns with the entity and visible content.",
+    "weight": 1
+  },
+  {
+    "id": "Canonical Clarity",
+    "domain": "Signal",
+    "cluster": "structure",
+    "description": "Whether canonical URL clearly expresses a single root identity for the page.",
+    "weight": 1
+  },
+  {
+    "id": "Brand & Technical Consistency",
+    "domain": "Signal",
+    "cluster": "identity",
+    "description": "Whether brand name, domain, and technical settings align.",
+    "weight": 1
+  },
+  {
+    "id": "Schema Presence & Validity",
+    "domain": "Schema",
+    "cluster": "structure",
+    "description": "Presence and basic validity of structured data.",
+    "weight": 1
+  },
+  {
+    "id": "Organization Schema",
+    "domain": "Schema",
+    "cluster": "identity",
+    "description": "Organization node that defines the institutional entity.",
+    "weight": 1
+  },
+  {
+    "id": "Breadcrumb Schema",
+    "domain": "Schema",
+    "cluster": "structure",
+    "description": "Breadcrumb trail that anchors the page inside the site hierarchy.",
+    "weight": 1
+  },
+  {
+    "id": "Author/Person Schema",
+    "domain": "Schema",
+    "cluster": "interpretation",
+    "description": "Person-level attribution for authored content.",
+    "weight": 1
+  },
+  {
+    "id": "Social Entity Links",
+    "domain": "Signal",
+    "cluster": "authority",
+    "description": "Outbound links or sameAs to official social profiles.",
+    "weight": 1
+  },
+  {
+    "id": "Internal Lattice Integrity",
+    "domain": "Signal",
+    "cluster": "structure",
+    "description": "Quality and coherence of internal linking between related pages.",
+    "weight": 1
+  },
+  {
+    "id": "External Authority Signal",
+    "domain": "Signal",
+    "cluster": "authority",
+    "description": "Outbound references to high-authority external entities.",
+    "weight": 1
+  },
+  {
+    "id": "AI Crawl Fidelity",
+    "domain": "Metric",
+    "cluster": "interpretation",
+    "description": "How well the page can be crawled and parsed by AI-style agents.",
+    "weight": 1
+  },
+  {
+    "id": "Inference Efficiency",
+    "domain": "Metric",
+    "cluster": "interpretation",
+    "description": "How efficiently an AI can reconstruct entity meaning from this page.",
+    "weight": 1
+  }
+]
 
