@@ -1,1 +1,10 @@
+{
+  "version": "0.0.1",
+  "label": "EEI Ontology v0.0.1 — Single-URL Identity Check",
+  "notes": [
+    "Baseline ontology for EEI.",
+    "Focus: structural consistency on primary URL only.",
+    "Future versions will incorporate multi-surface identity crawl."
+  ]
+}
 
