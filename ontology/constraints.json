@@ -1,58 +1,65 @@
-[
-  {
-    "id": "C1_SINGLE_CANONICAL_DOMAIN",
-    "description": "Canonical URL must not point to a different primary domain than the crawled URL.",
-    "severity": 0.8,
-    "domains": ["Entity", "Signal", "Schema"],
-    "appliesTo": ["Canonical Clarity"],
-    "logic": {
-      "type": "canonical-domain-match"
+{
+  "version": "0.0",
+  "constraints": [
+    {
+      "id": "CR1",
+      "description": "Canonical root must match the normalized homepage root.",
+      "check": "canonicalRoot == identityRoot"
+    },
+    {
+      "id": "CR2",
+      "description": "Organization.name must match the extracted entity name when Organization schema is present.",
+      "check": "orgSchemaName == entityName"
+    },
+    {
+      "id": "CR3",
+      "description": "Breadcrumb root must resolve to the homepage canonical.",
+      "check": "breadcrumbRoot == canonicalRoot"
+    },
+    {
+      "id": "CR4",
+      "description": "Multiple Organization schemas must not conflict on name.",
+      "check": "orgSchemasAllHaveSameName == true"
+    },
+    {
+      "id": "CR5",
+      "description": "Canonical URLs must not represent multiple competing entity roots.",
+      "check": "canonicalRoots.count == 1"
+    },
+    {
+      "id": "CR6",
+      "description": "Entity root must not be undefined when schema objects indicate an Organization or Person.",
+      "check": "entityName != null"
+    },
+    {
+      "id": "CR7",
+      "description": "Schema.org vocabulary must be used for structural definition.",
+      "check": "allSchemaUseSchemaOrg == true"
+    },
+    {
+      "id": "CR8",
+      "description": "If Person schema is present, it must not contradict the owning organization identity.",
+      "check": "personSchemaDoesNotConflict == true"
+    },
+    {
+      "id": "CR9",
+      "description": "Breadcrumb path hierarchy must be structurally consistent (no logical jumps or unauthorized root substitutions).",
+      "check": "breadcrumbHierarchyValid == true"
+    },
+    {
+      "id": "CR10",
+      "description": "Canonical URL must not contain unnecessary query parameters, tracking tags, or trailing variants.",
+      "check": "canonicalIsClean == true"
+    },
+    {
+      "id": "CR11",
+      "description": "Top-level identity declaration (title root, canonical, organization.name) must not conflict across surfaces.",
+      "check": "identityRootsUnified == true"
+    },
+    {
+      "id": "CR12",
+      "description": "Schema-detected identity must not conflict with the hostname-level entity root.",
+      "check": "hostnameMatchesIdentityRoot == true"
     }
-  },
-  {
-    "id": "C2_ORG_SCHEMA_DOMAIN_ALIGNMENT",
-    "description": "Organization schema URL (or sameAs) should share the same root domain as the crawled URL.",
-    "severity": 0.9,
-    "domains": ["Entity", "Schema"],
-    "appliesTo": ["Organization Schema"],
-    "logic": {
-      "type": "org-schema-domain-alignment"
-    }
-  },
-  {
-    "id": "C3_BREADCRUMB_ROOT_COHERENCE",
-    "description": "Breadcrumb root item should align with the site’s primary entity or home URL.",
-    "severity": 0.6,
-    "domains": ["Entity", "Schema"],
-    "appliesTo": ["Breadcrumb Schema"],
-    "logic": {
-      "type": "breadcrumb-root-consistency"
-    }
-  },
-  {
-    "id": "C4_SOCIAL_ENTITY_CONSISTENCY",
-    "description": "Social links (sameAs) should not point to obviously conflicting brand identities.",
-    "severity": 0.7,
-    "domains": ["Entity", "Signal"],
-    "appliesTo": ["Social Entity Links"],
-    "logic": {
-      "type": "social-entity-consistency"
-    }
-  },
-  {
-    "id": "C5_MINIMUM_STRUCTURAL_GROUNDING",
-    "description": "Entity should expose at least one of: Organization schema, breadcrumb, or social entity links.",
-    "severity": 0.5,
-    "domains": ["Entity", "Schema", "Signal"],
-    "appliesTo": [
-      "Organization Schema",
-      "Breadcrumb Schema",
-      "Social Entity Links"
-    ],
-    "logic": {
-      "type": "minimum-identity-signals",
-      "minSignals": 1
-    }
-  }
-]
-
+  ]
+}
