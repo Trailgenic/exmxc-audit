@@ -1,1 +1,33 @@
+[
+  {
+    "id": "Entity",
+    "description": "The institution or brand as a stable identity across surfaces.",
+    "cluster": "identity"
+  },
+  {
+    "id": "Signal",
+    "description": "Observable page-level artifacts used to infer or reconstruct an entity.",
+    "cluster": "structure"
+  },
+  {
+    "id": "Schema",
+    "description": "Structured data nodes (JSON-LD) that encode machine-readable facts.",
+    "cluster": "structure"
+  },
+  {
+    "id": "Metric",
+    "description": "Quantitative measures computed from signals and schema.",
+    "cluster": "measurement"
+  },
+  {
+    "id": "Constraint",
+    "description": "Rule that defines valid configurations of entities, signals, and schema.",
+    "cluster": "law"
+  },
+  {
+    "id": "InterpretationLayer",
+    "description": "Layer that reconciles signals, schema, and constraints into a trust decision.",
+    "cluster": "interpretation"
+  }
+]
 
