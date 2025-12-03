@@ -1,1 +1,143 @@
+{
+  "CR1": {
+    "title": "Canonical Root Integrity",
+    "impact": "AI systems require a single, unambiguous root domain to identify the source of truth for an entity.",
+    "meaning": "The canonical URL must resolve to the same normalized root domain as the site's identity host. Any mismatch weakens authority signals and creates uncertainty about which domain owns the entity.",
+    "remedy": "Normalize the canonical URL to match the primary domain root and remove all alternative or cross-domain roots unless purposefully structured.",
+    "risk": "AI may treat the entity as fragmented or duplicated, reducing confidence, suppressing ranking, and destabilizing entity identity in search reconstruction."
+  },
+  "CR2": {
+    "title": "Schema-Aligned Entity Naming",
+    "impact": "Entity identity must remain consistent between the visible brand and the formal schema declaration.",
+    "meaning": "The Organization.name and the entityName extracted from the page must match. Divergence implies misalignment between how the brand represents itself and how the structured graph defines it.",
+    "remedy": "Ensure Organization.name reflects the true institutional name used in titles, homepages, and canonical references.",
+    "risk": "AI models may struggle to reconcile multiple identity tokens, harming trust, interpretability, and name-based entity clustering."
+  },
+  "CR3": {
+    "title": "Breadcrumb Root Convergence",
+    "impact": "Breadcrumb paths communicate the internal logical structure of an entity's site hierarchy to crawlers.",
+    "meaning": "The root of the breadcrumb chain must resolve to the same canonical root as the homepage to signal a coherent information architecture.",
+    "remedy": "Ensure the first breadcrumb item resolves to the homepage canonical, not sub-paths, staging URLs, or legacy root domains.",
+    "risk": "AI may infer that the site is part of a different structural domain, weakening entity resolution and diminishing hierarchical confidence."
+  },
+  "CR4": {
+    "title": "Unified Naming Across Organization Schemas",
+    "impact": "Multiple Organization schemas with diverging names fracture institutional identity.",
+    "meaning": "All Organization schema instances on the page must declare the same entity name. Multiple conflicting names dilute brand clarity and confuse entity attribution.",
+    "remedy": "Consolidate all Organization schemas into a single, consistent name value that reflects the institution’s true identity.",
+    "risk": "Inconsistent schema naming creates identity drift, degrading trust and increasing the likelihood of entity split or misclassification."
+  },
+  "CR5": {
+    "title": "Canonical Root Singularity",
+    "impact": "AI engines require a single canonical root to assign institutional authority.",
+    "meaning": "Only one root canonical domain may be asserted. Multiple variations dilute the ability to infer where the official identity originates.",
+    "remedy": "Remove secondary canonicals and enforce a single normalized homepage canonical representing the true root entity.",
+    "risk": "Models may treat the entity as two or more separate institutions, weakening visibility, authority weight, and graph cohesion."
+  },
+  "CR6": {
+    "title": "Entity Name Presence",
+    "impact": "An entity cannot be reconstructed without explicit naming signals.",
+    "meaning": "If schema objects indicate the presence of an entity (Organization or Person), an entityName must exist to anchor identity.",
+    "remedy": "Declare a clear entity name in either Organization schemas, title prefix, or derived entity metadata.",
+    "risk": "Without a stable identifier, AI is forced to infer identity heuristically, which reduces interpretability and reconstructive accuracy."
+  },
+  "CR7": {
+    "title": "Schema Vocabulary Standardization",
+    "impact": "AI-grade parsing expects structural facts to be encoded in schema.org vocabulary.",
+    "meaning": "All JSON-LD blocks must use schema.org namespaces, ensuring consistent machine interpretability and knowledge-graph ingestion.",
+    "remedy": "Update structured data to reflect schema.org contexts and remove non-schema.org formats or proprietary variants.",
+    "risk": "Structured data that deviates from standard vocabulary is ignored or misinterpreted by crawlers, reducing trust signals."
+  },
+  "CR8": {
+    "title": "Person–Organization Identity Non-Conflict",
+    "impact": "Conflicting Person and Organization schemas imply unclear ownership or misassigned identity.",
+    "meaning": "If Person schema exists, it must not conflict with Organization identity. The page must clearly separate institutional identity from individual attribution.",
+    "remedy": "Ensure Person nodes represent authorship or contributors without duplicating or competing with the Organization identity.",
+    "risk": "Identity collision may lead to ambiguous graph resolution, causing AI to assign ownership to individuals rather than the institution."
+  },
+  "CR9": {
+    "title": "Breadcrumb Structural Validity",
+    "impact": "A logical breadcrumb hierarchy is a key trust signal that reveals how the entity organizes itself.",
+    "meaning": "Breadcrumb position values must follow a strict sequential order to confirm the hierarchy is intentional and coherent.",
+    "remedy": "Correct breadcrumb item positions to begin at 1 and increment consecutively without gaps.",
+    "risk": "Invalid breadcrumb structure may be interpreted as auto-generated noise and excluded from entity modeling."
+  },
+  "CR10": {
+    "title": "Anti-Generic Canonical Enforcement",
+    "impact": "AI models treat query strings, hashes, and tracking parameters as unstable surfaces.",
+    "meaning": "A canonical must represent a pure institutional root free from query parameters or tracking fragments.",
+    "remedy": "Strip all parameters, ensure canonical represents a clean root, and avoid UTM/marketing variants in canonical declarations.",
+    "risk": "Dirty canonicals weaken authority and may cause AI systems to disregard canonical intent completely."
+  },
+  "CR11": {
+    "title": "Unified Identity Declaration",
+    "impact": "AI expects a single, stable expression of entity identity across all top-level signals.",
+    "meaning": "Identity roots (hostname, canonical root, schema identity root) must not contradict each other.",
+    "remedy": "Normalize hostname-level identity, canonical declarations, and schema name roots to a single coherent value.",
+    "risk": "Conflicting roots reduce graph confidence and weaken authority propagation across surfaces."
+  },
+  "CR12": {
+    "title": "Hostname Alignment Check",
+    "impact": "The hostname must reinforce entity identity, not contradict it.",
+    "meaning": "If hostname normalization disagrees with the inferred entity root, crawlers may doubt the legitimacy of the domain as the authoritative surface.",
+    "remedy": "Ensure that the canonical identity root and hostname normalization resolve to the same effective domain value.",
+    "risk": "Disparity can signal staging environments, cloned sites, or identity drift scenarios."
+  },
+  "CR13": {
+    "title": "Minimum Narrative Depth",
+    "impact": "AI models evaluate meaningfulness and institutional intent by narrative completeness.",
+    "meaning": "The page must contain at least moderate content volume to allow entity reconstruction and semantic inference.",
+    "remedy": "Expand visible content with descriptive, substantive text that communicates identity, purpose, or scope.",
+    "risk": "Sparse pages are treated as weak surfaces with insufficient evidence to support entity trust weighting."
+  },
+  "CR14": {
+    "title": "Internal Lattice Access",
+    "impact": "Internal navigation confirms the entity controls a meaningful information perimeter.",
+    "meaning": "At least one internal path must be present to demonstrate the existence of a broader institutional lattice beyond the current page.",
+    "remedy": "Link to relevant internal hubs, articles, or structured subpages that form an identifiable graph.",
+    "risk": "Without internal links, AI treats the surface as isolated and structurally insignificant."
+  },
+  "CR15": {
+    "title": "Schema-Based Entity Declaration",
+    "impact": "Schema nodes representing Organization or Person identity are the foundation of machine-readable entity trust.",
+    "meaning": "At least one top-level identity schema must appear for the page to be considered a candidate for EEI subject ranking.",
+    "remedy": "Add an Organization or Person JSON-LD definition that clearly declares the entity and its attributes.",
+    "risk": "Without explicit schema nodes, the entity cannot be formally reconstructed in search layers."
+  },
+  "CR16": {
+    "title": "Canonical Convergence",
+    "impact": "A stable surface perimeter requires the canonical to converge to a single authoritative root.",
+    "meaning": "If multiple canonical roots exist, crawlers cannot determine where institutional authority is anchored.",
+    "remedy": "Enforce uniform canonical declarations that resolve back to the same normalized registrable root domain.",
+    "risk": "Diffused roots lead to uncertain graph propagation, weakened identity cohesion, and poorer institutional clarity."
+  },
+  "CR17": {
+    "title": "Multi-Surface Schema Coherence",
+    "impact": "Entities represented across social, outbound, and sameAs surfaces must maintain schema-anchored identity.",
+    "meaning": "When multiple surfaces exist, Organization or Person schema must be present to anchor cross-surface identity to a single institution.",
+    "remedy": "Add schema that formally declares the entity identity and ensure its attributes match each visible surface.",
+    "risk": "Without schema, AI may treat surface diversity as fragmentation rather than institutional reach."
+  },
+  "CR18": {
+    "title": "Surface Overlap Trust Signal",
+    "impact": "Overlap between outbound social links and declared sameAs URLs confirms cross-surface identity alignment.",
+    "meaning": "Identifiable surfaces must substantially intersect to prove continuity between schema, social profiles, and outbound references.",
+    "remedy": "Ensure declared sameAs surfaces correspond to the same major social hosts referenced from the page.",
+    "risk": "Weak overlap signals fragmented presence and lowers trust in the cohesiveness of the institution's digital perimeter."
+  },
+  "CR19": {
+    "title": "Schema Root Token Unification",
+    "impact": "Entity roots derived from schema attributes must converge on a single normalized token.",
+    "meaning": "LegalName, Organization.name, alternateName, and entityName must not produce multiple normalized identity roots.",
+    "remedy": "Standardize naming fields to eliminate divergent identity roots and represent the institution consistently.",
+    "risk": "Multiple schema roots weaken machine certainty and increase risk of identity bifurcation."
+  },
+  "CR20": {
+    "title": "Digital Perimeter Stability",
+    "impact": "Stable institutional identity requires coherent convergence across canonical, schema roots, and multi-surface identity signals.",
+    "meaning": "A digitally stable perimeter reflects unified root domains, overlapping external surfaces, and consistent schema identity.",
+    "remedy": "Align canonical declarations, schema identity, sameAs, and outbound hosts so that each surface reflects the same entity root.",
+    "risk": "Instability signals weak institutional identity, degrading authority, reconstruction confidence, and cross-surface trust alignment."
+  }
+}
 
