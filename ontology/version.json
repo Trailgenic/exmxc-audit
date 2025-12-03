@@ -1,10 +1,11 @@
 {
-  "version": "0.0.2",
-  "label": "EEI Ontology v0.0.2 — Phase 3 Identity Enforcement",
+  "version": "0.0.3",
+  "label": "EEI Ontology v0.0.3 — Phase 4 Identity Perimeter Resolution",
   "notes": [
-    "Expanded ontology constraints for root-level identity integrity.",
-    "Adds validation for identity schema presence, anti-generic canonical, and host/entity correlation.",
-    "Still scoped to single-URL identity reconstruction.",
-    "Phase 4 will introduce multi-surface canonical mapping and cross-domain entity resolution."
+    "Integrates Phase 3 identity constraints with Phase 4 surface/perimeter evaluation",
+    "Adds surface cohesion checks: canonical convergence, schema root unification, and sameAs/social overlap",
+    "Exposes normalized identity roots, canonical roots, and structural breadcrumb anchoring",
+    "Adds digital perimeter stability, multi-surface schema coherence, and surface root enumeration",
+    "Still scoped to single-surface crawl evaluation; Phase 5 unlocks cross-domain graph reconciliation"
   ]
 }
