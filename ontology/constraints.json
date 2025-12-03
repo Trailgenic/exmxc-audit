@@ -1,5 +1,5 @@
 {
-  "ontologyVersion": "0.0.1",
+  "ontologyVersion": "0.0.2",
   "constraints": [
     {
       "id": "CR1",
@@ -132,6 +132,54 @@
       "test": {
         "type": "boolean",
         "field": "hasOrgOrPersonSchema",
+        "expected": true
+      }
+    },
+
+    /* -------- Phase 4: Multi-surface Identity / Perimeter -------- */
+
+    {
+      "id": "CR16",
+      "description": "Canonical roots must converge to a single registrable domain for the entity perimeter.",
+      "test": {
+        "type": "boolean",
+        "field": "canonicalConvergenceStrong",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR17",
+      "description": "Multi-surface entities must carry at least one Organization or Person schema anchor.",
+      "test": {
+        "type": "boolean",
+        "field": "multiSurfaceSchemaCoherent",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR18",
+      "description": "Social and sameAs surfaces must substantially overlap to avoid fragmented identity.",
+      "test": {
+        "type": "boolean",
+        "field": "sameAsOverlapStrong",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR19",
+      "description": "Schema-level identity roots (entity names, legal names, alternates) must unify to a single root token.",
+      "test": {
+        "type": "boolean",
+        "field": "schemaRootsUnified",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR20",
+      "description": "The entity's digital perimeter must be structurally stable (multi-surface presence without contradictory roots).",
+      "test": {
+        "type": "boolean",
+        "field": "digitalPerimeterStable",
         "expected": true
       }
     }
