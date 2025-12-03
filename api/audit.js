@@ -1,5 +1,4 @@
-// /api/audit.js — EEI v5.3 (Phase 3 Ontology Wiring)
-// Ontology Engine Integration (evaluateOntology + alignment-weight overlay)
+// /api/audit.js — EEI v5.4 (Phase 4 Ontology Explanations + Safety Guard)
 
 import * as cheerio from "cheerio";
 import fs from "fs";
@@ -24,13 +23,33 @@ import {
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
-import { evaluateOntology } from "../lib/ontologyEngine.js"; // Phase 3
+import { evaluateOntology } from "../lib/ontologyEngine.js";
+
+// ---------------------------------------------
+// Load constraint explanations
+// ---------------------------------------------
+let constraintExplanations = {};
+
+try {
+  const expPath = path.join(
+    process.cwd(),
+    "ontology",
+    "constraintExplanations.json"
+  );
+  if (fs.existsSync(expPath)) {
+    const raw = fs.readFileSync(expPath, "utf-8");
+    constraintExplanations = JSON.parse(raw);
+  }
+} catch (err) {
+  // silent fail: explanations optional
+  constraintExplanations = {};
+}
 
 /* ================================
    HELPERS
    ================================ */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.3 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.4 Safari/537.36";
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -82,18 +101,8 @@ const TIER_LABELS = {
 };
 
 /* ================================
-   ONTOLOGY ADJUSTMENT
+   ONTOLOGY OVERLAY
    ================================ */
-/**
- * We apply a small-but-meaningful overlay:
- *
- * entityScore = (baseScore * 0.85) + (ontologyAlignment * 15)
- *
- * Range:
- * - if alignment=1 → +15
- * - if alignment=0.5 → +7.5
- * - if alignment=0 → +0
- */
 function applyOntologyOverlay(baseScore, alignment) {
   if (alignment == null || Number.isNaN(alignment)) return baseScore;
 
@@ -250,7 +259,7 @@ export default async function handler(req, res) {
     };
 
     /* ================================
-       ONTOLOGY ENGINE (Phase 3)
+       ONTOLOGY ENGINE
        ================================ */
     const ontologyReport = evaluateOntology({
       title,
@@ -264,6 +273,20 @@ export default async function handler(req, res) {
       crawlHealth: crawlHealth || crawlDiagnostics || null,
     });
 
+    /* ---------- SAFETY GUARD ---------- */
+    if (!Array.isArray(ontologyReport.failedConstraints)) {
+      ontologyReport.failedConstraints = [];
+    }
+
+    /* ---------- Inject Explanations ---------- */
+    for (const fc of ontologyReport.failedConstraints) {
+      const expText = constraintExplanations?.[fc.id];
+      if (expText && typeof expText === "string") {
+        fc.explanation = expText;
+      }
+    }
+
+    /* ---------- Ontology score merge ---------- */
     const entityScoreOntologyAdjusted = applyOntologyOverlay(
       entityScoreBase,
       ontologyReport.alignmentScore
@@ -291,7 +314,6 @@ export default async function handler(req, res) {
       canonical: canonicalHref,
       description,
 
-      // Scores
       entityScoreBase,
       entityScoreOntologyAdjusted,
       entityScore,
