@@ -1,10 +1,10 @@
 {
-  "version": "0.0.1",
-  "label": "EEI Ontology v0.0.1 — Single-URL Identity Check",
+  "version": "0.0.2",
+  "label": "EEI Ontology v0.0.2 — Phase 3 Identity Enforcement",
   "notes": [
-    "Baseline ontology for EEI.",
-    "Focus: structural consistency on primary URL only.",
-    "Future versions will incorporate multi-surface identity crawl."
+    "Expanded ontology constraints for root-level identity integrity.",
+    "Adds validation for identity schema presence, anti-generic canonical, and host/entity correlation.",
+    "Still scoped to single-URL identity reconstruction.",
+    "Phase 4 will introduce multi-surface canonical mapping and cross-domain entity resolution."
   ]
 }
-
