@@ -107,6 +107,33 @@
         "field": "hostnameMatchesIdentityRoot",
         "expected": true
       }
+    },
+    {
+      "id": "CR13",
+      "description": "Homepage must carry at least minimal narrative depth for stable entity reconstruction.",
+      "test": {
+        "type": "minWordCount",
+        "field": "wordCount",
+        "min": 300
+      }
+    },
+    {
+      "id": "CR14",
+      "description": "Homepage must expose at least one internal path to its own lattice (no pure dead-end shells).",
+      "test": {
+        "type": "boolean",
+        "field": "hasInternalLinks",
+        "expected": true
+      }
+    },
+    {
+      "id": "CR15",
+      "description": "Entity must declare itself via Organization or Person schema to be treated as a primary EEI subject.",
+      "test": {
+        "type": "boolean",
+        "field": "hasOrgOrPersonSchema",
+        "expected": true
+      }
     }
   ]
 }
