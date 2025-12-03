@@ -74,7 +74,7 @@
     },
     {
       "id": "CR9",
-      "description": "Breadcrumb path hierarchy must be structurally consistent (no logical jumps or unauthorized root substitutions).",
+      "description": "Breadcrumb path hierarchy must be structurally consistent.",
       "test": {
         "type": "boolean",
         "field": "breadcrumbHierarchyValid",
@@ -83,7 +83,7 @@
     },
     {
       "id": "CR10",
-      "description": "Canonical URL must not contain unnecessary query parameters, tracking tags, or trailing variants.",
+      "description": "Canonical URL must not contain unnecessary query parameters or tracking tags.",
       "test": {
         "type": "boolean",
         "field": "canonicalIsClean",
@@ -92,7 +92,7 @@
     },
     {
       "id": "CR11",
-      "description": "Top-level identity declaration (title root, canonical, organization.name) must not conflict across surfaces.",
+      "description": "Top-level identity declaration must not conflict across surfaces.",
       "test": {
         "type": "boolean",
         "field": "identityRootsUnified",
@@ -119,7 +119,7 @@
     },
     {
       "id": "CR14",
-      "description": "Homepage must expose at least one internal path to its own lattice (no pure dead-end shells).",
+      "description": "Homepage must expose at least one internal path to its own lattice.",
       "test": {
         "type": "boolean",
         "field": "hasInternalLinks",
@@ -135,9 +135,6 @@
         "expected": true
       }
     },
-
-    /* -------- Phase 4: Multi-surface Identity / Perimeter -------- */
-
     {
       "id": "CR16",
       "description": "Canonical roots must converge to a single registrable domain for the entity perimeter.",
@@ -167,7 +164,7 @@
     },
     {
       "id": "CR19",
-      "description": "Schema-level identity roots (entity names, legal names, alternates) must unify to a single root token.",
+      "description": "Schema-level identity roots must unify to a single root token.",
       "test": {
         "type": "boolean",
         "field": "schemaRootsUnified",
@@ -176,7 +173,7 @@
     },
     {
       "id": "CR20",
-      "description": "The entity's digital perimeter must be structurally stable (multi-surface presence without contradictory roots).",
+      "description": "The entity's digital perimeter must be structurally stable.",
       "test": {
         "type": "boolean",
         "field": "digitalPerimeterStable",
