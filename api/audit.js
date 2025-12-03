@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v5.4 (Phase 4 Ontology Explanations + Safety Guard)
+// /api/audit.js — EEI v5.4 Phase 4 Surface Mapping + Ontology Explanations + Safety Guard
 
 import * as cheerio from "cheerio";
 import fs from "fs";
@@ -24,12 +24,12 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
 import { evaluateOntology } from "../lib/ontologyEngine.js";
+import { mapSurfaceVectors } from "../lib/surfaceMapping.js";   // <-- NEW
 
 // ---------------------------------------------
-// Load constraint explanations
+// Load constraint explanations (optional)
 // ---------------------------------------------
 let constraintExplanations = {};
-
 try {
   const expPath = path.join(
     process.cwd(),
@@ -40,17 +40,13 @@ try {
     const raw = fs.readFileSync(expPath, "utf-8");
     constraintExplanations = JSON.parse(raw);
   }
-} catch (err) {
-  // silent fail: explanations optional
+} catch {
   constraintExplanations = {};
 }
 
 /* ================================
    HELPERS
    ================================ */
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.4 Safari/537.36";
-
 function normalizeUrl(input) {
   let url = (input || "").trim();
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
@@ -74,7 +70,7 @@ function clamp(v, min, max) {
 }
 
 /* ================================
-   SIGNAL TIER
+   SIGNAL → TIER
    ================================ */
 const SIGNAL_TIER = {
   "Title Precision": "tier3",
@@ -101,14 +97,12 @@ const TIER_LABELS = {
 };
 
 /* ================================
-   ONTOLOGY OVERLAY
+   ONTOLOGY OVERLAY WEIGHTING
    ================================ */
 function applyOntologyOverlay(baseScore, alignment) {
   if (alignment == null || Number.isNaN(alignment)) return baseScore;
-
   const a = clamp(alignment, 0, 1);
-  const weighted = Math.round(baseScore * 0.85 + a * 15);
-  return clamp(weighted, 0, 100);
+  return clamp(Math.round(baseScore * 0.85 + a * 15), 0, 100);
 }
 
 /* ================================
@@ -169,7 +163,7 @@ export default async function handler(req, res) {
 
     const $ = cheerio.load(html);
 
-    /* ---------- Extract ---------- */
+    /* ---------- Extraction ---------- */
     const title = (crawlTitle || $("title").text() || "").trim();
 
     const description =
@@ -191,8 +185,8 @@ export default async function handler(req, res) {
         : title.split(" - ")[0]) ||
       "";
 
-    /* ---------- Core Signals ---------- */
-    const results = [
+    /* ---------- Score Signals ---------- */
+    const scores = [
       scoreTitle($),
       scoreMetaDescription($),
       scoreCanonical($, normalized),
@@ -208,12 +202,12 @@ export default async function handler(req, res) {
       scoreFaviconOg($),
     ];
 
-    /* ---------- Base EEI Score ---------- */
+    /* ---------- Base Score ---------- */
     let totalRaw = 0;
     const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
     const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
-    for (const sig of results) {
+    for (const sig of scores) {
       const safe = clamp(sig.points || 0, 0, sig.max);
       const tier = SIGNAL_TIER[sig.key] || "tier3";
       totalRaw += safe;
@@ -227,7 +221,7 @@ export default async function handler(req, res) {
       100
     );
 
-    /* ---------- Tier Scores ---------- */
+    /* ---------- Tier Breakdown ---------- */
     const tierScores = {
       tier1: {
         label: TIER_LABELS.tier1,
@@ -259,7 +253,7 @@ export default async function handler(req, res) {
     };
 
     /* ================================
-       ONTOLOGY ENGINE
+       ONTOLOGY ENGINE (Phase 4)
        ================================ */
     const ontologyReport = evaluateOntology({
       title,
@@ -268,17 +262,17 @@ export default async function handler(req, res) {
       hostname: host,
       schemaObjects,
       pageLinks,
-      scoringOutputs: results,
+      scoringOutputs: scores,
       entityName: entityName.trim() || null,
       crawlHealth: crawlHealth || crawlDiagnostics || null,
     });
 
-    /* ---------- SAFETY GUARD ---------- */
+    /* ---------- Safety Guard ---------- */
     if (!Array.isArray(ontologyReport.failedConstraints)) {
       ontologyReport.failedConstraints = [];
     }
 
-    /* ---------- Inject Explanations ---------- */
+    /* ---------- Inject Constraint Explanations ---------- */
     for (const fc of ontologyReport.failedConstraints) {
       const expText = constraintExplanations?.[fc.id];
       if (expText && typeof expText === "string") {
@@ -286,7 +280,17 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ---------- Ontology score merge ---------- */
+    /* ================================
+       SURFACE MAPPING (Phase 4)
+       ================================ */
+    const surfaceVectors = mapSurfaceVectors({
+      schemaObjects,
+      pageLinks,
+      hostname: host,
+      canonicalHref,
+    });
+
+    /* ---------- Ontology Overlay ---------- */
     const entityScoreOntologyAdjusted = applyOntologyOverlay(
       entityScoreBase,
       ontologyReport.alignmentScore
@@ -295,8 +299,8 @@ export default async function handler(req, res) {
     const entityScore = entityScoreOntologyAdjusted;
     const entityTier = tierFromScore(entityScore);
 
-    /* ---------- Bars ---------- */
-    const scoringBars = results.map((r) => ({
+    /* ---------- Scoring Bars ---------- */
+    const scoringBars = scores.map((r) => ({
       key: r.key,
       points: r.points,
       max: r.max,
@@ -323,7 +327,7 @@ export default async function handler(req, res) {
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
 
-      breakdown: results,
+      breakdown: scores,
       scoringBars,
       tierScores,
 
@@ -337,6 +341,7 @@ export default async function handler(req, res) {
       crawlHealth: crawlHealth || crawlDiagnostics || null,
 
       ontology: ontologyReport,
+      surface: surfaceVectors, // <-- NEW
 
       timestamp: new Date().toISOString(),
     });
