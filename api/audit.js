@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v5.3
+// /api/audit.js — EEI v5.3 (Phase 3 Ontology Wiring)
 // Ontology Engine Integration (evaluateOntology + alignment-weight overlay)
 
 import * as cheerio from "cheerio";
@@ -24,7 +24,7 @@ import {
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
-import { evaluateOntology } from "../lib/ontologyEngine.js"; // <<< NEW
+import { evaluateOntology } from "../lib/ontologyEngine.js"; // Phase 3
 
 /* ================================
    HELPERS
@@ -177,7 +177,9 @@ export default async function handler(req, res) {
     let entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]) ||
+      (title.includes(" | ")
+        ? title.split(" | ")[0]
+        : title.split(" - ")[0]) ||
       "";
 
     /* ---------- Core Signals ---------- */
@@ -248,14 +250,18 @@ export default async function handler(req, res) {
     };
 
     /* ================================
-       ONTOLOGY ENGINE (new)
+       ONTOLOGY ENGINE (Phase 3)
        ================================ */
     const ontologyReport = evaluateOntology({
       title,
       canonical: canonicalHref,
+      url: crawlHealth?.finalUrl || normalized,
+      hostname: host,
       schemaObjects,
       pageLinks,
       scoringOutputs: results,
+      entityName: entityName.trim() || null,
+      crawlHealth: crawlHealth || crawlDiagnostics || null,
     });
 
     const entityScoreOntologyAdjusted = applyOntologyOverlay(
@@ -308,7 +314,7 @@ export default async function handler(req, res) {
 
       crawlHealth: crawlHealth || crawlDiagnostics || null,
 
-      ontology: ontologyReport, // <<< FULL DUMP
+      ontology: ontologyReport,
 
       timestamp: new Date().toISOString(),
     });
