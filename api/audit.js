@@ -24,7 +24,19 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { crawlPage } from "./core-scan.js";
 import { evaluateOntology } from "../lib/ontologyEngine.js";
-import { mapSurfaceVectors } from "../lib/surfaceMapping.js";   // <-- NEW
+
+// ---------------------------------------------
+// Optional Surface Mapping loader (safe)
+// ---------------------------------------------
+let mapSurfaceVectors = () => null;
+try {
+  // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+  const mod = require("../lib/surfaceMapping.js");
+  mapSurfaceVectors = mod.mapSurfaceVectors || mod.default || mapSurfaceVectors;
+} catch {
+  // surface mapping is optional; keep as no-op
+  mapSurfaceVectors = () => null;
+}
 
 // ---------------------------------------------
 // Load constraint explanations (optional)
@@ -281,7 +293,7 @@ export default async function handler(req, res) {
     }
 
     /* ================================
-       SURFACE MAPPING (Phase 4)
+       SURFACE MAPPING (optional)
        ================================ */
     const surfaceVectors = mapSurfaceVectors({
       schemaObjects,
@@ -341,7 +353,7 @@ export default async function handler(req, res) {
       crawlHealth: crawlHealth || crawlDiagnostics || null,
 
       ontology: ontologyReport,
-      surface: surfaceVectors, // <-- NEW
+      surface: surfaceVectors, // may be null if mapper unavailable
 
       timestamp: new Date().toISOString(),
     });
