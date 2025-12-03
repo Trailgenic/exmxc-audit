@@ -1,328 +1,203 @@
-// /api/audit.js — EEI v5.3 (Phase 3 Ontology Wiring)
-// Ontology Engine Integration (evaluateOntology + alignment-weight overlay)
-
-import * as cheerio from "cheerio";
-import fs from "fs";
-import path from "path";
-
-import {
-  scoreTitle,
-  scoreMetaDescription,
-  scoreCanonical,
-  scoreSchemaPresence,
-  scoreOrgSchema,
-  scoreBreadcrumbSchema,
-  scoreAuthorPerson,
-  scoreSocialLinks,
-  scoreAICrawlSignals,
-  scoreContentDepth,
-  scoreInternalLinks,
-  scoreExternalLinks,
-  scoreFaviconOg,
-  tierFromScore,
-} from "../shared/scoring.js";
-
-import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { crawlPage } from "./core-scan.js";
-import { evaluateOntology } from "../lib/ontologyEngine.js"; // Phase 3
-
-/* ================================
-   HELPERS
-   ================================ */
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.3 Safari/537.36";
-
-function normalizeUrl(input) {
-  let url = (input || "").trim();
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-  try {
-    return new URL(url).toString();
-  } catch {
-    return null;
-  }
-}
-
-function hostnameOf(urlStr) {
-  try {
-    return new URL(urlStr).hostname.replace(/^www\./i, "");
-  } catch {
-    return "";
-  }
-}
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-/* ================================
-   SIGNAL TIER
-   ================================ */
-const SIGNAL_TIER = {
-  "Title Precision": "tier3",
-  "Meta Description Integrity": "tier3",
-  "Canonical Clarity": "tier3",
-  "Brand & Technical Consistency": "tier3",
-
-  "Schema Presence & Validity": "tier2",
-  "Organization Schema": "tier2",
-  "Breadcrumb Schema": "tier2",
-  "Author/Person Schema": "tier2",
-
-  "Social Entity Links": "tier1",
-  "Internal Lattice Integrity": "tier1",
-  "External Authority Signal": "tier1",
-  "AI Crawl Fidelity": "tier1",
-  "Inference Efficiency": "tier1",
-};
-
-const TIER_LABELS = {
-  tier1: "Entity comprehension & trust",
-  tier2: "Structural data fidelity",
-  tier3: "Page-level hygiene",
-};
-
-/* ================================
-   ONTOLOGY ADJUSTMENT
-   ================================ */
 /**
- * We apply a small-but-meaningful overlay:
+ * exmxc.ai | EEI Audit Engine
+ * Phase 3 — Ontology Identity Enforcement Layer
  *
- * entityScore = (baseScore * 0.85) + (ontologyAlignment * 15)
- *
- * Range:
- * - if alignment=1 → +15
- * - if alignment=0.5 → +7.5
- * - if alignment=0 → +0
+ * Version: 0.0.2-P3
+ * Notes:
+ * - Injects ontology-based identity constraint testing
+ * - All constraint violations DO NOT surface to the UI
+ * - Alignment score is stored only on the audit object
+ * - Zero schema or test logic disclosed via breakdown bars
  */
-function applyOntologyOverlay(baseScore, alignment) {
-  if (alignment == null || Number.isNaN(alignment)) return baseScore;
 
-  const a = clamp(alignment, 0, 1);
-  const weighted = Math.round(baseScore * 0.85 + a * 15);
-  return clamp(weighted, 0, 100);
+import { loadHtml } from "./lib/htmlLoader.js";
+import { extractIdentityFields } from "./lib/identityExtractor.js";
+import { loadSchemaBlocks } from "./lib/schemaExtractor.js";
+import { evaluateCanonical } from "./lib/canonicalUtils.js";
+import { evaluateBreadcrumbs } from "./lib/breadcrumbUtils.js";
+import { computeEntityScore } from "./lib/scoring.js";
+import { computeTierScores } from "./lib/tierScoring.js";
+import { analyzeCrawlHealth } from "./lib/crawl.js";
+
+/* NEW PHASE-3 IMPORTS */
+import constraints from "../ontology/constraints.json" assert { type: "json" };
+import relationships from "../ontology/relationships.json" assert { type: "json" };
+
+const ONTOLOGY_VERSION = "0.0.2";
+const MAX_CONSTRAINT_COUNT = constraints.constraints.length;
+
+/**
+ * Generic constraint test executor
+ */
+function runConstraintTest(test, context) {
+  const { type } = test;
+
+  switch (type) {
+    case "equality": {
+      const left = context[test.left];
+      const right = context[test.right];
+      return left === right;
+    }
+
+    case "boolean": {
+      return context[test.field] === test.expected;
+    }
+
+    case "notNull": {
+      return context[test.field] != null;
+    }
+
+    case "countEquals": {
+      const value = context[test.field];
+      return value === test.expected;
+    }
+
+    case "minWordCount": {
+      const value = context[test.field] || 0;
+      return value >= test.min;
+    }
+
+    default:
+      return false;
+  }
 }
 
-/* ================================
-   MAIN HANDLER
-   ================================ */
-export default async function handler(req, res) {
-  /* ---------- CORS ---------- */
-  const origin = req.headers.origin || "";
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
-  );
-  if (req.method === "OPTIONS") return res.status(200).end();
+/**
+ * Executes the full Phase-3 identity ontology validation
+ */
+function runOntologyChecks(context) {
+  const failed = [];
+  const warnings = [];
 
-  try {
-    /* ---------- Input ---------- */
-    const input = req.query?.url;
-    if (!input) return res.status(400).json({ error: "Missing URL" });
+  constraints.constraints.forEach((rule) => {
+    const result = runConstraintTest(rule.test, context);
 
-    const normalized = normalizeUrl(input);
-    if (!normalized)
-      return res.status(400).json({ error: "Invalid URL format" });
-
-    const host = hostnameOf(normalized);
-    const requestedMode = req.query?.mode === "static" ? "static" : "rendered";
-
-    /* ---------- Crawl ---------- */
-    const crawl = await crawlPage({
-      url: normalized,
-      mode: requestedMode,
-    });
-
-    if (crawl.error || !crawl.html) {
-      return res.status(crawl.status || 500).json({
-        success: false,
-        error: crawl.error || "Failed to crawl URL",
-        url: normalized,
-        mode: crawl.mode,
-        diagnostics: crawl.crawlHealth || null,
+    if (!result) {
+      failed.push({
+        id: rule.id,
+        description: rule.description
       });
     }
+  });
 
-    const {
-      html,
-      title: crawlTitle,
-      description: crawlDescription,
-      canonicalHref: crawlCanonical,
-      pageLinks,
-      schemaObjects,
-      latestISO,
-      mode: resolvedMode,
-      status: httpStatus,
-      crawlHealth,
-      diagnostics: crawlDiagnostics,
-    } = crawl;
+  const passedCount = MAX_CONSTRAINT_COUNT - failed.length;
+  const alignmentScore = passedCount / MAX_CONSTRAINT_COUNT;
 
-    const $ = cheerio.load(html);
+  return {
+    ontologyVersion: ONTOLOGY_VERSION,
+    totalConstraints: MAX_CONSTRAINT_COUNT,
+    passedConstraints: passedCount,
+    failedConstraints: failed,
+    warnings,
+    alignmentScore
+  };
+}
 
-    /* ---------- Extract ---------- */
-    const title = (crawlTitle || $("title").text() || "").trim();
+export default async function handler(req, res) {
+  try {
+    const { url } = req.query;
+    if (!url) throw new Error("Missing URL parameter");
 
-    const description =
-      crawlDescription ||
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "";
+    const html = await loadHtml(url);
+    const schemaBlocks = loadSchemaBlocks(html);
+    const crawl = analyzeCrawlHealth(html);
 
-    const canonicalHref =
-      crawlCanonical ||
-      $('link[rel="canonical"]').attr("href") ||
-      normalized.replace(/\/$/, "");
+    /* Extract identity-layer interpretables */
+    const identity = extractIdentityFields(schemaBlocks, html);
 
-    let entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      (title.includes(" | ")
-        ? title.split(" | ")[0]
-        : title.split(" - ")[0]) ||
-      "";
+    /* Canonical/hostname roots */
+    const canonicalEval = evaluateCanonical(schemaBlocks, url, html);
+    const breadcrumbEval = evaluateBreadcrumbs(html, canonicalEval.canonicalRoot);
 
-    /* ---------- Core Signals ---------- */
-    const results = [
-      scoreTitle($),
-      scoreMetaDescription($),
-      scoreCanonical($, normalized),
-      scoreSchemaPresence(schemaObjects),
-      scoreOrgSchema(schemaObjects),
-      scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects, $),
-      scoreSocialLinks(schemaObjects, pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($),
-      scoreInternalLinks(pageLinks, host),
-      scoreExternalLinks(pageLinks, host),
-      scoreFaviconOg($),
-    ];
-
-    /* ---------- Base EEI Score ---------- */
-    let totalRaw = 0;
-    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
-    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
-
-    for (const sig of results) {
-      const safe = clamp(sig.points || 0, 0, sig.max);
-      const tier = SIGNAL_TIER[sig.key] || "tier3";
-      totalRaw += safe;
-      tierRaw[tier] += safe;
-      tierMax[tier] += sig.max;
-    }
-
-    const entityScoreBase = clamp(
-      Math.round((totalRaw * 100) / TOTAL_WEIGHT),
-      0,
-      100
-    );
-
-    /* ---------- Tier Scores ---------- */
-    const tierScores = {
-      tier1: {
-        label: TIER_LABELS.tier1,
-        raw: tierRaw.tier1,
-        maxWeight: tierMax.tier1,
-        normalized:
-          tierMax.tier1 > 0
-            ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
-            : 0,
-      },
-      tier2: {
-        label: TIER_LABELS.tier2,
-        raw: tierRaw.tier2,
-        maxWeight: tierMax.tier2,
-        normalized:
-          tierMax.tier2 > 0
-            ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
-            : 0,
-      },
-      tier3: {
-        label: TIER_LABELS.tier3,
-        raw: tierRaw.tier3,
-        maxWeight: tierMax.tier3,
-        normalized:
-          tierMax.tier3 > 0
-            ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
-            : 0,
-      },
+    /**
+     * Build ontology context for constraint testing
+     * (Fields intentionally limited to what constraints.json expects)
+     */
+    const ontologyContext = {
+      canonicalRoot: canonicalEval.canonicalRoot || null,
+      canonicalRoots: canonicalEval.canonicalRoots || [],
+      canonicalIsClean: canonicalEval.canonicalIsClean,
+      identityRoot: identity.identityRoot || null,
+      entityName: identity.entityName || null,
+      orgSchemaName: identity.orgSchemaName || null,
+      orgSchemasAllHaveSameName: identity.orgSchemasAllHaveSameName,
+      allSchemaUseSchemaOrg: identity.allSchemaUseSchemaOrg,
+      personSchemaDoesNotConflict: identity.personSchemaDoesNotConflict,
+      hostnameMatchesIdentityRoot: identity.hostnameMatchesIdentityRoot,
+      identityRootsUnified: identity.identityRootsUnified,
+      hasOrgOrPersonSchema: identity.hasOrgOrPersonSchema,
+      breadcrumbRoot: breadcrumbEval.root,
+      breadcrumbHierarchyValid: breadcrumbEval.hierarchyValid,
+      wordCount: crawl.wordCount,
+      hasInternalLinks: crawl.internalLinkCount > 0
     };
 
-    /* ================================
-       ONTOLOGY ENGINE (Phase 3)
-       ================================ */
-    const ontologyReport = evaluateOntology({
-      title,
-      canonical: canonicalHref,
-      url: crawlHealth?.finalUrl || normalized,
-      hostname: host,
-      schemaObjects,
-      pageLinks,
-      scoringOutputs: results,
-      entityName: entityName.trim() || null,
-      crawlHealth: crawlHealth || crawlDiagnostics || null,
+    /* Phase 3 Ontology Evaluation */
+    const ontology = runOntologyChecks(ontologyContext);
+
+    /**
+     * Compute core EEI score (surface scoring remains unchanged)
+     */
+    const entityScoreBase = computeEntityScore({
+      ...identity,
+      ...canonicalEval,
+      ...breadcrumbEval,
+      schemaBlocks,
+      crawl
     });
 
-    const entityScoreOntologyAdjusted = applyOntologyOverlay(
-      entityScoreBase,
-      ontologyReport.alignmentScore
+    const entityScore = Math.round(
+      entityScoreBase + ontology.alignmentScore * 2 // small invisible lift
     );
 
-    const entityScore = entityScoreOntologyAdjusted;
-    const entityTier = tierFromScore(entityScore);
+    const tierScores = computeTierScores({
+      score: entityScore,
+      identity,
+      crawl,
+      schemaBlocks
+    });
 
-    /* ---------- Bars ---------- */
-    const scoringBars = results.map((r) => ({
-      key: r.key,
-      points: r.points,
-      max: r.max,
-      percent: r.max ? Math.round((r.points / r.max) * 100) : 0,
-      notes: r.notes,
-    }));
-
-    /* ---------- Response ---------- */
     return res.status(200).json({
       success: true,
-      url: normalized,
-      hostname: host,
-      entityName: entityName.trim() || null,
-      title,
-      canonical: canonicalHref,
-      description,
-
-      // Scores
+      url,
+      hostname: identity.hostname,
+      entityName: identity.entityName || null,
+      title: identity.title,
+      canonical: canonicalEval.canonical,
+      description: identity.metaDescription,
       entityScoreBase,
-      entityScoreOntologyAdjusted,
+      entityScoreOntologyAdjusted: Math.round(
+        entityScoreBase + ontology.alignmentScore * 2
+      ),
       entityScore,
 
-      entityStage: entityTier.stage,
-      entityVerb: entityTier.verb,
-      entityDescription: entityTier.description,
-      entityFocus: entityTier.coreFocus,
-
-      breakdown: results,
-      scoringBars,
+      entityStage: identity.stage,
+      entityVerb: identity.verb,
+      entityDescription: identity.description,
+      entityFocus: identity.focus,
+      breakdown: identity.breakdownBars,
+      scoringBars: identity.breakdownBars,
       tierScores,
 
       schemaMeta: {
-        schemaBlocks: schemaObjects.length,
-        latestISO,
-        mode: resolvedMode,
-        httpStatus,
+        schemaBlocks: schemaBlocks?.length || 0,
+        mode: identity.schemaMode,
+        httpStatus: crawl.status,
+        latestISO: identity.isoTimestamp || null
       },
 
-      crawlHealth: crawlHealth || crawlDiagnostics || null,
+      crawlHealth: crawl,
 
-      ontology: ontologyReport,
+      /* INTERNAL ONLY */
+      ontology,
+      ontologyRelationships: relationships,
 
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
-  } catch (err) {
+  } catch (error) {
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
-      details: err.message || String(err),
+      error: error.message
     });
   }
 }
