@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v5.4 Phase 4 Surface Mapping + Ontology Explanations + Safety Guard
+// /api/audit.js — EEI v5.4 Phase 4 Surface Mapping + Ontology Explanations + Severity Layer
 
 import * as cheerio from "cheerio";
 import fs from "fs";
@@ -54,6 +54,24 @@ try {
   }
 } catch {
   constraintExplanations = {};
+}
+
+// ---------------------------------------------
+// Load constraint severity map (optional)
+// ---------------------------------------------
+let constraintSeverity = {};
+try {
+  const sevPath = path.join(
+    process.cwd(),
+    "ontology",
+    "constraintSeverity.json"
+  );
+  if (fs.existsSync(sevPath)) {
+    const raw = fs.readFileSync(sevPath, "utf-8");
+    constraintSeverity = JSON.parse(raw);
+  }
+} catch {
+  constraintSeverity = {};
 }
 
 /* ================================
@@ -116,6 +134,9 @@ function applyOntologyOverlay(baseScore, alignment) {
   const a = clamp(alignment, 0, 1);
   return clamp(Math.round(baseScore * 0.85 + a * 15), 0, 100);
 }
+
+// Severity ranking order for ontology failures
+const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
 /* ================================
    MAIN HANDLER
@@ -284,13 +305,57 @@ export default async function handler(req, res) {
       ontologyReport.failedConstraints = [];
     }
 
-    /* ---------- Inject Constraint Explanations ---------- */
+    /* ---------- Inject Constraint Explanations & Severity ---------- */
     for (const fc of ontologyReport.failedConstraints) {
-      const expText = constraintExplanations?.[fc.id];
-      if (expText && typeof expText === "string") {
-        fc.explanation = expText;
+      const exp = constraintExplanations?.[fc.id];
+      if (exp) {
+        // Supports both string or structured object from constraintExplanations.json
+        fc.explanation = exp;
+      }
+
+      const sev = constraintSeverity?.[fc.id];
+      if (sev && typeof sev === "string") {
+        fc.severity = sev.toLowerCase();
       }
     }
+
+    // ---------- Ontology Severity Rollup ----------
+    const severityCounts = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      unknown: 0,
+    };
+
+    for (const fc of ontologyReport.failedConstraints) {
+      const level =
+        typeof fc.severity === "string"
+          ? fc.severity.toLowerCase()
+          : "unknown";
+
+      if (Object.prototype.hasOwnProperty.call(severityCounts, level)) {
+        severityCounts[level] += 1;
+      } else {
+        severityCounts.unknown += 1;
+      }
+    }
+
+    let topSeverity = null;
+    for (const level of SEVERITY_ORDER) {
+      if (severityCounts[level] > 0) {
+        topSeverity = level;
+        break;
+      }
+    }
+
+    const ontologySeverity = {
+      counts: severityCounts,
+      topSeverity,
+    };
+
+    // Attach summary into ontology report as well
+    ontologyReport.severitySummary = ontologySeverity;
 
     /* ================================
        SURFACE MAPPING (optional)
@@ -353,6 +418,7 @@ export default async function handler(req, res) {
       crawlHealth: crawlHealth || crawlDiagnostics || null,
 
       ontology: ontologyReport,
+      ontologySeverity,
       surface: surfaceVectors, // may be null if mapper unavailable
 
       timestamp: new Date().toISOString(),
