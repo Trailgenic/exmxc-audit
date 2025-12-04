@@ -12,4 +12,11 @@
   "CR11": "low",
   "CR12": "low",
   "CR13": "low"
+  "CR14": "medium",
+  "CR15": "critical",
+  "CR16": "high",
+  "CR17": "high",
+  "CR18": "medium",
+  "CR19": "medium",
+  "CR20": "high"
 }
