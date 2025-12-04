@@ -4,140 +4,847 @@
     "impact": "AI systems require a single, unambiguous root domain to identify the source of truth for an entity.",
     "meaning": "The canonical URL must resolve to the same normalized root domain as the site's identity host. Any mismatch weakens authority signals and creates uncertainty about which domain owns the entity.",
     "remedy": "Normalize the canonical URL to match the primary domain root and remove all alternative or cross-domain roots unless purposefully structured.",
-    "risk": "AI may treat the entity as fragmented or duplicated, reducing confidence, suppressing ranking, and destabilizing entity identity in search reconstruction."
+    "risk": "AI may treat the entity as fragmented or duplicated, reducing confidence, suppressing ranking, and destabilizing entity identity in search reconstruction.",
+    "diagnosticTrigger": {
+      "signalType": "equality",
+      "fieldLeft": "canonicalRoot",
+      "fieldRight": "identityRoot",
+      "when": "canonicalRoot !== identityRoot"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.95,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Update the homepage canonical tag so that its normalized root matches the primary hostname used for the entity.",
+        "htmlPatch": "<link rel=\"canonical\" href=\"https://{{identityRoot}}/\" />"
+      },
+      "fullRemediation": [
+        "Identify the single primary root you want AI systems to treat as authoritative (e.g., example.com vs example.co).",
+        "Update the homepage canonical tag to point to that root and remove alternate canonical variants.",
+        "Align redirects so that legacy or secondary domains 301 redirect into the chosen root.",
+        "Verify that internal links and sitemaps also point to the canonical root, not legacy variants."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "identityRoot": "example.com",
+        "canonicalRoot": "example.co"
+      },
+      "whyThisFails": "The canonical root points to a different domain than the primary host, creating ambiguity about who owns the entity."
+    },
+    "exampleFix": {
+      "preferredCanonical": "https://example.com/"
+    }
   },
   "CR2": {
     "title": "Schema-Aligned Entity Naming",
     "impact": "Entity identity must remain consistent between the visible brand and the formal schema declaration.",
     "meaning": "The Organization.name and the entityName extracted from the page must match. Divergence implies misalignment between how the brand represents itself and how the structured graph defines it.",
     "remedy": "Ensure Organization.name reflects the true institutional name used in titles, homepages, and canonical references.",
-    "risk": "AI models may struggle to reconcile multiple identity tokens, harming trust, interpretability, and name-based entity clustering."
+    "risk": "AI models may struggle to reconcile multiple identity tokens, harming trust, interpretability, and name-based entity clustering.",
+    "diagnosticTrigger": {
+      "signalType": "equality",
+      "fieldLeft": "orgSchemaName",
+      "fieldRight": "entityName",
+      "when": "orgSchemaName && entityName && orgSchemaName.toLowerCase() !== entityName.toLowerCase()"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.94,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Align Organization.name with the primary entityName inferred from the homepage title and brand usage.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{entityName}}",
+          "url": "{{canonical}}"
+        }
+      },
+      "fullRemediation": [
+        "Decide on a single canonical institution name (e.g., \"ACME Technologies\").",
+        "Update Organization.name in all JSON-LD blocks on the homepage to use that exact name.",
+        "Ensure the homepage title prefix and logo lockup use the same name or a consistent abbreviated form.",
+        "Review legalName and alternateName fields to prevent contradictory naming tokens."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "orgSchemaName": "ACME Technologies LLC",
+        "entityName": "ACME Tech"
+      },
+      "whyThisFails": "Two different labels normalize to different tokens, increasing the chance of entity splits in AI graphs."
+    },
+    "exampleFix": {
+      "preferredName": "ACME Technologies"
+    }
   },
   "CR3": {
     "title": "Breadcrumb Root Convergence",
     "impact": "Breadcrumb paths communicate the internal logical structure of an entity's site hierarchy to crawlers.",
     "meaning": "The root of the breadcrumb chain must resolve to the same canonical root as the homepage to signal a coherent information architecture.",
     "remedy": "Ensure the first breadcrumb item resolves to the homepage canonical, not sub-paths, staging URLs, or legacy root domains.",
-    "risk": "AI may infer that the site is part of a different structural domain, weakening entity resolution and diminishing hierarchical confidence."
+    "risk": "AI may infer that the site is part of a different structural domain, weakening entity resolution and diminishing hierarchical confidence.",
+    "diagnosticTrigger": {
+      "signalType": "equality",
+      "fieldLeft": "breadcrumbRoot",
+      "fieldRight": "canonicalRoot",
+      "when": "breadcrumbRoot && canonicalRoot && breadcrumbRoot !== canonicalRoot"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.9,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Normalize the first breadcrumb item so that it links to the homepage canonical root.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "{{canonical}}"
+            }
+          ]
+        }
+      },
+      "fullRemediation": [
+        "Review the BreadcrumbList JSON-LD on the homepage and key hub pages.",
+        "Ensure the first item points to the homepage canonical, not a country sub-path or staging URL.",
+        "Align breadcrumb URLs with the same protocol and root domain as canonical declarations.",
+        "Revalidate breadcrumb behavior through a structured data testing tool."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "breadcrumbRoot": "legacy.example.com",
+        "canonicalRoot": "example.com"
+      },
+      "whyThisFails": "Breadcrumbs suggest a different root structure than the canonical homepage, implying a fragmented architecture."
+    },
+    "exampleFix": {
+      "firstBreadcrumbItem": {
+        "name": "Home",
+        "item": "https://example.com/"
+      }
+    }
   },
   "CR4": {
     "title": "Unified Naming Across Organization Schemas",
     "impact": "Multiple Organization schemas with diverging names fracture institutional identity.",
     "meaning": "All Organization schema instances on the page must declare the same entity name. Multiple conflicting names dilute brand clarity and confuse entity attribution.",
     "remedy": "Consolidate all Organization schemas into a single, consistent name value that reflects the institution’s true identity.",
-    "risk": "Inconsistent schema naming creates identity drift, degrading trust and increasing the likelihood of entity split or misclassification."
+    "risk": "Inconsistent schema naming creates identity drift, degrading trust and increasing the likelihood of entity split or misclassification.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "orgSchemasAllHaveSameName",
+      "when": "orgSchemasAllHaveSameName === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.93,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Ensure all Organization JSON-LD blocks on the page share the exact same name value.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{preferredOrganizationName}}",
+          "url": "{{canonical}}"
+        }
+      },
+      "fullRemediation": [
+        "Inventory all Organization schemas rendered on the homepage.",
+        "Choose a single, authoritative name (including decisions about LLC/Inc suffixes).",
+        "Update each Organization.name field to use that exact string.",
+        "If multiple brands must appear, model them as subOrganization or Brand rather than competing Organization roots."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "orgSchemaNames": [
+          "ACME Technologies",
+          "ACME Tech",
+          "ACME, Inc."
+        ]
+      },
+      "whyThisFails": "Each name produces a different normalized root, forcing AI to guess which one is canonical."
+    },
+    "exampleFix": {
+      "preferredOrganizationName": "ACME Technologies"
+    }
   },
   "CR5": {
     "title": "Canonical Root Singularity",
     "impact": "AI engines require a single canonical root to assign institutional authority.",
     "meaning": "Only one root canonical domain may be asserted. Multiple variations dilute the ability to infer where the official identity originates.",
     "remedy": "Remove secondary canonicals and enforce a single normalized homepage canonical representing the true root entity.",
-    "risk": "Models may treat the entity as two or more separate institutions, weakening visibility, authority weight, and graph cohesion."
+    "risk": "Models may treat the entity as two or more separate institutions, weakening visibility, authority weight, and graph cohesion.",
+    "diagnosticTrigger": {
+      "signalType": "countEquals",
+      "field": "canonicalRoots.count",
+      "expected": 1,
+      "when": "canonicalRoots && canonicalRoots.count !== 1"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.96,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Ensure only one canonical root is signaled to crawlers.",
+        "htmlPatch": "<link rel=\"canonical\" href=\"https://{{primaryRoot}}/\" />"
+      },
+      "fullRemediation": [
+        "Identify all pages or templates that emit conflicting canonical roots (e.g., language variants pointing at different roots).",
+        "Standardize to a single canonical root per entity (e.g., example.com).",
+        "Use hreflang and regional paths instead of changing canonical roots for country or language variations.",
+        "Remove or correct outdated canonical declarations in legacy templates."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "canonicalVariants": [
+          "https://example.com/",
+          "https://example.co/"
+        ]
+      },
+      "whyThisFails": "Two different roots compete for authority, weakening signal strength for both."
+    },
+    "exampleFix": {
+      "primaryRoot": "example.com"
+    }
   },
   "CR6": {
     "title": "Entity Name Presence",
     "impact": "An entity cannot be reconstructed without explicit naming signals.",
     "meaning": "If schema objects indicate the presence of an entity (Organization or Person), an entityName must exist to anchor identity.",
     "remedy": "Declare a clear entity name in either Organization schemas, title prefix, or derived entity metadata.",
-    "risk": "Without a stable identifier, AI is forced to infer identity heuristically, which reduces interpretability and reconstructive accuracy."
+    "risk": "Without a stable identifier, AI is forced to infer identity heuristically, which reduces interpretability and reconstructive accuracy.",
+    "diagnosticTrigger": {
+      "signalType": "notNull",
+      "field": "entityName",
+      "when": "!entityName"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.97,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Add an explicit entity name either via Organization schema or stable title prefix.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{brandName}}",
+          "url": "{{canonical}}"
+        }
+      },
+      "fullRemediation": [
+        "Decide on the canonical entity name used publicly and in legal documents.",
+        "Add an Organization JSON-LD block declaring that name and URL.",
+        "Align the homepage title prefix and logo caption to the same name.",
+        "Ensure other pages reuse the same entity anchor instead of introducing new names."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "hasOrganizationSchema": true,
+        "entityName": null
+      },
+      "whyThisFails": "Schema hints at an entity but never names it, forcing AI to guess based on weak cues."
+    },
+    "exampleFix": {
+      "brandName": "ACME Technologies"
+    }
   },
   "CR7": {
     "title": "Schema Vocabulary Standardization",
     "impact": "AI-grade parsing expects structural facts to be encoded in schema.org vocabulary.",
     "meaning": "All JSON-LD blocks must use schema.org namespaces, ensuring consistent machine interpretability and knowledge-graph ingestion.",
     "remedy": "Update structured data to reflect schema.org contexts and remove non-schema.org formats or proprietary variants.",
-    "risk": "Structured data that deviates from standard vocabulary is ignored or misinterpreted by crawlers, reducing trust signals."
+    "risk": "Structured data that deviates from standard vocabulary is ignored or misinterpreted by crawlers, reducing trust signals.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "allSchemaUseSchemaOrg",
+      "when": "allSchemaUseSchemaOrg === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.92,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Update each JSON-LD block to use a schema.org context.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{entityName}}",
+          "url": "{{canonical}}"
+        }
+      },
+      "fullRemediation": [
+        "Audit all JSON-LD scripts on the homepage for non-schema.org contexts.",
+        "Replace proprietary or legacy vocabularies with the closest schema.org equivalent types.",
+        "Ensure each block declares \"@context\": \"https://schema.org\" (or \"http://schema.org\" consistently).",
+        "Re-test with a structured data validator to confirm compatibility."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "@context": "https://example.com/vocab#",
+        "@type": "Corp"
+      },
+      "whyThisFails": "Custom vocab and types are not recognized as schema.org, so AI may discard these signals."
+    },
+    "exampleFix": {
+      "@context": "https://schema.org",
+      "@type": "Organization"
+    }
   },
   "CR8": {
     "title": "Person–Organization Identity Non-Conflict",
     "impact": "Conflicting Person and Organization schemas imply unclear ownership or misassigned identity.",
     "meaning": "If Person schema exists, it must not conflict with Organization identity. The page must clearly separate institutional identity from individual attribution.",
     "remedy": "Ensure Person nodes represent authorship or contributors without duplicating or competing with the Organization identity.",
-    "risk": "Identity collision may lead to ambiguous graph resolution, causing AI to assign ownership to individuals rather than the institution."
+    "risk": "Identity collision may lead to ambiguous graph resolution, causing AI to assign ownership to individuals rather than the institution.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "personSchemaDoesNotConflict",
+      "when": "personSchemaDoesNotConflict === false"
+    },
+    "severity": "medium",
+    "confidenceLevel": 0.88,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Adjust Person schema so that it clearly represents an individual, not the institution itself.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Person",
+          "name": "{{personName}}",
+          "jobTitle": "{{role}}",
+          "worksFor": {
+            "@type": "Organization",
+            "name": "{{orgSchemaName}}"
+          }
+        }
+      },
+      "fullRemediation": [
+        "Review Person and Organization JSON-LD nodes on the homepage.",
+        "Ensure Person.name does not duplicate the Organization name or brand token.",
+        "Use worksFor or affiliation to connect individuals back to the organization.",
+        "Avoid modeling the organization itself as a Person in any schema fields."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "orgSchemaName": "ACME Technologies",
+        "personSchemaName": "ACME Technologies"
+      },
+      "whyThisFails": "The same string is used for both a Person and an Organization, confusing ownership and identity roles."
+    },
+    "exampleFix": {
+      "personName": "Jane Doe",
+      "role": "Founder and CEO"
+    }
   },
   "CR9": {
     "title": "Breadcrumb Structural Validity",
     "impact": "A logical breadcrumb hierarchy is a key trust signal that reveals how the entity organizes itself.",
     "meaning": "Breadcrumb position values must follow a strict sequential order to confirm the hierarchy is intentional and coherent.",
     "remedy": "Correct breadcrumb item positions to begin at 1 and increment consecutively without gaps.",
-    "risk": "Invalid breadcrumb structure may be interpreted as auto-generated noise and excluded from entity modeling."
+    "risk": "Invalid breadcrumb structure may be interpreted as auto-generated noise and excluded from entity modeling.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "breadcrumbHierarchyValid",
+      "when": "breadcrumbHierarchyValid === false"
+    },
+    "severity": "medium",
+    "confidenceLevel": 0.9,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Fix the itemListElement positions so they form a clean sequence starting at 1.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "{{canonical}}"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Section",
+              "item": "{{canonical}}section/"
+            }
+          ]
+        }
+      },
+      "fullRemediation": [
+        "Inspect existing BreadcrumbList JSON-LD blocks for skipped or duplicated positions.",
+        "Reset positions to an ascending sequence starting from 1.",
+        "Ensure that each breadcrumb item has a valid URL and label.",
+        "Confirm that breadcrumb trails reflect the actual site navigation and avoid auto-generated noise."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "positions": [1, 3, 4]
+      },
+      "whyThisFails": "A gap at position 2 suggests invalid or broken hierarchy, reducing trust in breadcrumb signals."
+    },
+    "exampleFix": {
+      "positions": [1, 2, 3]
+    }
   },
   "CR10": {
     "title": "Anti-Generic Canonical Enforcement",
     "impact": "AI models treat query strings, hashes, and tracking parameters as unstable surfaces.",
     "meaning": "A canonical must represent a pure institutional root free from query parameters or tracking fragments.",
     "remedy": "Strip all parameters, ensure canonical represents a clean root, and avoid UTM/marketing variants in canonical declarations.",
-    "risk": "Dirty canonicals weaken authority and may cause AI systems to disregard canonical intent completely."
+    "risk": "Dirty canonicals weaken authority and may cause AI systems to disregard canonical intent completely.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "canonicalIsClean",
+      "when": "canonicalIsClean === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.93,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Update the canonical link to remove query parameters and fragments.",
+        "htmlPatch": "<link rel=\"canonical\" href=\"https://{{identityRoot}}/\" />"
+      },
+      "fullRemediation": [
+        "Audit the homepage and core templates for canonical tags that include UTM or tracking parameters.",
+        "Normalize each canonical to a parameter-free root URL.",
+        "Ensure marketing campaigns do not override canonical URLs with campaign variants.",
+        "Re-run structured data and canonical validation checks after deployment."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "canonical": "https://example.com/?utm_source=newsletter"
+      },
+      "whyThisFails": "The canonical includes transient campaign parameters that are not stable identity surfaces."
+    },
+    "exampleFix": {
+      "canonical": "https://example.com/"
+    }
   },
   "CR11": {
     "title": "Unified Identity Declaration",
     "impact": "AI expects a single, stable expression of entity identity across all top-level signals.",
     "meaning": "Identity roots (hostname, canonical root, schema identity root) must not contradict each other.",
     "remedy": "Normalize hostname-level identity, canonical declarations, and schema name roots to a single coherent value.",
-    "risk": "Conflicting roots reduce graph confidence and weaken authority propagation across surfaces."
+    "risk": "Conflicting roots reduce graph confidence and weaken authority propagation across surfaces.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "identityRootsUnified",
+      "when": "identityRootsUnified === false"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.95,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Ensure hostname, canonical root, and entityRoot all resolve to the same normalized brand token.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{entityName}}",
+          "url": "{{canonical}}"
+        }
+      },
+      "fullRemediation": [
+        "Normalize the hostname (without www) and verify that it matches the canonical root.",
+        "Confirm that entityRoot derived from entityName corresponds to the same brand token.",
+        "Fix any canonical or hostname variants that drift away from this core token.",
+        "Align branding (logo alt text, title, footer name) with the same identity root."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "hostname": "brand.example.com",
+        "canonicalRoot": "example.com",
+        "entityRoot": "brand-co"
+      },
+      "whyThisFails": "Each signal points to a different root concept, weakening the AI’s certainty about the entity."
+    },
+    "exampleFix": {
+      "hostname": "example.com",
+      "canonicalRoot": "example.com",
+      "entityRoot": "example"
+    }
   },
   "CR12": {
     "title": "Hostname Alignment Check",
     "impact": "The hostname must reinforce entity identity, not contradict it.",
     "meaning": "If hostname normalization disagrees with the inferred entity root, crawlers may doubt the legitimacy of the domain as the authoritative surface.",
     "remedy": "Ensure that the canonical identity root and hostname normalization resolve to the same effective domain value.",
-    "risk": "Disparity can signal staging environments, cloned sites, or identity drift scenarios."
+    "risk": "Disparity can signal staging environments, cloned sites, or identity drift scenarios.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "hostnameMatchesIdentityRoot",
+      "when": "hostnameMatchesIdentityRoot === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.92,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Align the active hostname with the chosen identityRoot and enforce redirects from non-primary hosts.",
+        "htmlPatch": "<link rel=\"canonical\" href=\"https://{{identityRoot}}/\" />"
+      },
+      "fullRemediation": [
+        "Determine the correct production hostname for the entity (e.g., example.com).",
+        "Configure redirects from staging or alternate hosts (e.g., www.example.com, beta.example.com) to the primary host.",
+        "Update any remaining internal links or sitemaps that reference non-primary hosts.",
+        "Verify that SSL certificates and DNS records reinforce the primary hostname as the official surface."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "hostname": "staging.example.com",
+        "identityRoot": "example.com"
+      },
+      "whyThisFails": "Crawlers hit a staging or alternate host that does not match the primary identity root."
+    },
+    "exampleFix": {
+      "primaryHostname": "example.com"
+    }
   },
   "CR13": {
     "title": "Minimum Narrative Depth",
     "impact": "AI models evaluate meaningfulness and institutional intent by narrative completeness.",
     "meaning": "The page must contain at least moderate content volume to allow entity reconstruction and semantic inference.",
     "remedy": "Expand visible content with descriptive, substantive text that communicates identity, purpose, or scope.",
-    "risk": "Sparse pages are treated as weak surfaces with insufficient evidence to support entity trust weighting."
+    "risk": "Sparse pages are treated as weak surfaces with insufficient evidence to support entity trust weighting.",
+    "diagnosticTrigger": {
+      "signalType": "minWordCount",
+      "field": "wordCount",
+      "min": 300,
+      "when": "typeof wordCount === 'number' && wordCount < 300"
+    },
+    "severity": "medium",
+    "confidenceLevel": 0.9,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Add enough high-quality copy to exceed the minimum narrative threshold (e.g., 300–500 words of substantive content)."
+      },
+      "fullRemediation": [
+        "Introduce sections that describe who the entity is, what it offers, and who it serves.",
+        "Add clear headings and paragraphs that articulate value propositions and institutional scope.",
+        "Ensure content is unique and not boilerplate duplicated across multiple domains.",
+        "Supplement with internal links to deeper pages that expand on key themes."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "wordCount": 120
+      },
+      "whyThisFails": "A near-empty homepage does not provide enough narrative context for AI to confidently reconstruct the entity."
+    },
+    "exampleFix": {
+      "targetWordCountRange": "300–800 words of original narrative content"
+    }
   },
   "CR14": {
     "title": "Internal Lattice Access",
     "impact": "Internal navigation confirms the entity controls a meaningful information perimeter.",
     "meaning": "At least one internal path must be present to demonstrate the existence of a broader institutional lattice beyond the current page.",
     "remedy": "Link to relevant internal hubs, articles, or structured subpages that form an identifiable graph.",
-    "risk": "Without internal links, AI treats the surface as isolated and structurally insignificant."
+    "risk": "Without internal links, AI treats the surface as isolated and structurally insignificant.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "hasInternalLinks",
+      "when": "hasInternalLinks === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.93,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Add at least one meaningful internal link from the homepage to another core page (e.g., About, Products, or Insights)."
+      },
+      "fullRemediation": [
+        "Create a primary navigation menu linking to key hubs (About, Products, Services, Insights, Contact).",
+        "Ensure internal links use clean, crawlable anchor tags instead of JavaScript-only navigation.",
+        "Include at least one contextual link inside the body content that points to a deeper explainer page.",
+        "Verify that internal links are not blocked by robots or nofollow attributes."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "internalLinkCount": 0
+      },
+      "whyThisFails": "The page appears as a single, detached surface with no visible institutional lattice."
+    },
+    "exampleFix": {
+      "recommendedInternalLinks": [
+        "/about",
+        "/products",
+        "/insights"
+      ]
+    }
   },
   "CR15": {
     "title": "Schema-Based Entity Declaration",
     "impact": "Schema nodes representing Organization or Person identity are the foundation of machine-readable entity trust.",
     "meaning": "At least one top-level identity schema must appear for the page to be considered a candidate for EEI subject ranking.",
     "remedy": "Add an Organization or Person JSON-LD definition that clearly declares the entity and its attributes.",
-    "risk": "Without explicit schema nodes, the entity cannot be formally reconstructed in search layers."
+    "risk": "Without explicit schema nodes, the entity cannot be formally reconstructed in search layers.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "hasOrgOrPersonSchema",
+      "when": "hasOrgOrPersonSchema === false"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.97,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Introduce a single Organization (or Person, for individual entities) schema block on the homepage.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{entityName}}",
+          "url": "{{canonical}}",
+          "logo": "{{logoUrl}}"
+        }
+      },
+      "fullRemediation": [
+        "Decide whether the primary EEI subject is an Organization or an individual Person.",
+        "Create an appropriate JSON-LD block that declares the entity’s name, URL, and key attributes.",
+        "Ensure this block is present on the homepage and ideally across key templates.",
+        "Iterate later with richer attributes (sameAs, contactPoint, foundingDate) once the base identity is established."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "schemaBlocks": 0,
+        "hasOrgOrPersonSchema": false
+      },
+      "whyThisFails": "No formal identity node exists, so the page cannot be promoted into an EEI subject confidently."
+    },
+    "exampleFix": {
+      "minimalOrganizationSchema": {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "ACME Technologies",
+        "url": "https://example.com/"
+      }
+    }
   },
   "CR16": {
     "title": "Canonical Convergence",
     "impact": "A stable surface perimeter requires the canonical to converge to a single authoritative root.",
     "meaning": "If multiple canonical roots exist, crawlers cannot determine where institutional authority is anchored.",
     "remedy": "Enforce uniform canonical declarations that resolve back to the same normalized registrable root domain.",
-    "risk": "Diffused roots lead to uncertain graph propagation, weakened identity cohesion, and poorer institutional clarity."
+    "risk": "Diffused roots lead to uncertain graph propagation, weakened identity cohesion, and poorer institutional clarity.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "canonicalConvergenceStrong",
+      "when": "canonicalConvergenceStrong === false"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.94,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Align all canonical URLs on core pages so they converge to a single registrable root domain.",
+        "htmlPatch": "<link rel=\"canonical\" href=\"https://{{identityRootDomain}}/\" />"
+      },
+      "fullRemediation": [
+        "Audit key templates for region or language variants emitting conflicting canonicals.",
+        "Standardize canonical roots so that they always resolve to the same registrable domain (e.g., example.com).",
+        "For internationalization, use hreflang and localized paths instead of separate canonical roots.",
+        "Confirm that redirects and sitemaps reinforce the same root convergence."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "identityRootDomain": "example.com",
+        "otherCanonicalRoots": [
+          "example.co.uk",
+          "example.de"
+        ]
+      },
+      "whyThisFails": "Multiple registrable roots compete, signaling fragmentation rather than a unified entity perimeter."
+    },
+    "exampleFix": {
+      "identityRootDomain": "example.com"
+    }
   },
   "CR17": {
     "title": "Multi-Surface Schema Coherence",
     "impact": "Entities represented across social, outbound, and sameAs surfaces must maintain schema-anchored identity.",
     "meaning": "When multiple surfaces exist, Organization or Person schema must be present to anchor cross-surface identity to a single institution.",
     "remedy": "Add schema that formally declares the entity identity and ensure its attributes match each visible surface.",
-    "risk": "Without schema, AI may treat surface diversity as fragmentation rather than institutional reach."
+    "risk": "Without schema, AI may treat surface diversity as fragmentation rather than institutional reach.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "multiSurfaceSchemaCoherent",
+      "when": "multiSurfaceSchemaCoherent === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.93,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Ensure that multi-surface entities (with social/outbound presence) have a clear Organization schema anchor.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{entityName}}",
+          "url": "{{canonical}}",
+          "sameAs": [
+            "{{socialProfile1}}",
+            "{{socialProfile2}}"
+          ]
+        }
+      },
+      "fullRemediation": [
+        "Inventory social profiles and major outbound hosts that represent the same institution.",
+        "Create or refine Organization schema to include these surfaces in sameAs or related fields.",
+        "Check that the homepage references these surfaces consistently (header/footer links).",
+        "Avoid mixing multiple unrelated brands into the same identity schema block."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "hasMultiSurfacePresence": true,
+        "hasOrgOrPersonSchema": false
+      },
+      "whyThisFails": "The entity appears across many surfaces but lacks a schema anchor to connect them into one institution."
+    },
+    "exampleFix": {
+      "socialProfile1": "https://www.linkedin.com/company/example",
+      "socialProfile2": "https://twitter.com/example"
+    }
   },
   "CR18": {
     "title": "Surface Overlap Trust Signal",
     "impact": "Overlap between outbound social links and declared sameAs URLs confirms cross-surface identity alignment.",
     "meaning": "Identifiable surfaces must substantially intersect to prove continuity between schema, social profiles, and outbound references.",
     "remedy": "Ensure declared sameAs surfaces correspond to the same major social hosts referenced from the page.",
-    "risk": "Weak overlap signals fragmented presence and lowers trust in the cohesiveness of the institution's digital perimeter."
+    "risk": "Weak overlap signals fragmented presence and lowers trust in the cohesiveness of the institution's digital perimeter.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "sameAsOverlapStrong",
+      "when": "sameAsOverlapStrong === false"
+    },
+    "severity": "medium",
+    "confidenceLevel": 0.9,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Align sameAs URLs with the actual social and reference hosts linked from the page."
+      },
+      "fullRemediation": [
+        "Collect the list of distinct social hosts from outbound links (e.g., linkedin.com, twitter.com, youtube.com).",
+        "Ensure these same hosts are also represented in Organization.sameAs where appropriate.",
+        "Remove stale or unused social profiles from sameAs or from the page footer.",
+        "Re-run the crawl to verify stronger intersection between schema sameAs and social hosts."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "sameAsHosts": [
+          "facebook.com"
+        ],
+        "socialHosts": [
+          "linkedin.com",
+          "twitter.com",
+          "youtube.com"
+        ]
+      },
+      "whyThisFails": "Schema claims one set of surfaces while the actual page links signal a different set, weakening trust."
+    },
+    "exampleFix": {
+      "alignedSameAsHosts": [
+        "linkedin.com",
+        "twitter.com",
+        "youtube.com"
+      ]
+    }
   },
   "CR19": {
     "title": "Schema Root Token Unification",
     "impact": "Entity roots derived from schema attributes must converge on a single normalized token.",
     "meaning": "LegalName, Organization.name, alternateName, and entityName must not produce multiple normalized identity roots.",
     "remedy": "Standardize naming fields to eliminate divergent identity roots and represent the institution consistently.",
-    "risk": "Multiple schema roots weaken machine certainty and increase risk of identity bifurcation."
+    "risk": "Multiple schema roots weaken machine certainty and increase risk of identity bifurcation.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "schemaRootsUnified",
+      "when": "schemaRootsUnified === false"
+    },
+    "severity": "high",
+    "confidenceLevel": 0.94,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Normalize all schema name fields so that they derive to a single identity root token.",
+        "schemaPatch": {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "{{canonicalName}}",
+          "legalName": "{{legalName}}",
+          "alternateName": [
+            "{{brandShortName}}"
+          ]
+        }
+      },
+      "fullRemediation": [
+        "List all schema name-bearing fields: Organization.name, legalName, alternateName, entityName.",
+        "Choose a canonical root string and ensure all variations normalize to that same token (e.g., removing LLC/Inc noise).",
+        "Use alternateName for safe short brand forms, not competing identities.",
+        "Avoid mixing legacy brand names or acquired entities into the same root schema block without modeling them as subOrganization or Brand."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "name": "ACME Technologies",
+        "legalName": "ACME Technologies Group PLC",
+        "alternateName": [
+          "ACME Finance",
+          "ACME Labs"
+        ]
+      },
+      "whyThisFails": "Alternate names introduce multiple unrelated identity roots, making it unclear which one represents the institution."
+    },
+    "exampleFix": {
+      "canonicalName": "ACME Technologies",
+      "legalName": "ACME Technologies Ltd.",
+      "brandShortName": "ACME"
+    }
   },
   "CR20": {
     "title": "Digital Perimeter Stability",
     "impact": "Stable institutional identity requires coherent convergence across canonical, schema roots, and multi-surface identity signals.",
     "meaning": "A digitally stable perimeter reflects unified root domains, overlapping external surfaces, and consistent schema identity.",
     "remedy": "Align canonical declarations, schema identity, sameAs, and outbound hosts so that each surface reflects the same entity root.",
-    "risk": "Instability signals weak institutional identity, degrading authority, reconstruction confidence, and cross-surface trust alignment."
+    "risk": "Instability signals weak institutional identity, degrading authority, reconstruction confidence, and cross-surface trust alignment.",
+    "diagnosticTrigger": {
+      "signalType": "boolean",
+      "field": "digitalPerimeterStable",
+      "when": "digitalPerimeterStable === false"
+    },
+    "severity": "critical",
+    "confidenceLevel": 0.95,
+    "repairMatrix": {
+      "minimalFix": {
+        "instructions": "Resolve major mismatches between canonical root, schema roots, and key external surfaces (sameAs and outbound hosts)."
+      },
+      "fullRemediation": [
+        "Confirm the identityRootDomain that should own the entity (e.g., example.com).",
+        "Align canonical, hostname, and schema URL fields to consistently reference that root.",
+        "Ensure sameAs and outbound authority hosts reflect the same institution (e.g., verified Wikipedia/LinkedIn/YouTube entities).",
+        "Remove or deprecate legacy or off-brand surfaces that compete for identity and redirect them where appropriate."
+      ]
+    },
+    "exampleViolation": {
+      "given": {
+        "identityRootDomain": "example.com",
+        "surfaceRoots": [
+          "example.org",
+          "legacy-example.com",
+          "partner-site.com"
+        ]
+      },
+      "whyThisFails": "Authority and identity are spread across unrelated surfaces, reducing confidence that any one domain owns the entity."
+    },
+    "exampleFix": {
+      "targetState": "All key signals (canonical, schema, sameAs, authority links) converge on example.com as the primary institutional root."
+    }
   }
 }
-
