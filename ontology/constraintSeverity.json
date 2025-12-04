@@ -1,0 +1,15 @@
+{
+  "CR1": "critical",
+  "CR2": "high",
+  "CR3": "high",
+  "CR4": "medium",
+  "CR5": "critical",
+  "CR6": "medium",
+  "CR7": "medium",
+  "CR8": "medium",
+  "CR9": "low",
+  "CR10": "low",
+  "CR11": "low",
+  "CR12": "low",
+  "CR13": "low"
+}
