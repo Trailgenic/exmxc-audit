@@ -133,7 +133,9 @@ function summarizeOntologySeverity(ontology) {
     return { counts, topSeverity: top };
   }
 
-  const failed = Array.isArray(ontology.failedConstraints) ? ontology.failedConstraints : [];
+  const failed = Array.isArray(ontology.failedConstraints)
+    ? ontology.failedConstraints
+    : [];
 
   for (const fc of failed) {
     const mapped =
@@ -237,7 +239,11 @@ async function runSingleAudit({ url, mode }) {
     tierMax[tier] += sig.max;
   }
 
-  const entityScoreBase = clamp(Math.round((totalRaw * 100) / TOTAL_WEIGHT), 0, 100);
+  const entityScoreBase = clamp(
+    Math.round((totalRaw * 100) / TOTAL_WEIGHT),
+    0,
+    100
+  );
 
   const tierScores = {
     tier1: {
@@ -339,6 +345,50 @@ async function runSingleAudit({ url, mode }) {
 }
 
 /* ==========================================================
+   MERGE CRAWL HEALTH FROM SURFACES
+   ========================================================== */
+function mergeCrawlHealth(audits) {
+  const merged = {
+    score: null,
+    diagnostics: [],
+    crawlerAccess: null,
+    sitemapFound: null,
+    canonicalResolved: null,
+    surfaceIndexable: null,
+    internalLinkDensity: null,
+  };
+
+  let best = null;
+
+  for (const s of audits) {
+    if (!s?.crawlHealth) continue;
+
+    if (s.crawlHealth?.score != null) {
+      if (!best || s.crawlHealth.score > best.score) {
+        best = s.crawlHealth;
+      }
+    }
+
+    if (Array.isArray(s.crawlHealth?.diagnostics)) {
+      merged.diagnostics = merged.diagnostics.concat(
+        s.crawlHealth.diagnostics
+      );
+    }
+  }
+
+  if (best) {
+    merged.score = best.score ?? null;
+    merged.crawlerAccess = best.crawlerAccess ?? null;
+    merged.sitemapFound = best.sitemapFound ?? null;
+    merged.canonicalResolved = best.canonicalResolved ?? null;
+    merged.surfaceIndexable = best.surfaceIndexable ?? null;
+    merged.internalLinkDensity = best.internalLinkDensity ?? null;
+  }
+
+  return merged;
+}
+
+/* ==========================================================
    MULTI-SURFACE LOGIC
    ========================================================== */
 function deriveBaseUrl(requestedUrl) {
@@ -370,7 +420,10 @@ function buildSurfaceUrls(baseUrl) {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
@@ -401,10 +454,9 @@ export default async function handler(req, res) {
       tolerance: 0.65,
     });
 
-    /* ======================================================
-       ENTITY-LEVEL DIAGNOSTICS MERGE
-       ====================================================== */
-    // pick canonical surface used by resolver if available
+    // restore unified crawl health
+    const unifiedCrawlHealth = mergeCrawlHealth(surfaces);
+
     let canonicalSurface = surfaces.find(
       (s) => s.url === unifiedRaw.primaryUrl
     );
@@ -426,6 +478,7 @@ export default async function handler(req, res) {
       breakdown,
       scoringBars,
       entityName,
+      crawlHealth: unifiedCrawlHealth,
     };
 
     return res.status(200).json({
