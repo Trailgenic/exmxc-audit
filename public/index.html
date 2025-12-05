@@ -567,63 +567,49 @@
           entityFocusEl.textContent =
             unified.entityFocus || primary.entityFocus || "";
 
-          const tierScores = primary.tierScores || data.tierScores || {};
-          setTierCard(
-            tier1ScoreEl,
-            tier1BarEl,
-            tier1MetaEl,
-            tierScores.tier1
-          );
-          setTierCard(
-            tier2ScoreEl,
-            tier2BarEl,
-            tier2MetaEl,
-            tierScores.tier2
-          );
-          setTierCard(
-            tier3ScoreEl,
-            tier3BarEl,
-            tier3MetaEl,
-            tierScores.tier3
-          );
+          // -------------------------------------
+// RESOLVE TIERS & SIGNALS (Unified-first)
+// -------------------------------------
+const tierScores =
+  unified.tiers ||
+  primary.tierScores ||
+  data.tierScores ||
+  {};
 
-          const ch =
-            primary.crawlHealth || data.crawlHealth || null;
+setTierCard(
+  tier1ScoreEl,
+  tier1BarEl,
+  tier1MetaEl,
+  tierScores.tier1
+);
+setTierCard(
+  tier2ScoreEl,
+  tier2BarEl,
+  tier2MetaEl,
+  tierScores.tier2
+);
+setTierCard(
+  tier3ScoreEl,
+  tier3BarEl,
+  tier3MetaEl,
+  tierScores.tier3
+);
 
-          handleCrawlHealth(ch);
+// -------------------------------------
+// Resolve signals
+// Unified holds the authoritative breakdown
+// -------------------------------------
+const breakdown =
+  unified.breakdown ||
+  primary.breakdown ||
+  primary.scoringBars ||
+  data.breakdown ||
+  data.scoringBars ||
+  data.signals ||
+  [];
 
-          if (ch && ch.score != null) {
-            const chScore = ch.score;
+renderSignalsList(breakdown);
 
-            crawlHealthScoreEl.textContent = `${chScore}/100`;
-            crawlHealthScoreEl.className =
-              "badge " + scoreColor(chScore) + " text-white";
-
-            crawlHealthCategoryEl.textContent = ch.category
-              ? ch.category
-                  .split("-")
-                  .map(
-                    (s) => s.charAt(0).toUpperCase() + s.slice(1)
-                  )
-                  .join(" ")
-              : "—";
-
-            crawlHealthNotesEl.innerHTML = "";
-            (ch.notes || []).forEach((n) => {
-              const li = document.createElement("li");
-              li.textContent = n;
-              crawlHealthNotesEl.appendChild(li);
-            });
-          }
-
-          const breakdown =
-            primary.scoringBars ||
-            primary.breakdown ||
-            data.scoringBars ||
-            data.breakdown ||
-            data.signals ||
-            [];
-          renderSignalsList(breakdown);
 
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
