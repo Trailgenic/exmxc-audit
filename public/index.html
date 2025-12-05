@@ -141,7 +141,6 @@
             digital-perimeter coherence.
           </div>
 
-          <!-- Surfaces summary -->
           <div id="surfaceSummary" class="text-[11px] text-gray-500"></div>
 
           <div class="flex flex-wrap items-center gap-2 mt-3">
@@ -279,6 +278,18 @@
       </div>
     </section>
 
+    <!-- 13-SIGNAL BARS -->
+    <section id="signalBarsSection" class="mb-8 hidden">
+      <h2 class="text-sm font-semibold text-gray-900 mb-3">
+        13-Signal Scoring Matrix (Internal Diagnostics)
+      </h2>
+
+      <div
+        id="signalBarsGrid"
+        class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"
+      ></div>
+    </section>
+
     <!-- SIGNAL LABELS ONLY -->
     <section class="mb-10">
       <h2 class="text-sm font-semibold text-gray-900 mb-2">
@@ -331,8 +342,7 @@
       const timestampEl = document.getElementById("timestamp");
 
       const crawlHealthScoreEl = document.getElementById("crawlHealthScore");
-      const crawlHealthCategoryEl =
-        document.getElementById("crawlHealthCategory");
+      const crawlHealthCategoryEl = document.getElementById("crawlHealthCategory");
       const crawlHealthNotesEl = document.getElementById("crawlHealthNotes");
       const crawlHealthCardEl = document.getElementById("crawlHealthCard");
 
@@ -351,6 +361,10 @@
 
       const signalsListEl = document.getElementById("signalsList");
       const toggleJSON = document.getElementById("toggleJSON");
+
+      /* NEW SIGNAL BAR SECTION HOOKS */
+      const signalBarsSectionEl = document.getElementById("signalBarsSection");
+      const signalBarsGridEl = document.getElementById("signalBarsGrid");
 
       toggleJSON.addEventListener("click", () => {
         resultEl.classList.toggle("hidden");
@@ -379,16 +393,13 @@
 
       function handleInterpretiveMode(score, data) {
         const breakdown =
+          data?.unified?.breakdown ||
           data?.primary?.breakdown ||
-          data?.breakdown ||
+          data?.primary?.scoringBars ||
           data?.scoringBars ||
-          data?.signals ||
           [];
 
-        const hasSignals =
-          Array.isArray(breakdown) && breakdown.length > 0;
-
-        if (score >= 60 && hasSignals) {
+        if (score >= 60 && breakdown.length > 0) {
           interpretiveModeEl.classList.add("hidden");
         } else {
           interpretiveModeEl.classList.remove("hidden");
@@ -404,41 +415,49 @@
           return;
         }
 
-        // Only count successes
-        const successful = surfaces.filter(
-          (s) => s && s.success === true
-        ).length;
+        const successful = surfaces.filter((s) => s && s.success === true)
+          .length;
 
         surfaceSummaryEl.textContent = `Crawled surfaces: ${successful}/${total}`;
       }
 
-      function handleCrawlHealth(ch) {
+      function handleCrawlHealth(data) {
+        const ch =
+          data?.unified?.crawlHealth ||
+          data?.primary?.crawlHealth ||
+          data?.crawlHealth;
+
         if (!ch || ch.score == null) {
           crawlHealthCardEl.classList.add("hidden");
           return;
         }
 
         crawlHealthCardEl.classList.remove("hidden");
+        crawlHealthScoreEl.textContent = ch.score;
+        crawlHealthCategoryEl.textContent = ch.category || "";
+
+        crawlHealthNotesEl.innerHTML = "";
+        (ch.notes || []).forEach((note) => {
+          const li = document.createElement("li");
+          li.textContent = note;
+          crawlHealthNotesEl.appendChild(li);
+        });
       }
 
       function setTierCard(elScore, elBar, elMeta, tier) {
         if (!tier || tier.normalized == null) {
           elScore.textContent = "No evaluated signals";
           elBar.style.width = "0%";
-          elBar.className =
-            "h-2 w-0 rounded-full bg-gray-300";
+          elBar.className = "h-2 w-0 rounded-full bg-gray-300";
           elMeta.textContent = "";
           return;
         }
 
         const norm = tier.normalized;
-        const raw = tier.raw ?? 0;
-        const max = tier.maxWeight ?? 0;
-
         elScore.textContent = `${norm.toFixed(1)} / 100`;
         elBar.style.width = `${norm}%`;
         elBar.className = `h-2 rounded-full ${scoreColor(norm)}`;
-        elMeta.textContent = `Raw ${raw} / ${max}`;
+        elMeta.textContent = `Raw ${tier.raw} / ${tier.maxWeight}`;
       }
 
       function renderSignalsList(breakdown) {
@@ -474,6 +493,45 @@
         });
       }
 
+      /** NEW: 13-signal scoring matrix */
+      function renderSignalBars(breakdown) {
+        signalBarsGridEl.innerHTML = "";
+
+        if (!breakdown || !breakdown.length) {
+          signalBarsSectionEl.classList.add("hidden");
+          return;
+        }
+
+        signalBarsSectionEl.classList.remove("hidden");
+
+        breakdown.forEach((signal) => {
+          if (!signal || signal.points == null || signal.max == null) return;
+
+          const pct = ((signal.points / signal.max) * 100).toFixed(1);
+          const barColor = scoreColor(pct);
+
+          const card = document.createElement("div");
+          card.className = "bg-white border border-gray-200 rounded-lg p-3 shadow-sm";
+
+          card.innerHTML = `
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-semibold text-gray-800">${signal.key}</span>
+              <span class="text-[11px] text-gray-500">${pct}%</span>
+            </div>
+
+            <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div class="h-2 rounded-full ${barColor}" style="width:${pct}%"></div>
+            </div>
+
+            <div class="text-[10px] text-gray-500 mt-1">
+              Raw ${signal.points} / ${signal.max}
+            </div>
+          `;
+
+          signalBarsGridEl.appendChild(card);
+        });
+      }
+
       runButton.addEventListener("click", async () => {
         const input = document.getElementById("urlInput").value.trim();
         if (!input) return alert("Please enter a URL.");
@@ -485,19 +543,18 @@
         signalsListEl.innerHTML = "";
         surfaceSummaryEl.textContent = "";
         crawlHealthCardEl.classList.add("hidden");
+        signalBarsSectionEl.classList.add("hidden");
 
-        const li = document.createElement("li");
-        li.textContent = "Loading…";
-        li.className = "text-gray-400";
-        signalsListEl.appendChild(li);
+        const loadingLi = document.createElement("li");
+        loadingLi.textContent = "Loading…";
+        loadingLi.className = "text-gray-400";
+        signalsListEl.appendChild(loadingLi);
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
 
           const res = await fetch(
-            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(
-              url
-            )}`,
+            `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
             {
               headers: { "x-exmxc-key": "exmxc-internal" },
             }
@@ -510,14 +567,6 @@
 
           if (!data || data.success === false) {
             resultEl.textContent = JSON.stringify(data || {}, null, 2);
-            scoreDisplay.textContent = "EEI (Unified): -- / 100";
-            scoreBar.style.width = "0%";
-            scoreBar.className = "h-3 w-0 rounded-full bg-gray-300";
-            scoreBadge.textContent = "Interpretive Mode";
-            scoreBadge.className =
-              "badge bg-gray-300 text-gray-800";
-            interpretiveModeEl.classList.remove("hidden");
-            renderSignalsList([]);
             return;
           }
 
@@ -534,22 +583,15 @@
           scoreDisplay.textContent = `EEI (Unified): ${score} / 100`;
           scoreBar.style.width = `${score}%`;
           scoreBar.className = `h-3 rounded-full ${scoreColor(score)}`;
-          scoreBar.style.backgroundImage = "none";
-
           scoreBadge.textContent = stageBadgeText(score);
-          scoreBadge.className = `badge border ${scoreColor(
-            score
-          )} bg-gray-900/5 text-gray-900`;
+          scoreBadge.className = `badge border ${scoreColor(score)} bg-gray-900/5 text-gray-900`;
 
           renderSurfaceSummary(data);
           handleInterpretiveMode(score, data);
+          handleCrawlHealth(data);
 
-          const host = primary.hostname || "";
-          const nameFromEntity =
-            unified.entityName || primary.entityName || host || "";
-          entityNameEl.textContent = nameFromEntity
-            ? `Entity: ${nameFromEntity}`
-            : "";
+          entityNameEl.textContent =
+            `Entity: ${unified.entityName || primary.entityName || primary.hostname || ""}`;
 
           entityStageEl.textContent =
             unified.entityStage || primary.entityStage || "";
@@ -558,8 +600,6 @@
             entityVerbBadge.textContent =
               unified.entityVerb || primary.entityVerb;
             entityVerbBadge.classList.remove("hidden");
-          } else {
-            entityVerbBadge.classList.add("hidden");
           }
 
           entityVerbEl.textContent =
@@ -567,49 +607,27 @@
           entityFocusEl.textContent =
             unified.entityFocus || primary.entityFocus || "";
 
-          // -------------------------------------
-// RESOLVE TIERS & SIGNALS (Unified-first)
-// -------------------------------------
-const tierScores =
-  unified.tiers ||
-  primary.tierScores ||
-  data.tierScores ||
-  {};
+          const tierScores =
+            unified.tiers ||
+            primary.tierScores ||
+            data.tierScores ||
+            {};
 
-setTierCard(
-  tier1ScoreEl,
-  tier1BarEl,
-  tier1MetaEl,
-  tierScores.tier1
-);
-setTierCard(
-  tier2ScoreEl,
-  tier2BarEl,
-  tier2MetaEl,
-  tierScores.tier2
-);
-setTierCard(
-  tier3ScoreEl,
-  tier3BarEl,
-  tier3MetaEl,
-  tierScores.tier3
-);
+          setTierCard(tier1ScoreEl, tier1BarEl, tier1MetaEl, tierScores.tier1);
+          setTierCard(tier2ScoreEl, tier2BarEl, tier2MetaEl, tierScores.tier2);
+          setTierCard(tier3ScoreEl, tier3BarEl, tier3MetaEl, tierScores.tier3);
 
-// -------------------------------------
-// Resolve signals
-// Unified holds the authoritative breakdown
-// -------------------------------------
-const breakdown =
-  unified.breakdown ||
-  primary.breakdown ||
-  primary.scoringBars ||
-  data.breakdown ||
-  data.scoringBars ||
-  data.signals ||
-  [];
+          const breakdown =
+            unified.breakdown ||
+            primary.breakdown ||
+            primary.scoringBars ||
+            data.breakdown ||
+            data.scoringBars ||
+            data.signals ||
+            [];
 
-renderSignalsList(breakdown);
-
+          renderSignalsList(breakdown);
+          renderSignalBars(breakdown);
 
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
@@ -618,14 +636,6 @@ renderSignalsList(breakdown);
             null,
             2
           );
-          scoreDisplay.textContent = "EEI (Unified): -- / 100";
-          scoreBar.style.width = "0%";
-          scoreBar.className = "h-3 w-0 rounded-full bg-gray-300";
-          scoreBadge.textContent = "Interpretive Mode";
-          scoreBadge.className =
-            "badge bg-gray-300 text-gray-800";
-          interpretiveModeEl.classList.remove("hidden");
-          renderSignalsList([]);
         }
       });
     </script>
