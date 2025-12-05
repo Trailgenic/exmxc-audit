@@ -1,14 +1,4 @@
-// /api/audit.js — EEI v5.6 Phase-5 MULTI-PAGE Crawl
-//
-// Multi-Page logic:
-//   1. Detect root URL of requested site
-//   2. Load root-surface mapping from `/ontology/pages.json`
-//   3. Generate full URLs for each surface
-//   4. Run Single-surface audits on all of them
-//   5. Resolve into unified Entity Score + Entity Stage via resolveEntitySurfaces
-//
-// No batch-run logic, no predictive scoring.
-// Pure multi-page crawl for any external domain.
+// /api/audit.js — EEI v5.6.1 Phase-5 MULTI-PAGE Crawl (Unified Diagnostics Restored)
 
 import * as cheerio from "cheerio";
 import fs from "fs";
@@ -39,7 +29,6 @@ import { resolveEntitySurfaces } from "../lib/surfaceResolver.js";
 /* ================================
    LOAD PAGES.JSON
    ================================ */
-
 let presetPages = [];
 try {
   const source = path.join(process.cwd(), "ontology", "pages.json");
@@ -47,50 +36,29 @@ try {
     const raw = fs.readFileSync(source, "utf-8");
     presetPages = JSON.parse(raw);
   }
-} catch (err) {
-  console.warn("[audit] Failed to load pages.json", err.message);
+} catch {
   presetPages = [];
 }
 
 /* ================================
-   LOAD Constraint Explanations (optional)
+   LOAD Constraint Descriptors
    ================================ */
 let constraintExplanations = {};
 try {
-  const expPath = path.join(
-    process.cwd(),
-    "ontology",
-    "constraintExplanations.json"
-  );
-  if (fs.existsSync(expPath)) {
-    const raw = fs.readFileSync(expPath, "utf-8");
-    constraintExplanations = JSON.parse(raw);
+  const p = path.join(process.cwd(), "ontology", "constraintExplanations.json");
+  if (fs.existsSync(p)) {
+    constraintExplanations = JSON.parse(fs.readFileSync(p, "utf-8"));
   }
-} catch {
-  constraintExplanations = {};
-}
+} catch {}
 
-/* ================================
-   LOAD Constraint Severity (optional)
-   ================================ */
 let constraintSeverity = {};
 try {
-  const sevPath = path.join(
-    process.cwd(),
-    "ontology",
-    "constraintSeverity.json"
-  );
-  if (fs.existsSync(sevPath)) {
-    const raw = fs.readFileSync(sevPath, "utf-8");
-    constraintSeverity = JSON.parse(raw);
+  const p = path.join(process.cwd(), "ontology", "constraintSeverity.json");
+  if (fs.existsSync(p)) {
+    constraintSeverity = JSON.parse(fs.readFileSync(p, "utf-8"));
   }
-} catch {
-  constraintSeverity = {};
-}
+} catch {}
 
-/* ================================
-   HELPERS
-   ================================ */
 function normalizeUrl(input) {
   let url = (input || "").trim();
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
@@ -109,15 +77,6 @@ function hostnameOf(urlStr) {
   }
 }
 
-function getBaseOrigin(urlStr) {
-  try {
-    const u = new URL(urlStr);
-    return `${u.protocol}//${u.hostname.replace(/^www\./i, "")}`;
-  } catch {
-    return null;
-  }
-}
-
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
@@ -127,12 +86,10 @@ const SIGNAL_TIER = {
   "Meta Description Integrity": "tier3",
   "Canonical Clarity": "tier3",
   "Brand & Technical Consistency": "tier3",
-
   "Schema Presence & Validity": "tier2",
   "Organization Schema": "tier2",
   "Breadcrumb Schema": "tier2",
   "Author/Person Schema": "tier2",
-
   "Social Entity Links": "tier1",
   "Internal Lattice Integrity": "tier1",
   "External Authority Signal": "tier1",
@@ -140,25 +97,13 @@ const SIGNAL_TIER = {
   "Inference Efficiency": "tier1",
 };
 
-const TIER_LABELS = {
-  tier1: "Entity comprehension & trust",
-  tier2: "Structural data fidelity",
-  tier3: "Page-level hygiene",
-};
+const SEVERITY_ORDER = ["critical", "high", "medium", "low", "unknown"];
 
-/* ================================
-   ONTOLOGY Overlay Weighting
-   ================================ */
 function applyOntologyOverlay(baseScore, alignment) {
   if (alignment == null || Number.isNaN(alignment)) return baseScore;
   const a = clamp(alignment, 0, 1);
   return clamp(Math.round(baseScore * 0.85 + a * 15), 0, 100);
 }
-
-/* ================================
-   ONTOLOGY Severity Summary
-   ================================ */
-const SEVERITY_ORDER = ["critical", "high", "medium", "low", "unknown"];
 
 function summarizeOntologySeverity(ontology) {
   const counts = {
@@ -169,16 +114,13 @@ function summarizeOntologySeverity(ontology) {
     unknown: 0,
   };
 
-  if (!ontology) {
-    return { counts, topSeverity: null };
-  }
+  if (!ontology) return { counts, topSeverity: null };
 
-  if (ontology.severitySummary && ontology.severitySummary.counts) {
+  if (ontology.severitySummary?.counts) {
     const src = ontology.severitySummary.counts;
     for (const level of Object.keys(counts)) {
       if (typeof src[level] === "number") counts[level] += src[level];
     }
-
     let top = ontology.severitySummary.topSeverity || null;
     if (!top) {
       for (const level of SEVERITY_ORDER) {
@@ -191,15 +133,11 @@ function summarizeOntologySeverity(ontology) {
     return { counts, topSeverity: top };
   }
 
-  const failed = Array.isArray(ontology.failedConstraints)
-    ? ontology.failedConstraints
-    : [];
+  const failed = Array.isArray(ontology.failedConstraints) ? ontology.failedConstraints : [];
 
   for (const fc of failed) {
-    const id = fc?.id || null;
-
     const mapped =
-      (id && constraintSeverity[id]) ||
+      (fc?.id && constraintSeverity[fc.id]) ||
       fc?.explanation?.severity ||
       fc?.severity ||
       "unknown";
@@ -219,21 +157,15 @@ function summarizeOntologySeverity(ontology) {
   return { counts, topSeverity };
 }
 
-/* ================================
-   SINGLE-PAGE AUDIT
-   ================================ */
+/* ==========================================================
+   SINGLE-SURFACE AUDIT
+   ========================================================== */
 async function runSingleAudit({ url, mode }) {
   const normalized = normalizeUrl(url);
-  if (!normalized) {
-    throw new Error("Invalid URL format");
-  }
+  if (!normalized) throw new Error("Invalid URL format");
 
   const host = hostnameOf(normalized);
-
-  const crawl = await crawlPage({
-    url: normalized,
-    mode,
-  });
+  const crawl = await crawlPage({ url: normalized, mode });
 
   if (crawl.error || !crawl.html) {
     const err = new Error(crawl.error || "Failed to crawl URL");
@@ -245,7 +177,7 @@ async function runSingleAudit({ url, mode }) {
   const {
     html,
     title: crawlTitle,
-    description: crawlDescription,
+    description: crawlDesc,
     canonicalHref: crawlCanonical,
     pageLinks,
     schemaObjects,
@@ -261,7 +193,7 @@ async function runSingleAudit({ url, mode }) {
   const title = (crawlTitle || $("title").text() || "").trim();
 
   const description =
-    crawlDescription ||
+    crawlDesc ||
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
     "";
@@ -274,12 +206,9 @@ async function runSingleAudit({ url, mode }) {
   let entityName =
     schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
     schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-    (title.includes(" | ")
-      ? title.split(" | ")[0]
-      : title.split(" - ")[0]) ||
+    (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]) ||
     "";
 
-  /* ---------- Score Signals ---------- */
   const scores = [
     scoreTitle($),
     scoreMetaDescription($),
@@ -296,7 +225,6 @@ async function runSingleAudit({ url, mode }) {
     scoreFaviconOg($),
   ];
 
-  /* ---------- Base Score ---------- */
   let totalRaw = 0;
   const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
   const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
@@ -309,37 +237,35 @@ async function runSingleAudit({ url, mode }) {
     tierMax[tier] += sig.max;
   }
 
-  const entityScoreBase = clamp(
-    Math.round((totalRaw * 100) / TOTAL_WEIGHT),
-    0,
-    100
-  );
+  const entityScoreBase = clamp(Math.round((totalRaw * 100) / TOTAL_WEIGHT), 0, 100);
 
-  /* ---------- Tier Breakdown ---------- */
   const tierScores = {
     tier1: {
       raw: tierRaw.tier1,
       maxWeight: tierMax.tier1,
       normalized:
-        tierMax.tier1 > 0 ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2)) : 0,
+        tierMax.tier1 > 0
+          ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
+          : 0,
     },
     tier2: {
       raw: tierRaw.tier2,
       maxWeight: tierMax.tier2,
       normalized:
-        tierMax.tier2 > 0 ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2)) : 0,
+        tierMax.tier2 > 0
+          ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
+          : 0,
     },
     tier3: {
       raw: tierRaw.tier3,
       maxWeight: tierMax.tier3,
       normalized:
-        tierMax.tier3 > 0 ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2)) : 0,
+        tierMax.tier3 > 0
+          ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
+          : 0,
     },
   };
 
-  /* ================================
-     ONTOLOGY ENGINE
-     ================================ */
   const ontologyReport = evaluateOntology({
     title,
     canonical: canonicalHref,
@@ -365,7 +291,6 @@ async function runSingleAudit({ url, mode }) {
 
   const ontologySeverity = summarizeOntologySeverity(ontologyReport);
 
-  /* ---------- Overlay ---------- */
   const entityScoreOntologyAdjusted = applyOntologyOverlay(
     entityScoreBase,
     ontologyReport.alignmentScore
@@ -374,7 +299,6 @@ async function runSingleAudit({ url, mode }) {
   const entityScore = entityScoreOntologyAdjusted;
   const entityTier = tierFromScore(entityScore);
 
-  /* ---------- Scoring Bars ---------- */
   const scoringBars = scores.map((r) => ({
     key: r.key,
     points: r.points,
@@ -391,27 +315,22 @@ async function runSingleAudit({ url, mode }) {
     title,
     canonical: canonicalHref,
     description,
-
     entityScoreBase,
     entityScoreOntologyAdjusted,
     entityScore,
-
     entityStage: entityTier.stage,
     entityVerb: entityTier.verb,
     entityDescription: entityTier.description,
     entityFocus: entityTier.coreFocus,
-
     breakdown: scores,
     scoringBars,
     tierScores,
-
     schemaMeta: {
       schemaBlocks: schemaObjects.length,
       latestISO,
       mode: resolvedMode,
       httpStatus,
     },
-
     crawlHealth: crawlHealth || crawlDiagnostics || null,
     ontology: ontologyReport,
     ontologySeverity,
@@ -419,9 +338,9 @@ async function runSingleAudit({ url, mode }) {
   };
 }
 
-/* ================================
-   MULTI-PAGE LOGIC
-   ================================ */
+/* ==========================================================
+   MULTI-SURFACE LOGIC
+   ========================================================== */
 function deriveBaseUrl(requestedUrl) {
   try {
     const u = new URL(requestedUrl);
@@ -433,42 +352,25 @@ function deriveBaseUrl(requestedUrl) {
 
 function buildSurfaceUrls(baseUrl) {
   if (!baseUrl || !Array.isArray(presetPages)) return [];
-
   const results = [];
+
   for (const p of presetPages) {
-    const path = (p.path || "").trim();
-    if (!path) continue;
-
-    let full;
+    const seg = (p.path || "").trim();
+    if (!seg) continue;
     try {
-      full = new URL(path, baseUrl).toString();
-    } catch {
-      continue;
-    }
-
-    results.push(full);
+      results.push(new URL(seg, baseUrl).toString());
+    } catch {}
   }
-
   return results;
 }
 
-/* ================================
-   MAIN API HANDLER
-   ================================ */
+/* ==========================================================
+   MAIN HANDLER — Unified Diagnostics Restored
+   ========================================================== */
 export default async function handler(req, res) {
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    req.headers.origin || "*"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, OPTIONS"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
-  );
-
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
@@ -477,52 +379,68 @@ export default async function handler(req, res) {
 
     const mode = req.query?.mode === "static" ? "static" : "rendered";
 
-    /* ---------- Primary Audit ---------- */
-    const primaryAudit = await runSingleAudit({
-      url: input,
-      mode,
-    });
+    const primary = await runSingleAudit({ url: input, mode });
 
-    /* ---------- Multi-Page Branch ---------- */
-    const baseUrl = deriveBaseUrl(primaryAudit.url);
-    const surfaceList = buildSurfaceUrls(baseUrl);
+    const baseUrl = deriveBaseUrl(primary.url);
+    const targets = buildSurfaceUrls(baseUrl);
 
-    const secondaryAudits = [];
-
-    for (const url of surfaceList) {
-      if (url === primaryAudit.url) continue;
+    const secondaries = [];
+    for (const u of targets) {
+      if (u === primary.url) continue;
       try {
-        const a = await runSingleAudit({ url, mode });
-        secondaryAudits.push(a);
+        secondaries.push(await runSingleAudit({ url: u, mode }));
       } catch (err) {
-        console.warn("[audit] Failed surface:", url, err.message);
+        console.warn("[audit] surface fail:", u, err.message);
       }
     }
 
-    const allAudits = [primaryAudit, ...secondaryAudits];
+    const surfaces = [primary, ...secondaries];
 
-    const unified = resolveEntitySurfaces({
-      audits: allAudits,
+    const unifiedRaw = resolveEntitySurfaces({
+      audits: surfaces,
       tolerance: 0.65,
     });
 
-    /* ---------- Response ---------- */
+    /* ======================================================
+       ENTITY-LEVEL DIAGNOSTICS MERGE
+       ====================================================== */
+    // pick canonical surface used by resolver if available
+    let canonicalSurface = surfaces.find(
+      (s) => s.url === unifiedRaw.primaryUrl
+    );
+
+    if (!canonicalSurface) {
+      canonicalSurface = primary;
+    }
+
+    const {
+      tierScores,
+      breakdown,
+      scoringBars,
+      entityName,
+    } = canonicalSurface;
+
+    const unified = {
+      ...unifiedRaw,
+      tierScores,
+      breakdown,
+      scoringBars,
+      entityName,
+    };
+
     return res.status(200).json({
       success: true,
       requestedUrl: input,
       baseUrl,
       mode,
-      surfaces: allAudits,
+      surfaces,
       unified,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    const status = err.httpStatus || 500;
-
-    return res.status(status).json({
+    return res.status(err.httpStatus || 500).json({
       success: false,
-      error: "Internal server error",
-      details: err.message || String(err),
+      error: err.message || "Internal Error",
       crawl: err.crawl || null,
     });
   }
