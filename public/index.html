@@ -120,6 +120,14 @@
             >
               Awaiting input
             </span>
+
+            <!-- Interpretive Mode -->
+            <span
+              id="interpretiveMode"
+              class="badge bg-gray-900 text-amber-100 hidden"
+            >
+              Interpretive Mode
+            </span>
           </div>
 
           <div
@@ -128,10 +136,13 @@
             <div id="scoreBar" class="h-3 w-0 rounded-full"></div>
           </div>
 
-          <div class="text-[11px] text-gray-600">
+          <div class="text-[11px] text-gray-600 mb-2">
             Unified EEI score = primary surface + ontology alignment +
             digital-perimeter coherence.
           </div>
+
+          <!-- Surfaces summary -->
+          <div id="surfaceSummary" class="text-[11px] text-gray-500"></div>
 
           <div class="flex flex-wrap items-center gap-2 mt-3">
             <div
@@ -156,7 +167,8 @@
 
         <!-- Crawl Health Quick View -->
         <div
-          class="bg-white/70 border border-amber-100 rounded-lg p-3 text-xs text-gray-700 min-w-[220px]"
+          id="crawlHealthCard"
+          class="bg-white/70 border border-amber-100 rounded-lg p-3 text-xs text-gray-700 min-w-[220px] hidden"
         >
           <div class="flex items-center justify-between mb-1">
             <span class="font-semibold text-gray-800">Crawl Health</span>
@@ -290,10 +302,14 @@
 
     <!-- RAW JSON -->
     <section class="mb-10">
-      <h2 class="text-sm font-semibold text-gray-900 mb-2">
-        Raw JSON (Internal Debug · copy/paste for Ella)
-      </h2>
-      <pre id="result" class="json-box">// Awaiting input...</pre>
+      <button
+        id="toggleJSON"
+        class="text-xs font-semibold text-gray-700 mb-2 underline"
+      >
+        ▸ Internal Diagnostics (JSON)
+      </button>
+
+      <pre id="result" class="json-box hidden">// Awaiting input...</pre>
     </section>
 
     <footer class="text-center text-xs text-gray-500 mt-4 mb-2">
@@ -318,6 +334,10 @@
       const crawlHealthCategoryEl =
         document.getElementById("crawlHealthCategory");
       const crawlHealthNotesEl = document.getElementById("crawlHealthNotes");
+      const crawlHealthCardEl = document.getElementById("crawlHealthCard");
+
+      const surfaceSummaryEl = document.getElementById("surfaceSummary");
+      const interpretiveModeEl = document.getElementById("interpretiveMode");
 
       const tier1ScoreEl = document.getElementById("tier1Score");
       const tier2ScoreEl = document.getElementById("tier2Score");
@@ -330,6 +350,14 @@
       const tier3MetaEl = document.getElementById("tier3Meta");
 
       const signalsListEl = document.getElementById("signalsList");
+      const toggleJSON = document.getElementById("toggleJSON");
+
+      toggleJSON.addEventListener("click", () => {
+        resultEl.classList.toggle("hidden");
+        toggleJSON.textContent = resultEl.classList.contains("hidden")
+          ? "▸ Internal Diagnostics (JSON)"
+          : "▾ Internal Diagnostics (JSON)";
+      });
 
       function scoreColor(score) {
         if (score >= 80) return "bg-green-500";
@@ -349,25 +377,65 @@
         return "Proto-entity; barely on the map";
       }
 
+      function handleInterpretiveMode(score, data) {
+        const breakdown =
+          data?.primary?.breakdown ||
+          data?.breakdown ||
+          data?.scoringBars ||
+          data?.signals ||
+          [];
+
+        const hasSignals =
+          Array.isArray(breakdown) && breakdown.length > 0;
+
+        if (score >= 60 && hasSignals) {
+          interpretiveModeEl.classList.add("hidden");
+        } else {
+          interpretiveModeEl.classList.remove("hidden");
+        }
+      }
+
+      function renderSurfaceSummary(data) {
+        const surfaces = data?.surfaces || [];
+        const total = surfaces.length || 0;
+
+        if (total === 0) {
+          surfaceSummaryEl.textContent = "";
+          return;
+        }
+
+        // Only count successes
+        const successful = surfaces.filter(
+          (s) => s && s.success === true
+        ).length;
+
+        surfaceSummaryEl.textContent = `Crawled surfaces: ${successful}/${total}`;
+      }
+
+      function handleCrawlHealth(ch) {
+        if (!ch || ch.score == null) {
+          crawlHealthCardEl.classList.add("hidden");
+          return;
+        }
+
+        crawlHealthCardEl.classList.remove("hidden");
+      }
+
       function setTierCard(elScore, elBar, elMeta, tier) {
-        if (!tier) {
-          elScore.textContent = "--";
+        if (!tier || tier.normalized == null) {
+          elScore.textContent = "No evaluated signals";
           elBar.style.width = "0%";
-          elBar.className = "h-2 w-0 rounded-full bg-gray-300";
+          elBar.className =
+            "h-2 w-0 rounded-full bg-gray-300";
           elMeta.textContent = "";
           return;
         }
 
+        const norm = tier.normalized;
         const raw = tier.raw ?? 0;
         const max = tier.maxWeight ?? 0;
-        const norm = tier.normalized ?? 0;
 
-        const normDisplay =
-          typeof norm === "number" && !isNaN(norm)
-            ? norm.toFixed(1)
-            : String(norm);
-
-        elScore.textContent = `${normDisplay} / 100`;
+        elScore.textContent = `${norm.toFixed(1)} / 100`;
         elBar.style.width = `${norm}%`;
         elBar.className = `h-2 rounded-full ${scoreColor(norm)}`;
         elMeta.textContent = `Raw ${raw} / ${max}`;
@@ -415,6 +483,9 @@
         entityNameEl.textContent = "";
         timestampEl.textContent = "";
         signalsListEl.innerHTML = "";
+        surfaceSummaryEl.textContent = "";
+        crawlHealthCardEl.classList.add("hidden");
+
         const li = document.createElement("li");
         li.textContent = "Loading…";
         li.className = "text-gray-400";
@@ -442,17 +513,17 @@
             scoreDisplay.textContent = "EEI (Unified): -- / 100";
             scoreBar.style.width = "0%";
             scoreBar.className = "h-3 w-0 rounded-full bg-gray-300";
-            scoreBadge.textContent = "Error";
-            scoreBadge.className = "badge bg-red-100 text-red-700";
+            scoreBadge.textContent = "Interpretive Mode";
+            scoreBadge.className =
+              "badge bg-gray-300 text-gray-800";
+            interpretiveModeEl.classList.remove("hidden");
             renderSignalsList([]);
             return;
           }
 
-          // Core structures
           const unified = data.unified || {};
           const primary = data.primary || data;
 
-          // Unified score (ontology-aware)
           const score =
             unified.entityScore ??
             primary.entityScore ??
@@ -470,7 +541,9 @@
             score
           )} bg-gray-900/5 text-gray-900`;
 
-          // Entity naming/stage
+          renderSurfaceSummary(data);
+          handleInterpretiveMode(score, data);
+
           const host = primary.hostname || "";
           const nameFromEntity =
             unified.entityName || primary.entityName || host || "";
@@ -494,7 +567,6 @@
           entityFocusEl.textContent =
             unified.entityFocus || primary.entityFocus || "";
 
-          // Tier cards (from primary surface)
           const tierScores = primary.tierScores || data.tierScores || {};
           setTierCard(
             tier1ScoreEl,
@@ -515,34 +587,35 @@
             tierScores.tier3
           );
 
-          // Crawl health (primary surface)
           const ch =
-            primary.crawlHealth || data.crawlHealth || { score: null };
-          const chScore = ch.score ?? null;
+            primary.crawlHealth || data.crawlHealth || null;
 
-          crawlHealthScoreEl.textContent =
-            chScore === null ? "--" : `${chScore}/100`;
-          crawlHealthScoreEl.className =
-            "badge " +
-            (chScore === null
-              ? "bg-gray-200 text-gray-700"
-              : scoreColor(chScore) + " text-white");
+          handleCrawlHealth(ch);
 
-          crawlHealthCategoryEl.textContent = ch.category
-            ? ch.category
-                .split("-")
-                .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-                .join(" ")
-            : "—";
+          if (ch && ch.score != null) {
+            const chScore = ch.score;
 
-          crawlHealthNotesEl.innerHTML = "";
-          (ch.notes || []).forEach((n) => {
-            const li = document.createElement("li");
-            li.textContent = n;
-            crawlHealthNotesEl.appendChild(li);
-          });
+            crawlHealthScoreEl.textContent = `${chScore}/100`;
+            crawlHealthScoreEl.className =
+              "badge " + scoreColor(chScore) + " text-white";
 
-          // Signals list — names only, from primary breakdown/scoringBars
+            crawlHealthCategoryEl.textContent = ch.category
+              ? ch.category
+                  .split("-")
+                  .map(
+                    (s) => s.charAt(0).toUpperCase() + s.slice(1)
+                  )
+                  .join(" ")
+              : "—";
+
+            crawlHealthNotesEl.innerHTML = "";
+            (ch.notes || []).forEach((n) => {
+              const li = document.createElement("li");
+              li.textContent = n;
+              crawlHealthNotesEl.appendChild(li);
+            });
+          }
+
           const breakdown =
             primary.scoringBars ||
             primary.breakdown ||
@@ -552,7 +625,6 @@
             [];
           renderSignalsList(breakdown);
 
-          // Raw JSON for copy/paste
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
           resultEl.textContent = JSON.stringify(
@@ -563,8 +635,10 @@
           scoreDisplay.textContent = "EEI (Unified): -- / 100";
           scoreBar.style.width = "0%";
           scoreBar.className = "h-3 w-0 rounded-full bg-gray-300";
-          scoreBadge.textContent = "Error";
-          scoreBadge.className = "badge bg-red-100 text-red-700";
+          scoreBadge.textContent = "Interpretive Mode";
+          scoreBadge.className =
+            "badge bg-gray-300 text-gray-800";
+          interpretiveModeEl.classList.remove("hidden");
           renderSignalsList([]);
         }
       });
