@@ -1,0 +1,61 @@
+{
+  "seedPaths": [
+    "/", 
+    "/about",
+    "/company",
+    "/about-us",
+    "/who-we-are",
+    "/leadership",
+    "/team",
+    "/people",
+    "/careers",
+    "/jobs",
+    "/contact",
+    "/contact-us",
+    "/mission",
+    "/vision",
+    "/values",
+    "/blog",
+    "/insights",
+    "/news",
+    "/articles",
+    "/press",
+    "/press-releases",
+    "/privacy-policy",
+    "/terms",
+    "/legal",
+    "/investors",
+    "/corporate"
+  ],
+
+  "priorityHeuristics": {
+    "about": 5,
+    "company": 5,
+    "who-we-are": 5,
+    "leadership": 4,
+    "team": 4,
+    "people": 4,
+    "mission": 4,
+    "vision": 4,
+    "values": 4,
+
+    "investors": 4,
+    "corporate": 4,
+    "press": 3,
+    "news": 3,
+    "insights": 3,
+    "articles": 3,
+
+    "blog": 2,
+    "careers": 2,
+    "jobs": 2,
+    "contact": 2,
+
+    "privacy-policy": 1,
+    "terms": 1,
+    "legal": 1
+  },
+
+  "maxPages": 5
+
+}
