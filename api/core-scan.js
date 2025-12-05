@@ -1,7 +1,7 @@
-/* ==== BEGIN core-scan.js (Segment 1 of 4) ==== */
-// /api/core-scan.js — EEI Crawl v3.0 (Segment 1)
-// Mandatory dual-crawl (static + rendered), no mode param.
-// Imports, global config, helpers, UA rotation, JSON-LD parser.
+// /api/core-scan.js — EEI Crawl v3.1 (Unified Module)
+// Dual-mode crawl (static + rendered), robots analysis,
+// JSON-LD extraction, ontology-ready diagnostics,
+// single axios import, no recursive self-imports.
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -17,7 +17,7 @@ export const CRAWL_CONFIG = {
 
   // Base UA (for static)
   USER_AGENT:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/3.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/3.1 Safari/537.36",
 
   IS_VERCEL:
     !!process.env.VERCEL ||
@@ -55,7 +55,7 @@ const AI_USER_AGENTS = [
   "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
   "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-  "Mozilla/5.0 (compatible; exmxc-crawl/3.0; +https://exmxc.ai/eei)",
+  "Mozilla/5.0 (compatible; exmxc-crawl/3.1; +https://exmxc.ai/eei)",
 ];
 
 export function randomAiUA() {
@@ -104,7 +104,6 @@ export function parseJsonLd(ldTexts = []) {
     Array.isArray(parsed) ? parsed.forEach(handle) : handle(parsed);
   }
 
-  // Merge by @id
   const byId = new Map();
   const loose = [];
 
@@ -130,7 +129,6 @@ export function parseJsonLd(ldTexts = []) {
 
   const all = [...byId.values(), ...loose];
 
-  // Extract latest date
   const dateKeys = [
     "dateModified",
     "dateUpdated",
@@ -162,16 +160,6 @@ export function parseJsonLd(ldTexts = []) {
     },
   };
 }
-
-/* ==== END core-scan.js (Segment 1 of 4) ==== */
-
-/* ==== BEGIN core-scan.js (Segment 2 of 4) ==== */
-// /api/core-scan.js — EEI Crawl v3.0 (Segment 2)
-// robots.txt fetch + analyze, staticCrawl(), renderedCrawl() core payload.
-
-import axios from "axios";
-import * as cheerio from "cheerio";
-import { CRAWL_CONFIG, randomAiUA, parseJsonLd } from "./core-scan.js"; // NOTE: temporary self-import path placeholder — adjusted at final assembly
 
 /* ============================================================
    4. robots.txt
@@ -217,8 +205,7 @@ function analyzeRobotsTxt(robotsTxt, url) {
 
     const disMatch = line.match(/^disallow:\s*(.*)$/i);
     if (disMatch && parsed.length > 0) {
-      const path = disMatch[1].trim();
-      parsed[parsed.length - 1].disallow.push(path);
+      parsed[parsed.length - 1].disallow.push(disMatch[1].trim());
     }
   }
 
@@ -295,14 +282,6 @@ async function staticCrawl(url) {
 
   const robotsMeta = $('meta[name="robots"]').attr("content") || "";
 
-  const scriptToWordRatio =
-    wordCount > 0 ? scriptTags.length / wordCount : 0;
-  const textToHtmlRatio =
-    html.length > 0 ? bodyText.length / html.length : 0;
-  const schemaDensity =
-    wordCount > 0 ? schemaObjects.length / wordCount : 0;
-  const hasNoscript = $("noscript").length > 0;
-
   return {
     _type: "static",
     status: resp.status,
@@ -338,10 +317,6 @@ async function staticCrawl(url) {
       jsonLdCount: schemaStats.ldJsonCount,
       jsonLdValidCount: schemaStats.ldJsonValidCount,
       jsonLdErrorCount: schemaStats.ldJsonErrorCount,
-      scriptToWordRatio,
-      textToHtmlRatio,
-      schemaDensity,
-      hasNoscript,
     },
   };
 }
@@ -396,13 +371,6 @@ async function renderedCrawl(url) {
     }
 
     const scriptCount = await page.$$eval("script", (nodes) => nodes.length);
-    const scriptToWordRatio =
-      wordCount > 0 ? scriptCount / wordCount : 0;
-    const textToHtmlRatio =
-      html.length > 0 ? bodyText.length / html.length : 0;
-    const schemaDensity =
-      wordCount > 0 ? schemaObjects.length / wordCount : 0;
-    const hasNoscript = $("noscript").length > 0;
 
     return {
       _type: "rendered",
@@ -442,10 +410,6 @@ async function renderedCrawl(url) {
         internalLinkRatio:
           totalLinks > 0 ? internalLinks / totalLinks : 0,
         robots: robotsMeta,
-        scriptToWordRatio,
-        textToHtmlRatio,
-        schemaDensity,
-        hasNoscript,
       },
     };
   } finally {
@@ -453,14 +417,8 @@ async function renderedCrawl(url) {
   }
 }
 
-/* ==== END core-scan.js (Segment 2 of 4) ==== */
-
-/* ==== BEGIN core-scan.js (Segment 3 of 4) ==== */
-// /api/core-scan.js — EEI Crawl v3.0 (Segment 3)
-// crawl health, AI confidence scoring, merge logic, conflict flags.
-
 /* ============================================================
-   7. Crawl Health (static)
+   7. Health & AI Confidence
    ============================================================ */
 function computeCrawlHealth(result) {
   const d = result?.diagnostics || {};
@@ -517,7 +475,9 @@ function computeCrawlHealth(result) {
     if (category === "ok") category = "js-heavy";
     score = Math.min(score, 55);
     notes.push(
-      `Heavy JS (scripts: ${scriptCount}, ratio: ${scriptToWordRatio.toFixed(3)}).`
+      `Heavy JS (scripts: ${scriptCount}, ratio: ${scriptToWordRatio.toFixed(
+        3
+      )}).`
     );
   }
 
@@ -567,9 +527,6 @@ function computeCrawlHealth(result) {
   };
 }
 
-/* ============================================================
-   8. AI Confidence Scoring
-   ============================================================ */
 function computeAiConfidence(result, robotsSignals) {
   const d = result?.diagnostics || {};
   const schemaCount = Array.isArray(result?.schemaObjects)
@@ -612,7 +569,7 @@ function computeAiConfidence(result, robotsSignals) {
 }
 
 /* ============================================================
-   9. Merge static + rendered
+   8. Merge static + rendered
    ============================================================ */
 function mergeDual(staticR, renderedR) {
   if (!staticR && !renderedR) return null;
@@ -646,63 +603,40 @@ function mergeDual(staticR, renderedR) {
   };
 }
 
-/* ============================================================
-   10. Conflict flags
-   ============================================================ */
 function buildDualFlags(staticR, renderedR) {
   return {
-    titleMismatch:
-      staticR.title?.trim() !== renderedR.title?.trim() || false,
+    titleMismatch: staticR.title?.trim() !== renderedR.title?.trim() || false,
     canonicalMismatch:
-      staticR.canonicalHref?.trim() !== renderedR.canonicalHref?.trim() ||
-      false,
+      staticR.canonicalHref?.trim() !== renderedR.canonicalHref?.trim() || false,
     robotsMismatch:
       (staticR.diagnostics?.robots || "").trim() !==
         (renderedR.diagnostics?.robots || "").trim() || false,
     schemaCountMismatch:
-      staticR.schemaObjects?.length !== renderedR.schemaObjects?.length ||
-      false,
+      staticR.schemaObjects?.length !== renderedR.schemaObjects?.length || false,
   };
 }
 
-/* ============================================================
-   11. Unified output shape
-   ============================================================ */
 function buildUnified(staticR, renderedR, robotsSignals) {
   const merged = mergeDual(staticR, renderedR);
   if (!merged) return null;
 
-  const flags = staticR && renderedR ? buildDualFlags(staticR, renderedR) : {};
-  const winnerType = merged._type || null;
-  const winnerDiagnostics = merged.diagnostics || {};
+  const flags =
+    staticR && renderedR ? buildDualFlags(staticR, renderedR) : {};
 
   return {
     ...merged,
     _mode: "auto-dual",
-    winnerType,
+    winnerType: merged._type || null,
     robotsSignals,
     conflictFlags: flags,
-    diagnostics: winnerDiagnostics,
+    diagnostics: merged.diagnostics || {},
   };
 }
 
-/* ==== END core-scan.js (Segment 3 of 4) ==== */
-
-/* ==== BEGIN core-scan.js (Segment 4 of 4) ==== */
-// /api/core-scan.js — EEI Crawl v3.0 (Segment 4)
-// PUBLIC crawlPage() with Dual-Mode Multi-Page Foundation
-
 /* ============================================================
-   12. PUBLIC — crawlPage()
-   Dual-mode crawl → static + rendered, arbitration, unified output
+   9. PUBLIC — crawlPage()
    ============================================================ */
-export async function crawlPage({
-  url,
-  timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
-}) {
-  let attempts = 0;
-
-  /* ---------- Robot Signals ---------- */
+export async function crawlPage({ url }) {
   let robotsSignals = {
     checked: false,
     isDisallowedForGeneric: false,
@@ -713,22 +647,15 @@ export async function crawlPage({
     const origin = new URL(url).origin;
     const robotsTxt = await fetchRobotsTxt(origin);
     robotsSignals = analyzeRobotsTxt(robotsTxt, url);
-  } catch {
-    // ignore
-  }
+  } catch {}
 
-  /* ---------- Execute STATIC & RENDERED ---------- */
   let staticResult = null;
   let renderedResult = null;
   let staticError = null;
   let renderedError = null;
 
   try {
-    staticResult = await staticCrawl(
-      url,
-      timeoutMs,
-      CRAWL_CONFIG.USER_AGENT
-    );
+    staticResult = await staticCrawl(url);
 
     const healthS = computeCrawlHealth(staticResult);
     const aiConfS = computeAiConfidence(staticResult, robotsSignals);
@@ -748,12 +675,7 @@ export async function crawlPage({
   }
 
   try {
-    const ua = getRandomAiUserAgent();
-    renderedResult = await renderedCrawl(
-      url,
-      timeoutMs,
-      ua
-    );
+    renderedResult = await renderedCrawl(url);
 
     const healthR = computeCrawlHealth(renderedResult);
     const aiConfR = computeAiConfidence(renderedResult, robotsSignals);
@@ -772,7 +694,7 @@ export async function crawlPage({
     renderedError = err;
   }
 
-  /* ---------- If both failed ---------- */
+  /* ---------- Fail case ---------- */
   if (!staticResult && !renderedResult) {
     const fallbackErr = staticError || renderedError || null;
     return {
@@ -783,24 +705,8 @@ export async function crawlPage({
         status: null,
         category: "error",
         score: 0,
-        flags: {
-          isOk: false,
-          isBlocked: false,
-          isThinContent: false,
-          isJsHeavy: false,
-          isSchemaSparse: false,
-          isLatticeWeak: false,
-          hasJsonLdErrors: false,
-        },
-        notes: [
-          "Both static and rendered crawls failed.",
-          fallbackErr?.message || null,
-        ],
       },
-      aiConfidence: {
-        score: 0,
-        level: "low",
-      },
+      aiConfidence: { score: 0, level: "low" },
       diagnostics: {
         errorType: classifyError(fallbackErr),
         staticError: staticError?.message || null,
@@ -816,7 +722,7 @@ export async function crawlPage({
     };
   }
 
-  /* ---------- If only one succeeded ---------- */
+  /* ---------- Only static ---------- */
   if (staticResult && !renderedResult) {
     return {
       ...staticResult,
@@ -830,6 +736,7 @@ export async function crawlPage({
     };
   }
 
+  /* ---------- Only rendered ---------- */
   if (!staticResult && renderedResult) {
     return {
       ...renderedResult,
@@ -843,12 +750,13 @@ export async function crawlPage({
     };
   }
 
-  /* ---------- Both succeeded → unified arbitration ---------- */
+  /* ---------- Both succeeded ---------- */
   const unified = buildUnified(staticResult, renderedResult, robotsSignals);
+
   return {
     ...unified,
 
-    /* Preserve dual arbitration panel exactly for audit.js */
+    /* Preserve dual panel for audit.js */
     dual: {
       static: {
         status: staticResult.status,
@@ -871,6 +779,3 @@ export async function crawlPage({
     renderedResult,
   };
 }
-
-/* ==== END core-scan.js (Segment 4 of 4) ==== */
-
