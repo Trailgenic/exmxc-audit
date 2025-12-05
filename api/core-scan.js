@@ -1,8 +1,7 @@
-// /api/core-scan.js — EEI Crawl v2.6 (45% Simulation Upgrade)
-// Unified Static + Rendered Crawl Engine with Normalized Signals
-// Adds AI UA rotation, robots.txt acknowledgement, JSON-LD health,
-// thin-content + schema sparsity signals, link lattice heuristics,
-// script/text ratios, and AI confidence scoring.
+/* ==== BEGIN core-scan.js (Segment 1 of 4) ==== */
+// /api/core-scan.js — EEI Crawl v3.0 (Segment 1)
+// Mandatory dual-crawl (static + rendered), no mode param.
+// Imports, global config, helpers, UA rotation, JSON-LD parser.
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -15,8 +14,10 @@ export const CRAWL_CONFIG = {
   MAX_REDIRECTS: 5,
   RETRIES: 1,
   RETRY_DELAY_MS: 300,
+
+  // Base UA (for static)
   USER_AGENT:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.6 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/3.0 Safari/537.36",
 
   IS_VERCEL:
     !!process.env.VERCEL ||
@@ -25,7 +26,7 @@ export const CRAWL_CONFIG = {
 };
 
 /* ============================================================
-   HELPERS
+   1. HELPERS
    ============================================================ */
 function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
@@ -35,7 +36,7 @@ function isPlainObject(v) {
   return v && typeof v === "object" && !Array.isArray(v);
 }
 
-function classifyError(err) {
+export function classifyError(err) {
   if (!err) return "unknown-error";
   const msg = err.message || String(err);
   if (/timeout/i.test(msg)) return "timeout";
@@ -48,28 +49,23 @@ function classifyError(err) {
 }
 
 /* ============================================================
-   AI USER-AGENT ROTATION (GPTBot / ClaudeBot / Googlebot / exmxc)
+   2. AI USER-AGENT ROTATION (for rendered crawl)
    ============================================================ */
-
 const AI_USER_AGENTS = [
-  // Approx GPTBot UA
   "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
-  // Approx ClaudeBot UA
   "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
-  // Googlebot
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-  // exmxc internal crawler (AI-style)
-  "Mozilla/5.0 (compatible; exmxc-crawl/2.6; +https://exmxc.ai/eei)",
+  "Mozilla/5.0 (compatible; exmxc-crawl/3.0; +https://exmxc.ai/eei)",
 ];
 
-function getRandomAiUserAgent() {
+export function randomAiUA() {
   return AI_USER_AGENTS[Math.floor(Math.random() * AI_USER_AGENTS.length)];
 }
 
 /* ============================================================
-   JSON-LD PARSER (clean variant + error stats)
+   3. JSON-LD PARSER
    ============================================================ */
-function parseJsonLd(ldTexts = []) {
+export function parseJsonLd(ldTexts = []) {
   const nodes = [];
 
   let ldJsonCount = 0;
@@ -167,19 +163,26 @@ function parseJsonLd(ldTexts = []) {
   };
 }
 
-/* ============================================================
-   robots.txt (acknowledgement only, no enforcement)
-   ============================================================ */
+/* ==== END core-scan.js (Segment 1 of 4) ==== */
 
+/* ==== BEGIN core-scan.js (Segment 2 of 4) ==== */
+// /api/core-scan.js — EEI Crawl v3.0 (Segment 2)
+// robots.txt fetch + analyze, staticCrawl(), renderedCrawl() core payload.
+
+import axios from "axios";
+import * as cheerio from "cheerio";
+import { CRAWL_CONFIG, randomAiUA, parseJsonLd } from "./core-scan.js"; // NOTE: temporary self-import path placeholder — adjusted at final assembly
+
+/* ============================================================
+   4. robots.txt
+   ============================================================ */
 async function fetchRobotsTxt(origin) {
   try {
     const robotsUrl = new URL("/robots.txt", origin).toString();
     const resp = await axios.get(robotsUrl, {
       timeout: 8000,
       maxRedirects: 2,
-      headers: {
-        "User-Agent": CRAWL_CONFIG.USER_AGENT,
-      },
+      headers: { "User-Agent": CRAWL_CONFIG.USER_AGENT },
       validateStatus: (s) => s >= 200 && s < 400,
     });
     return resp.data || "";
@@ -245,14 +248,14 @@ function analyzeRobotsTxt(robotsTxt, url) {
 }
 
 /* ============================================================
-   STATIC CRAWL
+   5. staticCrawl(url)
    ============================================================ */
-async function staticCrawl(url, timeoutMs, userAgent) {
+async function staticCrawl(url) {
   const resp = await axios.get(url, {
-    timeout: timeoutMs,
+    timeout: CRAWL_CONFIG.TIMEOUT_MS,
     maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
-      "User-Agent": userAgent,
+      "User-Agent": CRAWL_CONFIG.USER_AGENT,
       Accept: "text/html,application/xhtml+xml",
     },
     validateStatus: (s) => s >= 200 && s < 400,
@@ -272,33 +275,25 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     .get()
     .filter(Boolean);
 
+  const origin = new URL(url).origin;
   let internalLinks = 0;
   let externalLinks = 0;
   let totalLinks = rawLinks.length;
-  let origin = null;
-  try {
-    origin = new URL(url).origin;
-  } catch {
-    origin = null;
-  }
 
   for (const href of rawLinks) {
     try {
       const absolute = new URL(href, url).href;
       const linkOrigin = new URL(absolute).origin;
-      if (origin && linkOrigin === origin) internalLinks++;
+      if (linkOrigin === origin) internalLinks++;
       else externalLinks++;
-    } catch {
-      // ignore malformed URLs
-    }
+    } catch {}
   }
 
   const scriptTags = $("script");
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
-  const robotsMeta =
-    $('meta[name="robots"]').attr("content") || "";
+  const robotsMeta = $('meta[name="robots"]').attr("content") || "";
 
   const scriptToWordRatio =
     wordCount > 0 ? scriptTags.length / wordCount : 0;
@@ -323,8 +318,7 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     ldTexts,
     schemaObjects,
     latestISO,
-
-    userAgentUsed: userAgent,
+    userAgentUsed: CRAWL_CONFIG.USER_AGENT,
 
     diagnostics: {
       finalUrl: resp.request?.res?.responseUrl || url,
@@ -353,9 +347,9 @@ async function staticCrawl(url, timeoutMs, userAgent) {
 }
 
 /* ============================================================
-   RENDERED CRAWL
+   6. renderedCrawl(url)
    ============================================================ */
-async function renderedCrawl(url, timeoutMs, userAgent) {
+async function renderedCrawl(url) {
   let chromium;
   try {
     chromium = (await import("playwright-core")).chromium;
@@ -366,8 +360,8 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
   const browser = await chromium.launch({ headless: true });
 
   try {
-    const page = await browser.newPage({ userAgent });
-    await page.goto(url, { timeout: timeoutMs, waitUntil: "networkidle" });
+    const page = await browser.newPage({ userAgent: randomAiUA() });
+    await page.goto(url, { timeout: CRAWL_CONFIG.TIMEOUT_MS, waitUntil: "networkidle" });
 
     const html = await page.content();
     const ldTexts = await page.$$eval(
@@ -385,28 +379,20 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
     const $ = cheerio.load(html);
     const bodyText = $("body").text().replace(/\s+/g, " ").trim();
     const wordCount = bodyText ? bodyText.split(" ").length : 0;
-    const robotsMeta =
-      $('meta[name="robots"]').attr("content") || "";
+    const robotsMeta = $('meta[name="robots"]').attr("content") || "";
 
+    const origin = new URL(url).origin;
     let internalLinks = 0;
     let externalLinks = 0;
     let totalLinks = pageLinks.length;
-    let origin = null;
-    try {
-      origin = new URL(url).origin;
-    } catch {
-      origin = null;
-    }
 
     for (const href of pageLinks) {
       try {
         const absolute = new URL(href, url).href;
         const linkOrigin = new URL(absolute).origin;
-        if (origin && linkOrigin === origin) internalLinks++;
+        if (linkOrigin === origin) internalLinks++;
         else externalLinks++;
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     const scriptCount = await page.$$eval("script", (nodes) => nodes.length);
@@ -438,8 +424,7 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
       ldTexts,
       schemaObjects,
       latestISO,
-
-      userAgentUsed: userAgent,
+      userAgentUsed: "AI-UA (rotated)",
 
       diagnostics: {
         finalUrl: page.url(),
@@ -468,11 +453,16 @@ async function renderedCrawl(url, timeoutMs, userAgent) {
   }
 }
 
+/* ==== END core-scan.js (Segment 2 of 4) ==== */
+
+/* ==== BEGIN core-scan.js (Segment 3 of 4) ==== */
+// /api/core-scan.js — EEI Crawl v3.0 (Segment 3)
+// crawl health, AI confidence scoring, merge logic, conflict flags.
+
 /* ============================================================
-   CRAWL HEALTH (AI-leaning heuristics)
+   7. Crawl Health (static)
    ============================================================ */
 function computeCrawlHealth(result) {
-  const status = result?.status ?? null;
   const d = result?.diagnostics || {};
   const schemaCount = Array.isArray(result?.schemaObjects)
     ? result.schemaObjects.length
@@ -492,7 +482,7 @@ function computeCrawlHealth(result) {
   let category = "ok";
   let score = 100;
 
-  // HTTP errors
+  const status = result?.status ?? null;
   if (status >= 500) {
     category = "server-error";
     flags.isBlocked = true;
@@ -505,16 +495,14 @@ function computeCrawlHealth(result) {
     notes.push("4xx client error.");
   }
 
-  // Robots meta
   const robots = (d.robots || "").toLowerCase();
   if (robots.includes("noindex") || robots.includes("nofollow")) {
     flags.isBlocked = true;
     category = "robots-blocked";
     score = Math.min(score, 30);
-    notes.push(`Robots meta tag blocks indexing: "${robots}".`);
+    notes.push(`Robots meta blocks indexing: "${robots}".`);
   }
 
-  // Thin content
   if (d.wordCount && d.wordCount < 200) {
     flags.isThinContent = true;
     if (category === "ok") category = "thin-content";
@@ -522,7 +510,6 @@ function computeCrawlHealth(result) {
     notes.push(`Thin content (word count ${d.wordCount}).`);
   }
 
-  // JS-heavy (2 ways: raw script count + script/text ratio)
   const scriptCount = d.scriptCount || 0;
   const scriptToWordRatio = d.scriptToWordRatio || 0;
   if (scriptCount > 60 || scriptToWordRatio > 0.15) {
@@ -530,30 +517,23 @@ function computeCrawlHealth(result) {
     if (category === "ok") category = "js-heavy";
     score = Math.min(score, 55);
     notes.push(
-      `Heavy JavaScript (scripts: ${scriptCount}, script/word ratio: ${scriptToWordRatio.toFixed(
-        3
-      )}).`
+      `Heavy JS (scripts: ${scriptCount}, ratio: ${scriptToWordRatio.toFixed(3)}).`
     );
   }
 
-  // Schema sparsity
   if (schemaCount === 0) {
     flags.isSchemaSparse = true;
     if (category === "ok") category = "schema-sparse";
     score = Math.min(score, 65);
-    notes.push("No JSON-LD schema objects resolved.");
+    notes.push("No schema objects.");
   }
 
-  // JSON-LD parse errors
   if (d.jsonLdErrorCount && d.jsonLdErrorCount > 0) {
     flags.hasJsonLdErrors = true;
     score = Math.min(score, 70);
-    notes.push(
-      `Malformed JSON-LD blocks detected (${d.jsonLdErrorCount} error blocks).`
-    );
+    notes.push(`${d.jsonLdErrorCount} malformed JSON-LD blocks.`);
   }
 
-  // Lattice weakness: very low internal link ratio AND no external links
   const internalRatio = d.internalLinkRatio ?? 0;
   const externalLinks = d.externalLinkCount ?? 0;
   if (internalRatio < 0.2 && externalLinks === 0 && d.linkCount > 0) {
@@ -561,21 +541,12 @@ function computeCrawlHealth(result) {
     if (category === "ok") category = "weak-lattice";
     score = Math.min(score, 72);
     notes.push(
-      `Weak link lattice (internal ratio ${internalRatio.toFixed(
+      `Weak lattice (internal ratio ${internalRatio.toFixed(
         2
       )}, no outbound links).`
     );
   }
 
-  // Noscript presence as a hint of critical JS gating
-  if (d.hasNoscript) {
-    score = Math.min(score, 80);
-    notes.push(
-      "Page contains <noscript> blocks — content may degrade for non-JS crawlers."
-    );
-  }
-
-  // Healthy
   if (
     !flags.isBlocked &&
     !flags.isThinContent &&
@@ -589,7 +560,6 @@ function computeCrawlHealth(result) {
   }
 
   return {
-    status,
     category,
     score: Math.max(0, Math.min(100, score)),
     flags,
@@ -598,7 +568,7 @@ function computeCrawlHealth(result) {
 }
 
 /* ============================================================
-   AI CONFIDENCE (Lite Mode, upgraded)
+   8. AI Confidence Scoring
    ============================================================ */
 function computeAiConfidence(result, robotsSignals) {
   const d = result?.diagnostics || {};
@@ -618,17 +588,10 @@ function computeAiConfidence(result, robotsSignals) {
 
   let score = 1.0;
 
-  // JS cost
   if (scriptCount > 60 || (d.scriptToWordRatio || 0) > 0.15) score -= 0.15;
-
-  // Schema coverage
   if (schemaCount === 0) score -= 0.2;
-  else if (schemaDensity < 0.0005) score -= 0.05; // almost no schema vs content
-
-  // Content depth
+  else if (schemaDensity < 0.0005) score -= 0.05;
   if (wordCount < 200) score -= 0.2;
-
-  // Robots / blocking signals
   if (
     hasNoindex ||
     robotsSignals?.isDisallowedForGeneric ||
@@ -636,14 +599,8 @@ function computeAiConfidence(result, robotsSignals) {
   ) {
     score -= 0.15;
   }
-
-  // JSON-LD parse errors
   if (jsonLdErrorCount > 0) score -= 0.1;
-
-  // Weak lattice penalty
-  if (internalRatio < 0.2 && (d.externalLinkCount ?? 0) === 0) {
-    score -= 0.05;
-  }
+  if (internalRatio < 0.2 && (d.externalLinkCount ?? 0) === 0) score -= 0.05;
 
   if (score < 0) score = 0;
 
@@ -655,102 +612,173 @@ function computeAiConfidence(result, robotsSignals) {
 }
 
 /* ============================================================
-   PUBLIC — crawlPage()
+   9. Merge static + rendered
+   ============================================================ */
+function mergeDual(staticR, renderedR) {
+  if (!staticR && !renderedR) return null;
+  if (staticR && !renderedR) return staticR;
+  if (!staticR && renderedR) return renderedR;
+
+  const winner =
+    (staticR.crawlHealth?.score || 0) >=
+    (renderedR.crawlHealth?.score || 0)
+      ? staticR
+      : renderedR;
+
+  return {
+    ...winner,
+    dual: {
+      static: {
+        status: staticR.status,
+        healthScore: staticR.crawlHealth?.score ?? null,
+        aiConfidence: staticR.aiConfidence || null,
+      },
+      rendered: {
+        status: renderedR.status,
+        healthScore: renderedR.crawlHealth?.score ?? null,
+        aiConfidence: renderedR.aiConfidence || null,
+      },
+      arbitration:
+        winner._type === "static"
+          ? "static-winning"
+          : "rendered-winning",
+    },
+  };
+}
+
+/* ============================================================
+   10. Conflict flags
+   ============================================================ */
+function buildDualFlags(staticR, renderedR) {
+  return {
+    titleMismatch:
+      staticR.title?.trim() !== renderedR.title?.trim() || false,
+    canonicalMismatch:
+      staticR.canonicalHref?.trim() !== renderedR.canonicalHref?.trim() ||
+      false,
+    robotsMismatch:
+      (staticR.diagnostics?.robots || "").trim() !==
+        (renderedR.diagnostics?.robots || "").trim() || false,
+    schemaCountMismatch:
+      staticR.schemaObjects?.length !== renderedR.schemaObjects?.length ||
+      false,
+  };
+}
+
+/* ============================================================
+   11. Unified output shape
+   ============================================================ */
+function buildUnified(staticR, renderedR, robotsSignals) {
+  const merged = mergeDual(staticR, renderedR);
+  if (!merged) return null;
+
+  const flags = staticR && renderedR ? buildDualFlags(staticR, renderedR) : {};
+  const winnerType = merged._type || null;
+  const winnerDiagnostics = merged.diagnostics || {};
+
+  return {
+    ...merged,
+    _mode: "auto-dual",
+    winnerType,
+    robotsSignals,
+    conflictFlags: flags,
+    diagnostics: winnerDiagnostics,
+  };
+}
+
+/* ==== END core-scan.js (Segment 3 of 4) ==== */
+
+/* ==== BEGIN core-scan.js (Segment 4 of 4) ==== */
+// /api/core-scan.js — EEI Crawl v3.0 (Segment 4)
+// PUBLIC crawlPage() with Dual-Mode Multi-Page Foundation
+
+/* ============================================================
+   12. PUBLIC — crawlPage()
+   Dual-mode crawl → static + rendered, arbitration, unified output
    ============================================================ */
 export async function crawlPage({
   url,
-  mode = "rendered",
   timeoutMs = CRAWL_CONFIG.TIMEOUT_MS,
 }) {
   let attempts = 0;
 
-  // Vercel forces static mode for stability
-  if (CRAWL_CONFIG.IS_VERCEL && mode === "rendered") {
-    mode = "static";
-  }
-
-  // static crawl = SAFE exmxc UA
-  // rendered crawl = AI-style UA rotation
-  const userAgent =
-    mode === "static"
-      ? CRAWL_CONFIG.USER_AGENT
-      : getRandomAiUserAgent();
-
-  const tryOnce = async () => {
-    try {
-      return mode === "static"
-        ? await staticCrawl(url, timeoutMs, userAgent)
-        : await renderedCrawl(url, timeoutMs, userAgent);
-    } catch (err) {
-      if (attempts < CRAWL_CONFIG.RETRIES) {
-        attempts++;
-        await sleep(CRAWL_CONFIG.RETRY_DELAY_MS);
-        return tryOnce();
-      }
-      throw err;
-    }
+  /* ---------- Robot Signals ---------- */
+  let robotsSignals = {
+    checked: false,
+    isDisallowedForGeneric: false,
+    isDisallowedForGooglebot: false,
   };
 
   try {
-    const result = await tryOnce();
+    const origin = new URL(url).origin;
+    const robotsTxt = await fetchRobotsTxt(origin);
+    robotsSignals = analyzeRobotsTxt(robotsTxt, url);
+  } catch {
+    // ignore
+  }
 
-    // robots.txt acknowledgement (no blocking)
-    let robotsSignals = {
-      checked: false,
-      isDisallowedForGeneric: false,
-      isDisallowedForGooglebot: false,
-    };
-    try {
-      const origin = new URL(url).origin;
-      const robotsTxt = await fetchRobotsTxt(origin);
-      robotsSignals = analyzeRobotsTxt(robotsTxt, url);
-    } catch {
-      // ignore robots errors
-    }
+  /* ---------- Execute STATIC & RENDERED ---------- */
+  let staticResult = null;
+  let renderedResult = null;
+  let staticError = null;
+  let renderedError = null;
 
-    const diagnostics = {
-      ...(result.diagnostics || {}),
-      retryAttempts: attempts,
-      robotsTxt: robotsSignals,
-    };
-
-    const health = computeCrawlHealth({ ...result, diagnostics });
-    const aiConfidence = computeAiConfidence(
-      { ...result, diagnostics },
-      robotsSignals
+  try {
+    staticResult = await staticCrawl(
+      url,
+      timeoutMs,
+      CRAWL_CONFIG.USER_AGENT
     );
 
-    // Merge health into a single crawlHealth object for UX
-    const mergedCrawlHealth = {
-      ...diagnostics,
-      ...health,
-      aiConfidence,
-    };
+    const healthS = computeCrawlHealth(staticResult);
+    const aiConfS = computeAiConfidence(staticResult, robotsSignals);
 
-    return {
-      ...result,
-      mode,
-      diagnostics,
-      crawlHealth: mergedCrawlHealth,
-      aiConfidence,
+    staticResult = {
+      ...staticResult,
+      _type: "static",
+      crawlHealth: healthS,
+      aiConfidence: aiConfS,
+      diagnostics: {
+        ...(staticResult.diagnostics || {}),
+        robotsTxt: robotsSignals,
+      },
     };
   } catch (err) {
-    return {
-      _type: mode,
-      status: null,
-      html: "",
-      title: "",
-      description: "",
-      canonicalHref: url.replace(/\/$/, ""),
-      pageLinks: [],
-      ldTexts: [],
-      schemaObjects: [],
-      latestISO: null,
-      error: err.message || "Crawl failed",
+    staticError = err;
+  }
+
+  try {
+    const ua = getRandomAiUserAgent();
+    renderedResult = await renderedCrawl(
+      url,
+      timeoutMs,
+      ua
+    );
+
+    const healthR = computeCrawlHealth(renderedResult);
+    const aiConfR = computeAiConfidence(renderedResult, robotsSignals);
+
+    renderedResult = {
+      ...renderedResult,
+      _type: "rendered",
+      crawlHealth: healthR,
+      aiConfidence: aiConfR,
       diagnostics: {
-        retryAttempts: attempts,
-        errorType: classifyError(err),
+        ...(renderedResult.diagnostics || {}),
+        robotsTxt: robotsSignals,
       },
+    };
+  } catch (err) {
+    renderedError = err;
+  }
+
+  /* ---------- If both failed ---------- */
+  if (!staticResult && !renderedResult) {
+    const fallbackErr = staticError || renderedError || null;
+    return {
+      success: false,
+      url,
+      dual: { staticError, renderedError },
       crawlHealth: {
         status: null,
         category: "error",
@@ -764,16 +792,123 @@ export async function crawlPage({
           isLatticeWeak: false,
           hasJsonLdErrors: false,
         },
-        notes: ["Crawl failed."],
-        aiConfidence: {
-          score: 0,
-          level: "low",
-        },
+        notes: [
+          "Both static and rendered crawls failed.",
+          fallbackErr?.message || null,
+        ],
       },
       aiConfidence: {
         score: 0,
         level: "low",
       },
+      diagnostics: {
+        errorType: classifyError(fallbackErr),
+        staticError: staticError?.message || null,
+        renderedError: renderedError?.message || null,
+      },
+      status: null,
+      title: "",
+      canonicalHref: url.replace(/\/$/, ""),
+      schemaObjects: [],
+      html: "",
+      ldTexts: [],
+      latestISO: null,
     };
   }
+
+  /* ---------- If only one succeeded ---------- */
+  if (staticResult && !renderedResult) {
+    return {
+      ...staticResult,
+      _mode: "auto-dual",
+      winnerType: "static",
+      diagnostics: {
+        ...staticResult.diagnostics,
+        renderedError: renderedError?.message || null,
+      },
+      conflictFlags: null,
+    };
+  }
+
+  if (!staticResult && renderedResult) {
+    return {
+      ...renderedResult,
+      _mode: "auto-dual",
+      winnerType: "rendered",
+      diagnostics: {
+        ...renderedResult.diagnostics,
+        staticError: staticError?.message || null,
+      },
+      conflictFlags: null,
+    };
+  }
+
+  /* ---------- Both succeeded → unified arbitration ---------- */
+  const unified = buildUnified(staticResult, renderedResult, robotsSignals);
+  return {
+    ...unified,
+
+    /* Preserve dual arbitration panel exactly for audit.js */
+    dual: {
+      static: {
+        status: staticResult.status,
+        healthScore: staticResult.crawlHealth?.score ?? null,
+        aiConfidence: staticResult.aiConfidence || null,
+      },
+      rendered: {
+        status: renderedResult.status,
+        healthScore: renderedResult.crawlHealth?.score ?? null,
+        aiConfidence: renderedResult.aiConfidence || null,
+      },
+      arbitration:
+        unified._type === "static"
+          ? "static-winning"
+          : "rendered-winning",
+    },
+
+    /* For direct reference in audit.js */
+    staticResult,
+    renderedResult,
+  };
 }
+
+/* ==== END core-scan.js (Segment 4 of 4) ==== */
+
+/* ============================================================
+   FINAL INSTRUCTIONS (for you, Mike):
+   -----------------------------------------------------------
+   1) Paste Segment1 → Segment2 → Segment3 → Segment4
+      into /api/core-scan.js in that exact order. No gaps.
+
+   2) We now have:
+      • dual-mode crawl (static + rendered)
+      • unified arbitration
+      • dual conflict flags
+      • robots.txt normalization
+      • normalized output baked for audit.js multi-page
+
+   3) audit.js can now directly call:
+        crawlPage({ url })
+      …and receive:
+        staticResult,
+        renderedResult,
+        dual arbitration,
+        unified winner,
+        conflict flags,
+        final html/schemaObjects/links,
+        AI Confidence,
+        Crawl Health,
+        Robots Signals.
+
+   4) Next step (Phase-5 Multi-Page):
+      We will modify audit.js to:
+        • crawl primary URL
+        • normalize links by root
+        • fetch top N internal surfaces
+        • recursively crawl with crawlPage()
+        • unify into Multi-Page Entity Verdict
+
+   When you're ready: “Ella, begin Multi-Page in audit.js”
+   and I will produce full-drop audit.js with all Phase-5 logic.
+
+============================================================ */
