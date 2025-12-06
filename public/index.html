@@ -290,7 +290,12 @@
       ></div>
     </section>
 
-   
+    <!-- SIGNAL LIST (DOM REFERENCE SAFETY) -->
+    <section class="mb-8 hidden">
+      <h2 class="text-sm font-semibold text-gray-900 mb-3">EEI Signal Keys</h2>
+      <ul id="signalsList" class="text-xs space-y-1"></ul>
+    </section>
+
     <!-- RAW JSON -->
     <section class="mb-10">
       <button
@@ -342,7 +347,6 @@
       const signalsListEl = document.getElementById("signalsList");
       const toggleJSON = document.getElementById("toggleJSON");
 
-      /* NEW SIGNAL BAR SECTION HOOKS */
       const signalBarsSectionEl = document.getElementById("signalBarsSection");
       const signalBarsGridEl = document.getElementById("signalBarsGrid");
 
@@ -473,7 +477,6 @@
         });
       }
 
-      /** NEW: 13-signal scoring matrix */
       function renderSignalBars(breakdown) {
         signalBarsGridEl.innerHTML = "";
 
@@ -524,11 +527,6 @@
         surfaceSummaryEl.textContent = "";
         crawlHealthCardEl.classList.add("hidden");
         signalBarsSectionEl.classList.add("hidden");
-
-        const loadingLi = document.createElement("li");
-        loadingLi.textContent = "Loading…";
-        loadingLi.className = "text-gray-400";
-        signalsListEl.appendChild(loadingLi);
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
