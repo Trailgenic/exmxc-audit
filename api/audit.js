@@ -22,7 +22,7 @@ import {
   tierFromScore,
 } from "../shared/scoring.js";
 
-import { computeGravity } from "../shared/gravity.js";   // <-- NEW
+import { computeGravity } from "../shared/gravity.js"; // correct import
 
 
 /* ======================================
@@ -279,13 +279,9 @@ export default async function handler(req, res) {
     /* ======================================
        GRAVITY v1.0
        ====================================== */
-    const gravity = gravityScore(normalized, {
-      title,
-      metaDescription: description,
-      canonical: canonicalHref,
-      schemaObjects,
+    const gravity = computeGravity({
+      hostname: originHost,
       pageLinks,
-      score: entityScore,
     });
 
 
@@ -307,7 +303,7 @@ export default async function handler(req, res) {
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
-      gravity,                             // ADDED
+      gravity,
 
       signals: breakdown,
       schemaMeta: {
