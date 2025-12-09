@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v4.1 (Playwright Rendering + @graph Expansion + Static Fallback)
+// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity v1.0)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -22,10 +22,12 @@ import {
   tierFromScore,
 } from "../shared/scoring.js";
 
+import { gravityScore } from "../shared/gravity.js";   // <-- NEW
 
-/* ================================
+
+/* ======================================
    CONFIG
-   ================================ */
+   ====================================== */
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.1 Safari/537.36";
 
@@ -64,9 +66,9 @@ function clamp(v, min, max) {
 }
 
 
-/* ================================
+/* ======================================
    MAIN HANDLER
-   ================================ */
+   ====================================== */
 export default async function handler(req, res) {
   const origin = req.headers.origin || req.headers.referer;
   let normalizedOrigin = "*";
@@ -88,6 +90,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   res.setHeader("Content-Type", "application/json");
+
 
   /* ---- Internal allowlist ---- */
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
@@ -121,9 +124,9 @@ export default async function handler(req, res) {
     const originHost = hostnameOf(normalized);
 
 
-    /* ================================
+    /* ======================================
        1) TRY PLAYWRIGHT RENDER FIRST
-       ================================ */
+       ====================================== */
     let html = "";
 
     try {
@@ -169,9 +172,9 @@ export default async function handler(req, res) {
     }
 
 
-    /* ================================
+    /* ======================================
        PARSE + EXPAND @graph
-       ================================ */
+       ====================================== */
     const $ = cheerio.load(html);
 
     const ldBlocks = $("script[type='application/ld+json']")
@@ -180,7 +183,6 @@ export default async function handler(req, res) {
 
     const rawSchemas = ldBlocks.flatMap(tryParseJSON);
 
-    // Expand @graph objects
     const expandedSchemas = [];
     for (const obj of rawSchemas) {
       if (Array.isArray(obj["@graph"])) {
@@ -192,9 +194,9 @@ export default async function handler(req, res) {
     const schemaObjects = expandedSchemas;
 
 
-    /* ================================
+    /* ======================================
        COLLECT FIELDS
-       ================================ */
+       ====================================== */
     const title = ($("title").first().text() || "").trim();
     const description =
       $('meta[name="description"]').attr("content") ||
@@ -210,8 +212,6 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-
-    // Latest content date
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -242,9 +242,9 @@ export default async function handler(req, res) {
     entityName = (entityName || "").trim();
 
 
-    /* ================================
+    /* ======================================
        SCORING
-       ================================ */
+       ====================================== */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -276,12 +276,25 @@ export default async function handler(req, res) {
     });
 
 
-    /* ================================
+    /* ======================================
+       GRAVITY v1.0
+       ====================================== */
+    const gravity = gravityScore(normalized, {
+      title,
+      metaDescription: description,
+      canonical: canonicalHref,
+      schemaObjects,
+      pageLinks,
+      score: entityScore,
+    });
+
+
+    /* ======================================
        RESPONSE
-       ================================ */
+       ====================================== */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.1 (Playwright + @graph)",
+      model: "EEI v4.1 (Playwright + @graph + Gravity)",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
@@ -294,6 +307,7 @@ export default async function handler(req, res) {
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
+      gravity,                             // ADDED
 
       signals: breakdown,
       schemaMeta: {
