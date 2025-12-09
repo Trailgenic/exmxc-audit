@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity v1.0)
+// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -22,12 +22,11 @@ import {
   tierFromScore,
 } from "../shared/scoring.js";
 
-import { computeGravity } from "../shared/gravity.js"; // correct import
+import { computeGravity } from "../shared/gravity.js";
+import { crawlHealth } from "../shared/crawlHealth.js";   // <-- NEW
 
 
-/* ======================================
-   CONFIG
-   ====================================== */
+/* ====================================== */
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.1 Safari/537.36";
 
@@ -66,9 +65,7 @@ function clamp(v, min, max) {
 }
 
 
-/* ======================================
-   MAIN HANDLER
-   ====================================== */
+/* ====================================== */
 export default async function handler(req, res) {
   const origin = req.headers.origin || req.headers.referer;
   let normalizedOrigin = "*";
@@ -91,8 +88,6 @@ export default async function handler(req, res) {
 
   res.setHeader("Content-Type", "application/json");
 
-
-  /* ---- Internal allowlist ---- */
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
   const referer = req.headers.referer || "";
   const isExternal =
@@ -109,7 +104,6 @@ export default async function handler(req, res) {
     });
   }
 
-
   try {
     const input = req.query?.url;
     if (!input || typeof input !== "string" || !input.trim()) {
@@ -123,11 +117,12 @@ export default async function handler(req, res) {
 
     const originHost = hostnameOf(normalized);
 
-
     /* ======================================
-       1) TRY PLAYWRIGHT RENDER FIRST
-       ====================================== */
+       Attempt Playwright
+    ====================================== */
     let html = "";
+    let renderFailed = false;
+    let axiosFailed = false;
 
     try {
       const executablePath = await chromium.executablePath;
@@ -138,20 +133,16 @@ export default async function handler(req, res) {
         headless: true,
       });
 
-      const page = await browser.newPage({
-        userAgent: UA,
-      });
-
+      const page = await browser.newPage({ userAgent: UA });
       await page.goto(normalized, {
         waitUntil: "networkidle",
         timeout: 20000,
       });
 
       html = await page.content();
-
       await browser.close();
     } catch (e) {
-      // Fallback to Axios static fetch
+      renderFailed = true;
       try {
         const resp = await axios.get(normalized, {
           timeout: 15000,
@@ -164,6 +155,7 @@ export default async function handler(req, res) {
         });
         html = resp.data || "";
       } catch {
+        axiosFailed = true;
         return res.status(500).json({
           error: "Failed to fetch/render URL",
           url: normalized,
@@ -171,10 +163,7 @@ export default async function handler(req, res) {
       }
     }
 
-
-    /* ======================================
-       PARSE + EXPAND @graph
-       ====================================== */
+    /* ====================================== */
     const $ = cheerio.load(html);
 
     const ldBlocks = $("script[type='application/ld+json']")
@@ -185,18 +174,12 @@ export default async function handler(req, res) {
 
     const expandedSchemas = [];
     for (const obj of rawSchemas) {
-      if (Array.isArray(obj["@graph"])) {
-        expandedSchemas.push(...obj["@graph"]);
-      } else {
-        expandedSchemas.push(obj);
-      }
+      if (Array.isArray(obj["@graph"])) expandedSchemas.push(...obj["@graph"]);
+      else expandedSchemas.push(obj);
     }
     const schemaObjects = expandedSchemas;
 
-
-    /* ======================================
-       COLLECT FIELDS
-       ====================================== */
+    /* ====================================== */
     const title = ($("title").first().text() || "").trim();
     const description =
       $('meta[name="description"]').attr("content") ||
@@ -212,6 +195,7 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
+    /* latest content date */
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -241,10 +225,7 @@ export default async function handler(req, res) {
         : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-
-    /* ======================================
-       SCORING
-       ====================================== */
+    /* ====================================== */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -275,22 +256,27 @@ export default async function handler(req, res) {
         : 0;
     });
 
-
     /* ======================================
-       GRAVITY v1.0
-       ====================================== */
+       GRAVITY
+    ====================================== */
     const gravity = computeGravity({
       hostname: originHost,
       pageLinks,
     });
 
-
     /* ======================================
-       RESPONSE
-       ====================================== */
+       CRAWL HEALTH
+    ====================================== */
+    const crawl = crawlHealth({
+      $, normalized,
+      renderFailed,
+      axiosFailed,
+    });
+
+    /* ====================================== */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.1 (Playwright + @graph + Gravity)",
+      model: "EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
@@ -303,7 +289,9 @@ export default async function handler(req, res) {
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
       entityFocus: entityTier.coreFocus,
+
       gravity,
+      crawlHealth: crawl,      // <-- NEW
 
       signals: breakdown,
       schemaMeta: {
