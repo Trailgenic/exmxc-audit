@@ -9,6 +9,6 @@
     "@upstash/redis": "^1.35.6",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
-    "playwright": "^1.57.0"
+    "playwright-aws-lambda": "^0.11.0"
   }
 }
