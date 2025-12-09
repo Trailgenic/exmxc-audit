@@ -22,7 +22,7 @@ import {
   tierFromScore,
 } from "../shared/scoring.js";
 
-import { gravityScore } from "../shared/gravity.js";   // <-- NEW
+import { computeGravity } from "../shared/gravity.js";   // <-- NEW
 
 
 /* ======================================
