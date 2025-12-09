@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v4.0 (Playwright Rendering + Static Fallback + Safe Origin)
+// /api/audit.js — EEI v4.1 (Playwright Rendering + @graph Expansion + Static Fallback)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -27,7 +27,7 @@ import {
    CONFIG
    ================================ */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.1 Safari/537.36";
 
 
 function normalizeUrl(input) {
@@ -170,10 +170,31 @@ export default async function handler(req, res) {
 
 
     /* ================================
-       PARSE + SCORE
+       PARSE + EXPAND @graph
        ================================ */
     const $ = cheerio.load(html);
 
+    const ldBlocks = $("script[type='application/ld+json']")
+      .map((_, el) => $(el).contents().text())
+      .get();
+
+    const rawSchemas = ldBlocks.flatMap(tryParseJSON);
+
+    // Expand @graph objects
+    const expandedSchemas = [];
+    for (const obj of rawSchemas) {
+      if (Array.isArray(obj["@graph"])) {
+        expandedSchemas.push(...obj["@graph"]);
+      } else {
+        expandedSchemas.push(obj);
+      }
+    }
+    const schemaObjects = expandedSchemas;
+
+
+    /* ================================
+       COLLECT FIELDS
+       ================================ */
     const title = ($("title").first().text() || "").trim();
     const description =
       $('meta[name="description"]').attr("content") ||
@@ -189,12 +210,8 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-    const ldBlocks = $("script[type='application/ld+json']")
-      .map((_, el) => $(el).contents().text())
-      .get();
 
-    const schemaObjects = ldBlocks.flatMap(tryParseJSON);
-
+    // Latest content date
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -225,6 +242,9 @@ export default async function handler(req, res) {
     entityName = (entityName || "").trim();
 
 
+    /* ================================
+       SCORING
+       ================================ */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -256,9 +276,12 @@ export default async function handler(req, res) {
     });
 
 
+    /* ================================
+       RESPONSE
+       ================================ */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.0 (Playwright Rendering)",
+      model: "EEI v4.1 (Playwright + @graph)",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
