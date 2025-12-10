@@ -126,7 +126,7 @@ export default async function handler(req, res) {
     let axiosFailed = false;
 
     try {
-      const executablePath = await chromium.executablePath;
+      const executablePath = await chromium.executablePath();
 
       const browser = await playwrightChromium.launch({
         args: chromium.args,
