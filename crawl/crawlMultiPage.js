@@ -1,167 +1,170 @@
-// =============================================
-// crawlMultiPage.js  (Playwright Multi-Page MVP)
-// exmxc.ai — Multi-Page Crawl Module
-// =============================================
+// /crawl/crawlMultiPage.js
+// EEI v5.0 Multi-Page Crawl (Playwright)
+// Depth=2, MaxPages=10
 
-import { chromium } from "playwright";
+import chromium from "@sparticuz/chromium";
+import { chromium as playwrightChromium } from "playwright-core";
 
-/**
- * Crawl up to N internal pages beginning from home URL.
- * Return page-level signal snapshots + simple averages.
- *
- * MVP Strategy:
- * 1. open home page via Playwright
- * 2. discover internal links
- * 3. pick the first N (exclude home)
- * 4. render each page with Playwright
- * 5. extract minimal signals
- * 6. aggregate & return
- */
-
-export async function crawlMultiPage(homeUrl, maxPages = 3) {
-  const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
-
-  const result = {
-    pages: [],
-    avg: {
-      titles: 0,
-      descriptions: 0,
-      canonicalConsistency: 0,
-      wordCount: 0,
-    },
-    entityDrift: 0, // simple early placeholder
-  };
-
+// Utility: Normalize + dedupe
+function normalizeUrl(input) {
   try {
-    // ------------------------------------------
-    // Load home page
-    // ------------------------------------------
-    await page.goto(homeUrl, {
-      waitUntil: "networkidle",
-      timeout: 45000,
-    });
-
-    // ------------------------------------------
-    // Discover links on the home page
-    // ------------------------------------------
-    const links = await page.$$eval("a[href]", (as) => {
-      return as
-        .map((a) => a.href)
-        .filter((x) => typeof x === "string" && x.trim().length > 0);
-    });
-
-    // Normalize origin for internal check
-    const origin = new URL(homeUrl).origin;
-
-    // Filter internal pages
-    const internal = links
-      .filter((url) => url.startsWith(origin))
-      .filter((url) => url !== homeUrl);
-
-    // De-duplicate
-    const unique = [...new Set(internal)];
-
-    // Limit to maxPages
-    const targets = unique.slice(0, maxPages);
-
-    // ------------------------------------------
-    // Crawl each internal page
-    // ------------------------------------------
-    for (const url of targets) {
-      const snapshot = await crawlOne(context, url);
-      if (snapshot) result.pages.push(snapshot);
-    }
-
-    // ------------------------------------------
-    // Compute averages
-    // ------------------------------------------
-    if (result.pages.length > 0) {
-      const count = result.pages.length;
-
-      const sum = result.pages.reduce(
-        (acc, p) => {
-          acc.titles += p.title ? 1 : 0;
-          acc.descriptions += p.description ? 1 : 0;
-          acc.canonicalConsistency += p.canonicalConsistent ? 1 : 0;
-          acc.wordCount += p.wordCount || 0;
-          return acc;
-        },
-        { titles: 0, descriptions: 0, canonicalConsistency: 0, wordCount: 0 }
-      );
-
-      result.avg = {
-        titles: sum.titles / count,
-        descriptions: sum.descriptions / count,
-        canonicalConsistency: sum.canonicalConsistency / count,
-        wordCount: sum.wordCount / count,
-      };
-
-      // Simple placeholder: entity drift = 1 - canonical consistency avg
-      // Later we can compute based on schema & identity signals
-      result.entityDrift = 1 - result.avg.canonicalConsistency;
-    }
-
-    return result;
-  } catch (err) {
-    console.error("crawlMultiPage error:", err);
-    return result; // return partial rather than failing
-  } finally {
-    await browser.close();
+    let url = input.trim();
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    const u = new URL(url);
+    if (!u.pathname) u.pathname = "/";
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+function hostnameOf(urlStr) {
+  try {
+    return new URL(urlStr).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
   }
 }
 
-// ---------------------------------------------------
-// Crawl a single internal page using the same context
-// ---------------------------------------------------
-async function crawlOne(context, url) {
-  const page = await context.newPage();
+// Extract links from a rendered page
+async function extractLinksFromPage(page, rootHost) {
+  const hrefs = await page.$$eval("a[href]", (els) =>
+    els.map((el) => el.getAttribute("href")).filter(Boolean)
+  );
+
+  // Normalize + dedupe
+  const links = new Set();
+  for (const href of hrefs) {
+    try {
+      const abs = new URL(href, page.url()).toString();
+      const host = new URL(abs).hostname.replace(/^www\./i, "");
+      if (host === rootHost) links.add(abs);
+    } catch {
+      // ignore
+    }
+  }
+  return Array.from(links);
+}
+
+// Fetch + return minimal content from a single page
+async function crawlPage(browser, url) {
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) exmxc-multipage/5.0",
+  });
+
   try {
     await page.goto(url, {
       waitUntil: "networkidle",
-      timeout: 45000,
+      timeout: 20000,
     });
 
-    // Title
+    const html = await page.content();
     const title = await page.title();
 
-    // Meta description
-    const description = await page.$eval(
-      'meta[name="description"]',
-      (el) => el.content,
-      null
-    ).catch(() => null);
-
-    // Canonical
-    const canonical = await page.$eval(
-      'link[rel="canonical"]',
-      (el) => el.href,
-      null
-    ).catch(() => null);
-
-    // Check canonical consistency: canonical === url (simple MVP)
-    let canonicalConsistent = false;
-    if (canonical && canonical.startsWith(url)) {
-      canonicalConsistent = true;
+    let description = "";
+    try {
+      description = await page.$eval(
+        'meta[name="description"]',
+        (el) => el.content
+      );
+    } catch {
+      // optional
     }
 
-    // Word count (MVP — just text content length)
-    const bodyText = await page.innerText("body").catch(() => "");
-    const wordCount = bodyText ? bodyText.split(/\s+/).length : 0;
-
     return {
+      success: true,
       url,
       title,
       description,
-      canonical,
-      canonicalConsistent,
-      wordCount,
+      htmlLength: html.length,
     };
   } catch (err) {
-    console.error("crawlOne error:", err);
-    return null;
+    return {
+      success: false,
+      url,
+      error: err.message,
+    };
   } finally {
     await page.close();
   }
+}
+
+/* =====================================================================================
+   MAIN MULTI-PAGE CRAWL
+   -------------------------------------------------------------------------------------
+   rootUrl:    starting URL
+   depth:      default 2
+   maxPages:   default 10
+   returns: {
+     startUrl,
+     pages [
+       { url, title, description, htmlLength, success, error? }
+     ]
+   }
+===================================================================================== */
+export async function crawlMultiPage(
+  rootUrl,
+  { depth = 2, maxPages = 10 } = {}
+) {
+  const normalized = normalizeUrl(rootUrl);
+  if (!normalized) throw new Error("Invalid root URL");
+
+  const rootHost = hostnameOf(normalized);
+
+  const executablePath = await chromium.executablePath;
+
+  const browser = await playwrightChromium.launch({
+    args: chromium.args,
+    executablePath,
+    headless: true,
+  });
+
+  const visited = new Set();
+  const queue = [{ url: normalized, d: 0 }];
+  const results = [];
+
+  try {
+    while (queue.length && results.length < maxPages) {
+      const { url, d } = queue.shift();
+      if (visited.has(url)) continue;
+
+      visited.add(url);
+
+      const pageData = await crawlPage(browser, url);
+      results.push(pageData);
+
+      if (!pageData.success) continue;
+      if (d >= depth) continue; // stop deeper
+
+      // Extract next links
+      try {
+        const page = await browser.newPage();
+        await page.goto(url, {
+          waitUntil: "networkidle",
+          timeout: 15000,
+        });
+        const links = await extractLinksFromPage(page, rootHost);
+        await page.close();
+
+        for (const next of links) {
+          if (!visited.has(next) && results.length + queue.length < maxPages) {
+            queue.push({ url: next, d: d + 1 });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+
+  return {
+    success: true,
+    startUrl: normalized,
+    scannedPages: results.length,
+    depth,
+    maxPages,
+    pages: results,
+  };
 }
