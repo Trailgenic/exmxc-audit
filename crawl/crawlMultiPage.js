@@ -114,10 +114,10 @@ export async function crawlMultiPage(
   const executablePath = await chromium.executablePath;
 
   const browser = await playwrightChromium.launch({
-    args: chromium.args,
-    executablePath,
-    headless: true,
-  });
+  args: chromium.args,
+  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (await chromium.executablePath),
+  headless: true,
+});
 
   const visited = new Set();
   const queue = [{ url: normalized, d: 0 }];
