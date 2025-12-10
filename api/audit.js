@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)
+// /api/audit.js — EEI v4.2 (Playwright + @graph + Gravity + CrawlHealth + MultiPage)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -23,12 +23,13 @@ import {
 } from "../shared/scoring.js";
 
 import { computeGravity } from "../shared/gravity.js";
-import { crawlHealth } from "../shared/crawlHealth.js";   // <-- NEW
+import { crawlHealth } from "../crawl/crawlHealth.js";
+import { crawlMultiPage } from "../crawl/crawlMultiPage.js";  // NEW
 
 
 /* ====================================== */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.1 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.2 Safari/537.36";
 
 
 function normalizeUrl(input) {
@@ -195,7 +196,6 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-    /* latest content date */
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -273,10 +273,18 @@ export default async function handler(req, res) {
       axiosFailed,
     });
 
+    /* ======================================
+       MULTI-PAGE
+    ====================================== */
+    const multipage = await crawlMultiPage(normalized, {
+      depth: 2,
+      maxPages: 10,
+    });
+
     /* ====================================== */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)",
+      model: "EEI v4.2 (Playwright + MultiPage + @graph + Gravity + CrawlHealth)",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
@@ -291,7 +299,8 @@ export default async function handler(req, res) {
       entityFocus: entityTier.coreFocus,
 
       gravity,
-      crawlHealth: crawl,      // <-- NEW
+      crawlHealth: crawl,
+      multiPage: multipage,   // NEW
 
       signals: breakdown,
       schemaMeta: {
