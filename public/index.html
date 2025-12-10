@@ -30,6 +30,11 @@
         white-space: pre-wrap;
         overflow-x: auto;
       }
+      .badge {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+      }
     </style>
   </head>
 
@@ -52,17 +57,8 @@
         <div id="scoreBar" class="score-bar w-0"></div>
       </div>
 
-      <!-- 🌕 Evolutionary Stage Layer -->
-      <div id="entitySummary" class="mt-3 text-center">
-        <div
-          id="entityStage"
-          class="text-lg font-semibold text-gray-900"
-        ></div>
-        <div
-          id="entityVerb"
-          class="text-sm text-gray-700 mt-1"
-        ></div>
-      </div>
+      <div id="entityStage" class="mt-3 text-center text-lg font-semibold text-gray-900"></div>
+      <div id="entityVerb" class="text-sm text-gray-700 mt-1"></div>
     </div>
 
     <!-- Input Form -->
@@ -81,24 +77,45 @@
       </button>
     </div>
 
-    <!-- Signal Breakdown & Raw Output -->
-    <div class="grid md:grid-cols-2 gap-6">
-      <!-- Signal Breakdown -->
-      <div>
-        <h2 class="text-lg font-semibold mb-3 text-gray-900">
-          Signal Breakdown
-        </h2>
-        <div
-          id="signalBreakdown"
-          class="space-y-3 text-sm text-gray-800"
-        ></div>
+    <!-- TIER SECTION -->
+    <div id="tiersBlock" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 hidden">
+      <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+        <div class="font-semibold">Tier 1</div>
+        <div id="tier1Score" class="text-sm font-medium mt-1">--</div>
+        <div class="w-full bg-gray-200 h-2 rounded-full mt-2">
+          <div id="tier1Bar" class="h-2 w-0 rounded-full bg-gray-500"></div>
+        </div>
       </div>
 
-      <!-- Raw JSON Output -->
-      <div>
-        <h2 class="text-lg font-semibold mb-3 text-gray-900">Raw Response</h2>
-        <pre id="result" class="json-box">// Awaiting input...</pre>
+      <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+        <div class="font-semibold">Tier 2</div>
+        <div id="tier2Score" class="text-sm font-medium mt-1">--</div>
+        <div class="w-full bg-gray-200 h-2 rounded-full mt-2">
+          <div id="tier2Bar" class="h-2 w-0 rounded-full bg-gray-500"></div>
+        </div>
       </div>
+
+      <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+        <div class="font-semibold">Tier 3</div>
+        <div id="tier3Score" class="text-sm font-medium mt-1">--</div>
+        <div class="w-full bg-gray-200 h-2 rounded-full mt-2">
+          <div id="tier3Bar" class="h-2 w-0 rounded-full bg-gray-500"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 13-SIGNAL MATRIX -->
+    <section id="signalBarsSection" class="mb-8 hidden">
+      <h2 class="text-sm font-semibold text-gray-900 mb-3">
+        13-Signal Diagnostic
+      </h2>
+      <div id="signalBarsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"></div>
+    </section>
+
+    <!-- RAW JSON -->
+    <div>
+      <h2 class="text-lg font-semibold mb-3 text-gray-900">Raw Response</h2>
+      <pre id="result" class="json-box">// Awaiting input...</pre>
     </div>
 
     <footer class="text-center text-xs text-gray-500 mt-10">
@@ -114,7 +131,64 @@
       const scoreDisplay = document.getElementById("scoreDisplay");
       const entityStage = document.getElementById("entityStage");
       const entityVerb = document.getElementById("entityVerb");
-      const signalBreakdown = document.getElementById("signalBreakdown");
+
+      const tier1ScoreEl = document.getElementById("tier1Score");
+      const tier2ScoreEl = document.getElementById("tier2Score");
+      const tier3ScoreEl = document.getElementById("tier3Score");
+
+      const tier1BarEl = document.getElementById("tier1Bar");
+      const tier2BarEl = document.getElementById("tier2Bar");
+      const tier3BarEl = document.getElementById("tier3Bar");
+
+      const tiersBlock = document.getElementById("tiersBlock");
+
+      const signalBarsSectionEl = document.getElementById("signalBarsSection");
+      const signalBarsGridEl = document.getElementById("signalBarsGrid");
+
+      function scoreColor(score) {
+        if (score >= 80) return "bg-green-500";
+        if (score >= 60) return "bg-yellow-400";
+        if (score >= 40) return "bg-orange-400";
+        return "bg-red-500";
+      }
+
+      function setTier(elScore, elBar, rawPoints, maxPoints) {
+        if (rawPoints == null) {
+          elScore.textContent = "--";
+          elBar.style.width = "0%";
+          return;
+        }
+        const pct = Math.round((rawPoints / maxPoints) * 100);
+        elScore.textContent = `${pct}%`;
+        elBar.style.width = pct + "%";
+        elBar.className = `h-2 rounded-full ${scoreColor(pct)}`;
+      }
+
+      function renderSignalBars(signals) {
+        signalBarsGridEl.innerHTML = "";
+        if (!signals || !signals.length) {
+          signalBarsSectionEl.classList.add("hidden");
+          return;
+        }
+        signalBarsSectionEl.classList.remove("hidden");
+
+        signals.forEach((sig) => {
+          if (!sig || sig.points == null || sig.max == null) return;
+          const pct = Math.round((sig.points / sig.max) * 100);
+
+          const div = document.createElement("div");
+          div.className = "bg-white border border-gray-200 rounded-lg p-3 shadow-sm";
+          div.innerHTML = `
+            <div class="flex justify-between">
+              <span>${sig.key}</span>
+              <span>${pct}%</span>
+            </div>
+            <div class="w-full bg-gray-200 h-2 rounded-full mt-1">
+              <div class="h-2 rounded-full ${scoreColor(pct)}" style="width:${pct}%"></div>
+            </div>`;
+          signalBarsGridEl.appendChild(div);
+        });
+      }
 
       runButton.addEventListener("click", async () => {
         const input = document.getElementById("urlInput").value.trim();
@@ -123,52 +197,44 @@
 
         try {
           const url = input.startsWith("http") ? input : `https://${input}`;
-          const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+          const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`, {
+            headers: { "x-exmxc-key": "exmxc-internal" },
+          });
           const data = await res.json();
 
-          // Update score bar
           const score = data.entityScore || 0;
           scoreDisplay.textContent = `EEI: ${score} / 100`;
           scoreBar.style.width = `${score}%`;
 
-          // 🌕 Update evolutionary entity info
           entityStage.textContent = data.entityStage || "";
-          entityVerb.textContent = data.entityVerb
-            ? `${data.entityVerb} — ${data.entityDescription}`
-            : "";
+          entityVerb.textContent = data.entityVerb || "";
 
-          // Signal breakdown
-          signalBreakdown.innerHTML = "";
-          if (data.signals && data.signals.length > 0) {
-            data.signals.forEach((sig) => {
-              const category = sig.key || sig.category || "Unlabeled Signal";
-              const points = sig.points || 0;
-              const max = sig.max || 10;
-              const percent = Math.round((points / max) * 100);
-              const notes = sig.notes
-                ? `<span class="text-xs text-gray-500">${sig.notes}</span>`
-                : "";
+          // Tier math
+          const sumTier = {
+            t1: data.signals.slice(0, 4),
+            t2: data.signals.slice(4, 9),
+            t3: data.signals.slice(9, 13),
+          };
 
-              const div = document.createElement("div");
-              div.innerHTML = `
-                <div class="flex justify-between items-center">
-                  <span class="font-medium">${category}</span>
-                  <span>${points} / ${max}</span>
-                </div>
-                <div class="w-full h-2 bg-gray-200 rounded-full mt-1 mb-2 overflow-hidden">
-                  <div style="width:${percent}%;"
-                       class="h-2 bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 rounded-full"></div>
-                </div>
-                ${notes}
-              `;
-              signalBreakdown.appendChild(div);
-            });
-          } else {
-            signalBreakdown.innerHTML =
-              "<p class='text-gray-500'>No signal data available.</p>";
-          }
+          const t1 = sumTier.t1.reduce((s, x) => s + x.points, 0);
+          const t1Max = sumTier.t1.reduce((s, x) => s + x.max, 0);
 
-          // Raw JSON output
+          const t2 = sumTier.t2.reduce((s, x) => s + x.points, 0);
+          const t2Max = sumTier.t2.reduce((s, x) => s + x.max, 0);
+
+          const t3 = sumTier.t3.reduce((s, x) => s + x.points, 0);
+          const t3Max = sumTier.t3.reduce((s, x) => s + x.max, 0);
+
+          // Show tiers + bars
+          tiersBlock.classList.remove("hidden");
+          setTier(tier1ScoreEl, tier1BarEl, t1, t1Max);
+          setTier(tier2ScoreEl, tier2BarEl, t2, t2Max);
+          setTier(tier3ScoreEl, tier3BarEl, t3, t3Max);
+
+          // Render 13 signals
+          renderSignalBars(data.signals);
+
+          // Raw
           resultEl.textContent = JSON.stringify(data, null, 2);
         } catch (err) {
           resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
@@ -177,4 +243,3 @@
     </script>
   </body>
 </html>
-
