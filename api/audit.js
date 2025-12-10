@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)
+// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth + MultiPage)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -24,6 +24,7 @@ import {
 
 import { computeGravity } from "../shared/gravity.js";
 import { crawlHealth } from "../crawl/crawlHealth.js";
+import { crawlMultiPage } from "../crawl/crawlMultiPage.js";
 
 /* ====================================== */
 const UA =
@@ -79,9 +80,8 @@ export default async function handler(req, res) {
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
   );
-  if (normalizedOrigin !== "*") {
+  if (normalizedOrigin !== "*")
     res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
   if (req.method === "OPTIONS") return res.status(200).end();
 
   res.setHeader("Content-Type", "application/json");
@@ -117,25 +117,22 @@ export default async function handler(req, res) {
     const originHost = hostnameOf(normalized);
 
     /* ======================================
-       1) TRY PLAYWRIGHT RENDER FIRST
-       ====================================== */
+       Attempt Playwright (primary)
+    ====================================== */
     let html = "";
     let renderFailed = false;
     let axiosFailed = false;
 
     try {
-      const executablePath = await chromium.executablePath();
+      const executablePath = await chromium.executablePath;
 
       const browser = await playwrightChromium.launch({
         args: chromium.args,
         executablePath,
-        headless: chromium.headless ?? true,
+        headless: true,
       });
 
-      const page = await browser.newPage({
-        userAgent: UA,
-      });
-
+      const page = await browser.newPage({ userAgent: UA });
       await page.goto(normalized, {
         waitUntil: "networkidle",
         timeout: 20000,
@@ -145,6 +142,7 @@ export default async function handler(req, res) {
       await browser.close();
     } catch (e) {
       renderFailed = true;
+      // Fallback: Axios static fetch
       try {
         const resp = await axios.get(normalized, {
           timeout: 15000,
@@ -165,9 +163,7 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ======================================
-       PARSE + EXPAND @graph
-       ====================================== */
+    /* ====================================== */
     const $ = cheerio.load(html);
 
     const ldBlocks = $("script[type='application/ld+json']")
@@ -178,17 +174,12 @@ export default async function handler(req, res) {
 
     const expandedSchemas = [];
     for (const obj of rawSchemas) {
-      if (Array.isArray(obj["@graph"])) {
-        expandedSchemas.push(...obj["@graph"]);
-      } else {
-        expandedSchemas.push(obj);
-      }
+      if (Array.isArray(obj["@graph"])) expandedSchemas.push(...obj["@graph"]);
+      else expandedSchemas.push(obj);
     }
     const schemaObjects = expandedSchemas;
 
-    /* ======================================
-       COLLECT FIELDS
-       ====================================== */
+    /* ====================================== */
     const title = ($("title").first().text() || "").trim();
     const description =
       $('meta[name="description"]').attr("content") ||
@@ -204,7 +195,7 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-    // Latest content date
+    // latest content date
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -216,9 +207,8 @@ export default async function handler(req, res) {
       ds.forEach((dc) => {
         const d = new Date(dc);
         if (!Number.isNaN(d.getTime())) {
-          if (!latestISO || d > new Date(latestISO)) {
+          if (!latestISO || d > new Date(latestISO))
             latestISO = d.toISOString();
-          }
         }
       });
     }
@@ -236,8 +226,8 @@ export default async function handler(req, res) {
     entityName = (entityName || "").trim();
 
     /* ======================================
-       SCORING
-       ====================================== */
+       Entity scoring (single-page)
+    ====================================== */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -269,16 +259,16 @@ export default async function handler(req, res) {
     });
 
     /* ======================================
-       GRAVITY v1.0
-       ====================================== */
+       Gravity (global footprint)
+    ====================================== */
     const gravity = computeGravity({
       hostname: originHost,
       pageLinks,
     });
 
     /* ======================================
-       CRAWL HEALTH v1.0
-       ====================================== */
+       Crawl Health (risk surface)
+    ====================================== */
     const crawl = crawlHealth({
       $,
       normalized,
@@ -287,11 +277,29 @@ export default async function handler(req, res) {
     });
 
     /* ======================================
-       RESPONSE
-       ====================================== */
+       Multi-Page Crawl (depth=2, maxPages=10)
+       Internal only, so we don't blow up costs.
+    ====================================== */
+    let multiPage = null;
+    if (isInternal) {
+      try {
+        multiPage = await crawlMultiPage(normalized, {
+          depth: 2,
+          maxPages: 10,
+        });
+      } catch (err) {
+        multiPage = {
+          success: false,
+          error: err?.message || String(err),
+        };
+      }
+    }
+
+    /* ====================================== */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth)",
+      model:
+        "EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth + MultiPage)",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
@@ -307,6 +315,7 @@ export default async function handler(req, res) {
 
       gravity,
       crawlHealth: crawl,
+      multiPage, // <-- Internal multi-page view (null for external)
 
       signals: breakdown,
       schemaMeta: {
