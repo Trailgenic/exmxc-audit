@@ -1,5 +1,4 @@
-// /api/audit.js — EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth + MultiPage)
-
+// /api/audit.js — EEI v4.1 (UI-Stable Edition)
 import axios from "axios";
 import * as cheerio from "cheerio";
 import chromium from "@sparticuz/chromium";
@@ -23,12 +22,11 @@ import {
 } from "../shared/scoring.js";
 
 import { computeGravity } from "../shared/gravity.js";
-import { crawlHealth } from "../crawl/crawlHealth.js";
+import { crawlHealth } from "../shared/crawlHealth.js";
 import { crawlMultiPage } from "../crawl/crawlMultiPage.js";
 
-/* ================== Helpers =================== */
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/4.1 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) exmxc-audit/4.1 Safari/537.36";
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -63,11 +61,10 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-/* ================== Handler =================== */
 export default async function handler(req, res) {
-  /* ================== CORS =================== */
   const origin = req.headers.origin || req.headers.referer;
   let normalizedOrigin = "*";
+
   if (origin && origin !== "null") {
     try {
       normalizedOrigin = new URL(origin).origin;
@@ -90,8 +87,6 @@ export default async function handler(req, res) {
 
   res.setHeader("Content-Type", "application/json");
 
-  /* ================== Access Gate (Updated Option A) =================== */
-
   const referer = req.headers.referer || "";
   const isInternal = req.headers["x-exmxc-key"] === "exmxc-internal";
 
@@ -106,7 +101,6 @@ export default async function handler(req, res) {
     referer.includes(o)
   );
 
-  // Webflow privacy mode often sends no referer — allow this
   const noRefererSafe = referer === "";
 
   const isExternal = !(isAllowedOrigin || noRefererSafe || isInternal);
@@ -118,7 +112,6 @@ export default async function handler(req, res) {
     });
   }
 
-  /* ================== Main Logic =================== */
   try {
     const input = req.query?.url;
     if (!input || typeof input !== "string" || !input.trim()) {
@@ -132,7 +125,6 @@ export default async function handler(req, res) {
 
     const originHost = hostnameOf(normalized);
 
-    /* ================== Fetch with Playwright =================== */
     let html = "";
     let renderFailed = false;
     let axiosFailed = false;
@@ -176,7 +168,6 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ================== Parsing =================== */
     const $ = cheerio.load(html);
 
     const ldBlocks = $("script[type='application/ld+json']")
@@ -192,7 +183,6 @@ export default async function handler(req, res) {
     }
     const schemaObjects = expandedSchemas;
 
-    /* ================== Basic Fields =================== */
     const title = ($("title").first().text() || "").trim();
     const description =
       $('meta[name="description"]').attr("content") ||
@@ -208,7 +198,6 @@ export default async function handler(req, res) {
       .get()
       .filter(Boolean);
 
-    // track latest date
     let latestISO = null;
     for (const obj of schemaObjects) {
       const ds = [
@@ -238,7 +227,6 @@ export default async function handler(req, res) {
         : title.split(" - ")[0]);
     entityName = (entityName || "").trim();
 
-    /* ================== Scoring =================== */
     const breakdown = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -269,13 +257,11 @@ export default async function handler(req, res) {
         : 0;
     });
 
-    /* ================== Gravity =================== */
     const gravity = computeGravity({
       hostname: originHost,
       pageLinks,
     });
 
-    /* ================== Crawl Health =================== */
     const crawl = crawlHealth({
       $,
       normalized,
@@ -283,7 +269,6 @@ export default async function handler(req, res) {
       axiosFailed,
     });
 
-    /* ================== Multi-page Crawl (Internal Only) =================== */
     let multiPage = null;
     if (isInternal) {
       try {
@@ -299,10 +284,9 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ================== Response =================== */
     return res.status(200).json({
       success: true,
-      model: "EEI v4.1 (Playwright + @graph + Gravity + CrawlHealth + MultiPage)",
+      model: "EEI v4.1",
       url: normalized,
       hostname: originHost,
       entityName: entityName || null,
@@ -311,10 +295,10 @@ export default async function handler(req, res) {
       description,
       entityScore: Math.round(entityScore),
 
-      entityStage: entityTier.stage,
-      entityVerb: entityTier.verb,
-      entityDescription: entityTier.description,
-      entityFocus: entityTier.coreFocus,
+      entityStage: entityTier.stage || "",
+      entityVerb: entityTier.verb || "",
+      entityDescription: entityTier.description || "",
+      entityFocus: entityTier.coreFocus || "",
 
       gravity,
       crawlHealth: crawl,
