@@ -39,7 +39,7 @@ async function extractLinksFromPage(page, rootHost) {
       const host = new URL(abs).hostname.replace(/^www\./i, "");
       if (host === rootHost) links.add(abs);
     } catch {
-      // ignore
+      // ignore bad URLs
     }
   }
   return Array.from(links);
@@ -91,16 +91,6 @@ async function crawlPage(browser, url) {
 
 /* =====================================================================================
    MAIN MULTI-PAGE CRAWL
-   -------------------------------------------------------------------------------------
-   rootUrl:    starting URL
-   depth:      default 2
-   maxPages:   default 10
-   returns: {
-     startUrl,
-     pages [
-       { url, title, description, htmlLength, success, error? }
-     ]
-   }
 ===================================================================================== */
 export async function crawlMultiPage(
   rootUrl,
@@ -111,13 +101,12 @@ export async function crawlMultiPage(
 
   const rootHost = hostnameOf(normalized);
 
-  const executablePath = await chromium.executablePath;
-
+  // **THE FIX — always call executablePath()**
   const browser = await playwrightChromium.launch({
-  args: chromium.args,
-  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (await chromium.executablePath),
-  headless: true,
-});
+    args: chromium.args,
+    executablePath: await chromium.executablePath(),
+    headless: true,
+  });
 
   const visited = new Set();
   const queue = [{ url: normalized, d: 0 }];
@@ -134,7 +123,7 @@ export async function crawlMultiPage(
       results.push(pageData);
 
       if (!pageData.success) continue;
-      if (d >= depth) continue; // stop deeper
+      if (d >= depth) continue;
 
       // Extract next links
       try {
@@ -152,7 +141,7 @@ export async function crawlMultiPage(
           }
         }
       } catch {
-        // ignore
+        // ignore individual page failures
       }
     }
   } finally {
