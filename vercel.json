@@ -1,16 +1,1 @@
-{
-  "version": 2,
-  "builds": [
-    { "src": "api/**/*.js", "use": "@vercel/node" },
-    { "src": "public/**/*", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "^/api/audit$", "dest": "/api/audit.js" },
-    { "src": "^/api/scan$", "dest": "/api/scan.js" },
-    { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
 
-    { "src": "^/predictive-audit$", "dest": "/public/predictive.html" },
-    { "src": "^/style.css$", "dest": "/public/style.css" },
-    { "src": "/(.*)", "dest": "/public/index.html" }
-  ]
-}
