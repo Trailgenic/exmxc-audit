@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Predictive EEI — exmxc.ai</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body {
+      background-color: #f3f4f6;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen">
+
+  <div class="max-w-5xl mx-auto py-10 px-6">
+    <h1 class="text-3xl font-bold mb-2">
+      Predictive EEI — Vertical Stress Test
+    </h1>
+    <p class="text-gray-700 mb-8">
+      Stress-test verticals using EEI v5.1 weights, drift signatures, stage distributions, and risk modeling.<br>
+      Operates under the <strong>Fortress Protocol</strong>.
+    </p>
+
+    <!-- Selector -->
+    <div class="bg-white rounded-lg p-6 shadow mb-10">
+      <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+        Select Vertical Dataset
+      </label>
+
+      <select
+        id="datasetSelect"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-black focus:outline-none bg-white"
+      >
+        <option>Loading…</option>
+      </select>
+
+      <button
+        id="runBtn"
+        class="mt-4 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+      >
+        Run Predictive Audit
+      </button>
+
+      <div id="status" class="text-xs text-gray-500 mt-2"></div>
+    </div>
+
+    <!-- Results container -->
+    <div id="results" class="hidden">
+
+      <div class="bg-white rounded-lg p-6 shadow mb-10">
+        <h2 class="text-2xl font-bold mb-4">Predictive Summary</h2>
+        <div id="predictiveSummary" class="space-y-2 text-gray-800"></div>
+      </div>
+
+      <div class="bg-white rounded-lg p-6 shadow mb-10">
+        <h2 class="text-2xl font-bold mb-4">Stage Distribution</h2>
+        <div id="stageDistribution" class="space-y-1 text-gray-800"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <div class="bg-white rounded-lg p-6 shadow">
+          <h3 class="text-xl font-semibold mb-4">Top 5 Entities</h3>
+          <ul id="top5" class="list-disc pl-6 text-gray-800"></ul>
+        </div>
+
+        <div class="bg-white rounded-lg p-6 shadow">
+          <h3 class="text-xl font-semibold mb-4">Bottom 5 Entities</h3>
+          <ul id="bottom5" class="list-disc pl-6 text-gray-800"></ul>
+        </div>
+
+      </div>
+
+      <div class="bg-white rounded-lg p-6 shadow mt-10">
+        <h3 class="text-xl font-semibold mb-4">Analyst Notes</h3>
+        <ul id="notesList" class="list-disc pl-6 text-gray-800"></ul>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const datasetSelect = document.getElementById("datasetSelect");
+    const runBtn = document.getElementById("runBtn");
+    const statusEl = document.getElementById("status");
+
+    const resultsDiv = document.getElementById("results");
+    const predictiveSummary = document.getElementById("predictiveSummary");
+    const stageDistribution = document.getElementById("stageDistribution");
+    const top5List = document.getElementById("top5");
+    const bottom5List = document.getElementById("bottom5");
+    const notesList = document.getElementById("notesList");
+
+    /* ================================
+       LOAD VERTICALS FROM /api/verticals
+    =================================== */
+    async function loadVerticals() {
+      try {
+        const res = await fetch("/api/verticals");
+        const api = await res.json();
+
+        datasetSelect.innerHTML = "";
+
+        api.verticals.forEach(v => {
+          const opt = document.createElement("option");
+          opt.value = v.value;     // "core-web", "tg-strategic", etc.
+          opt.textContent = v.label; // Human readable label
+          datasetSelect.appendChild(opt);
+        });
+
+      } catch (err) {
+        console.error(err);
+        datasetSelect.innerHTML = "<option>Error loading verticals</option>";
+      }
+    }
+
+    loadVerticals();
+
+
+    /* ================================
+       RUN PREDICTIVE AUDIT
+    =================================== */
+    runBtn.addEventListener("click", async () => {
+      const dataset = datasetSelect.value;
+      runBtn.disabled = true;
+      runBtn.innerText = "Running…";
+      statusEl.textContent = "Running batch…";
+
+      try {
+        // 1) Batch audit
+        const batchRes = await fetch(`/api/batch-run?dataset=${dataset}`);
+        const batchData = await batchRes.json();
+
+        if (!batchData.success) {
+          alert("Batch run failed: " + batchData.error);
+          return;
+        }
+
+        statusEl.textContent = "Batch complete. Running predictive…";
+
+        // 2) Predictive modeling
+        const predictiveRes = await fetch("/api/predictive-audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataset,
+            results: batchData.results
+          })
+        });
+
+        const predictiveData = await predictiveRes.json();
+        if (!predictiveData.success) {
+          alert("Predictive audit failed: " + predictiveData.error);
+          return;
+        }
+
+        renderResults(predictiveData);
+        statusEl.textContent = "Done.";
+
+      } catch (err) {
+        console.error(err);
+        alert("Unexpected error running predictive audit.");
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerText = "Run Predictive Audit";
+      }
+    });
+
+
+    /* ================================
+       RENDER RESULTS
+    =================================== */
+    function renderResults(data) {
+      resultsDiv.classList.remove("hidden");
+
+      const { stats, predictive } = data;
+
+      predictiveSummary.innerHTML = `
+        <p><strong>Predictive Score:</strong> ${predictive.predictiveScore}/100</p>
+        <p><strong>Risk Band:</strong> ${predictive.riskBand}</p>
+        <p><strong>Trajectory:</strong> ${predictive.trajectory}</p>
+        <p><strong>Average EEI:</strong> ${stats.avgEEI}</p>
+        <p><strong>Total Sites:</strong> ${stats.totalSites}</p>
+      `;
+
+      stageDistribution.innerHTML = `
+        <p><strong>Sovereign:</strong> ${stats.shares.sovereign}%</p>
+        <p><strong>Structured:</strong> ${stats.shares.structured}%</p>
+        <p><strong>Visible:</strong> ${stats.shares.visible}%</p>
+        <p><strong>Emergent:</strong> ${stats.shares.emergent}%</p>
+      `;
+
+      top5List.innerHTML = stats.top5
+        .map(x => `<li>${x.url} — ${x.entityScore}</li>`)
+        .join("");
+
+      bottom5List.innerHTML = stats.bottom5
+        .map(x => `<li>${x.url} — ${x.entityScore}</li>`)
+        .join("");
+
+      notesList.innerHTML = predictive.notes
+        .map(n => `<li>${n}</li>`)
+        .join("");
+    }
+  </script>
+
+</body>
+</html>
