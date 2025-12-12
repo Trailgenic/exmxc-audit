@@ -1,18 +1,20 @@
 {
-  "functions": {
-    "src/api/**/*.ts": {
-      "runtime": "nodejs20.x"
-    }
+  "name": "exmxc-audit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+
+  "engines": {
+    "node": "20.x"
   },
 
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/src/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/public/$1"
-    }
-  ]
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo \"exmxc-audit build\"",
+    "start": "vercel dev"
+  },
+
+  "dependencies": {
+    "hono": "^4.5.0"
+  }
 }
