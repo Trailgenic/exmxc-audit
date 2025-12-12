@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "src/api/**/*.ts": {
-      "runtime": "vercel-edge"
+      "runtime": "nodejs20.x"
     }
   },
   "routes": [
