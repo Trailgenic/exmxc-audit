@@ -1,16 +1,16 @@
 {
   "name": "exmxc-audit",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
-
   "scripts": {
-    "dev": "vercel dev",
-    "build": "echo 'exmxc-audit: nothing to build'",
-    "start": "vercel dev"
+    "build": "echo 'Build complete'"
   },
-
   "dependencies": {
-    "hono": "^4.5.0"
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "@upstash/redis": "^1.29.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.1"
   }
 }
