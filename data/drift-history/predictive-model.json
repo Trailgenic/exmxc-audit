@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Predictive EEI starter dataset for training drift detection, vertical patterns, and stage probability modeling.",
+    "lastUpdated": "2025-11-17"
+  },
+
+  "features": {
+    "core": [
+      "entityScore",
+      "entityStage",
+      "schemaCount",
+      "wordCount",
+      "internalLinks",
+      "externalLinks",
+      "canonicalQuality",
+      "socialSignals",
+      "renderMode"
+    ],
+    "derived": [
+      "schema-to-word-ratio",
+      "internal-link-density",
+      "stage-volatility",
+      "score-volatility",
+      "vertical-strength-index"
+    ]
+  },
+
+  "trainingSets": {
+    "core-web": [],
+    "core-media": [],
+    "core-health": [],
+    "core-finance": [],
+    "ecommerce": [],
+    "restaurants-hospitality": [],
+    "real-estate": [],
+    "legal-services": [],
+    "influencers-creators": [],
+    "tg-strategic": []
+    "plastic-surgery": []
+  },
+
+  "modelConfig": {
+    "driftThreshold": 0.15,
+    "volatilitySmoothing": 0.25,
+    "stageTransitionSensitivity": 0.6,
+    "minSamplesForPrediction": 30
+  }
+}
+
