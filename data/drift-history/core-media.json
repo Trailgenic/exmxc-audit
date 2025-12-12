@@ -1,0 +1,32 @@
+{
+  "vertical": "Core Media",
+  "description": "Mid-tier structured media dataset for EEI calibration — sites with mixed schema, inconsistent OG, and moderate authority.",
+  "urls": [
+    "https://techcrunch.com",
+    "https://thenextweb.com",
+    "https://wired.com",
+    "https://mashable.com",
+    "https://theverge.com",
+    "https://vox.com",
+    "https://pitchfork.com",
+    "https://engadget.com",
+    "https://gizmodo.com",
+    "https://slate.com",
+    "https://pcmag.com",
+    "https://cnet.com",
+    "https://digitaltrends.com",
+    "https://hollywoodreporter.com",
+    "https://variety.com",
+    "https://deadline.com",
+    "https://buzzfeednews.com",
+    "https://huffpost.com",
+    "https://nbcnews.com",
+    "https://abcnews.go.com",
+    "https://businessinsider.com",
+    "https://wired.co.uk",
+    "https://scmp.com",
+    "https://latimes.com",
+    "https://usatoday.com"
+  ]
+}
+
