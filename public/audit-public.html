@@ -412,7 +412,7 @@
 
         try {
           const res = await fetch(
-            `/api/audit?url=${encodeURIComponent(normalized)}`
+            `/api/eei-public?url=${encodeURIComponent(normalized)}`
           );
 
           const data = await res.json();
