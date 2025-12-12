@@ -1,3 +1,4 @@
+// eei-crawler/src/db/entities.ts
 import { prisma } from "./client";
 import { SignalResult } from "../models/types";
 
@@ -20,22 +21,20 @@ export async function saveEntity(data: {
       tier2: data.tier2,
       tier3: data.tier3,
       diagnostics: data.diagnostics,
-
-      // link entity back to job
       job: {
         connect: { id: data.jobId }
       }
     }
   });
 
-  // 2. Save all 13 signals
+  // 2. Save all signals (Tier 1 now, later all 13)
   if (data.signals.length > 0) {
     await prisma.signalResult.createMany({
-      data: data.signals.map(sig => ({
+      data: data.signals.map((sig) => ({
         entityId: entity.id,
         name: sig.name,
         score: sig.score,
-        details: sig.details || {}
+        details: sig.raw ?? {}
       }))
     });
   }
@@ -47,7 +46,6 @@ export async function getEntity(entityId: string) {
   return prisma.entity.findUnique({
     where: { id: entityId },
     include: {
-      // Internal dashboard needs signal results
       SignalResult: true
     }
   });
