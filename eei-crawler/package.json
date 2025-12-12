@@ -1,9 +1,0 @@
-{
-  "name": "eei-crawler",
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "node src/server.js",
-    "start": "node src/server.js"
-  }
-}
-
