@@ -1,9 +1,16 @@
 {
   "name": "exmxc-audit",
   "version": "1.0.0",
+  "private": true,
+  "type": "module",
+
   "scripts": {
     "dev": "vercel dev",
-    "start": "vercel start"
+    "build": "echo 'exmxc-audit: nothing to build'",
+    "start": "vercel dev"
+  },
+
+  "dependencies": {
+    "hono": "^4.5.0"
   }
 }
-
