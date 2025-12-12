@@ -1,3 +1,5 @@
+// eei-crawler/src/models/types.ts
+
 export interface Job {
   id: string;
   url: string;
@@ -7,7 +9,9 @@ export interface Job {
 export interface SignalResult {
   name: string;
   score: number;
-  details?: any;
+  max: number;
+  notes: string;
+  raw?: any;
 }
 
 export interface PublicResult {
@@ -29,4 +33,3 @@ export interface InternalResult {
   entityId: string;
   diagnostics: Diagnostic;
 }
-
