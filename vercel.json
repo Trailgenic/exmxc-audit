@@ -1,20 +1,30 @@
 {
-  "name": "exmxc-audit",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
+  "version": 2,
+  "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node" },
+    { "src": "public/**/*", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/api/audit$", "dest": "/api/audit.js" },
+    { "src": "^/api/scan$", "dest": "/api/scan.js" },
+    { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
+    { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
+    { "src": "^/api/verticals$", "dest": "/api/verticals.js" },
 
-  "engines": {
-    "node": "20.x"
-  },
+    { "src": "^/batch$", "dest": "/public/batch-run.html" },
+    { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
+    { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
 
-  "scripts": {
-    "dev": "vercel dev",
-    "build": "echo \"exmxc-audit build\"",
-    "start": "vercel dev"
-  },
+    { "src": "^/predictive$", "dest": "/public/predictive.html" },
+    { "src": "^/predictive.html$", "dest": "/public/predictive.html" },
 
-  "dependencies": {
-    "hono": "^4.5.0"
-  }
+    { "src": "^/verticals$", "dest": "/public/verticals.html" },
+    { "src": "^/verticals.html$", "dest": "/public/verticals.html" },
+
+    { "src": "^/styles.css$", "dest": "/public/styles.css" },
+
+    { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
+
+    { "src": "^/(.*)$", "dest": "/public/index.html" }
+  ]
 }
