@@ -1,13 +1,27 @@
 // eei-crawler/src/signals/index.ts
 
 /**
- * EEI Signal Engine — Tier 1 + Tier 2 (Full File)
+ * EEI Signal Engine — Tier 1 + Tier 2 + Tier 3 (Full File)
  *
- * This module runs all implemented signals:
- *  - Tier 1: Internal Lattice, External Authority, AI Crawl, Content Depth
- *  - Tier 2: Schema Presence, Organization Schema, Breadcrumb Schema, Author/Person Schema
+ * This module runs all 13 EEI signals:
  *
- * Tier 3 will be added later without modifying the structure.
+ *  TIER 1 — AI Comprehension (77 pts)
+ *    - Internal Lattice Integrity
+ *    - External Authority Signal
+ *    - AI Crawl Fidelity
+ *    - Inference Efficiency (Content Depth)
+ *
+ *  TIER 2 — Structural Schema (45 pts)
+ *    - Schema Presence & Validity
+ *    - Organization Schema
+ *    - Breadcrumb Schema
+ *    - Author/Person Schema
+ *
+ *  TIER 3 — Page Hygiene (28 pts)
+ *    - Title Precision
+ *    - Meta Description Integrity
+ *    - Canonical Clarity
+ *    - Brand & Technical Consistency
  */
 
 import * as cheerio from "cheerio";
@@ -17,13 +31,14 @@ export async function runAllSignals(html: string, url: string): Promise<SignalRe
   const $ = cheerio.load(html);
   const originHost = new URL(url).hostname.replace(/^www\./, "");
 
+  /* Extract page links */
   const pageLinks: string[] = [];
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href");
     if (href) pageLinks.push(href);
   });
 
-  // Extract all JSON-LD blocks
+  /* Extract JSON-LD structured data */
   const schemaObjects: any[] = [];
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -31,7 +46,7 @@ export async function runAllSignals(html: string, url: string): Promise<SignalRe
       if (Array.isArray(parsed)) schemaObjects.push(...parsed);
       else schemaObjects.push(parsed);
     } catch {
-      // ignore invalid JSON-LD
+      /* ignore invalid schema */
     }
   });
 
@@ -46,12 +61,20 @@ export async function runAllSignals(html: string, url: string): Promise<SignalRe
   signals.push(scoreContentDepth($));
 
   /* ===============================
-     TIER 2 — STRUCTURAL DATA
+     TIER 2 — STRUCTURAL SCHEMA
      =============================== */
   signals.push(scoreSchemaPresence(schemaObjects));
   signals.push(scoreOrganizationSchema(schemaObjects));
   signals.push(scoreBreadcrumbSchema(schemaObjects));
   signals.push(scoreAuthorPerson(schemaObjects, $));
+
+  /* ===============================
+     TIER 3 — PAGE HYGIENE
+     =============================== */
+  signals.push(scoreTitle($));
+  signals.push(scoreMetaDescription($));
+  signals.push(scoreCanonical($, url));
+  signals.push(scoreBrandConsistency($));
 
   return signals;
 }
@@ -269,5 +292,122 @@ function scoreAuthorPerson(schemaObjects: any[], $: cheerio.CheerioAPI): SignalR
     max: 5,
     notes,
     raw: { person: !!person, metaAuthor }
+  };
+}
+
+/* ============================================================
+   TIER 3 SIGNALS
+   ============================================================ */
+
+function scoreTitle($: cheerio.CheerioAPI): SignalResult {
+  const title = ($("title").first().text() || "").trim();
+  let score = 0;
+  let notes = "Missing";
+
+  if (title) {
+    const len = title.length;
+    const hasSeparator = / \| | - /.test(title);
+
+    if (len >= 30 && hasSeparator) {
+      score = 10;
+      notes = "Specific & contextual";
+    } else if (len >= 15) {
+      score = 6;
+      notes = "Present but generic";
+    } else {
+      score = 3;
+      notes = "Weak or too short";
+    }
+  }
+
+  return {
+    name: "Title Precision",
+    score,
+    max: 10,
+    notes,
+    raw: { title }
+  };
+}
+
+function scoreMetaDescription($: cheerio.CheerioAPI): SignalResult {
+  const md =
+    $('meta[name="description"]').attr("content") ||
+    $('meta[property="og:description"]').attr("content") ||
+    "";
+
+  let score = 0;
+  let notes = "Missing";
+
+  if (md) {
+    const len = md.length;
+
+    if (len >= 120) {
+      score = 8;
+      notes = "Descriptive & complete";
+    } else if (len >= 60) {
+      score = 5;
+      notes = "Moderate depth";
+    } else {
+      score = 3;
+      notes = "Too short";
+    }
+  }
+
+  return {
+    name: "Meta Description Integrity",
+    score,
+    max: 8,
+    notes,
+    raw: { meta: md }
+  };
+}
+
+function scoreCanonical($: cheerio.CheerioAPI, normalizedUrl: string): SignalResult {
+  const href = ($('link[rel="canonical"]').attr("href") || "").trim();
+
+  let score = 0;
+  let notes = "Missing";
+
+  if (href) {
+    try {
+      const can = new URL(href, normalizedUrl);
+      const sameOrigin = can.origin === new URL(normalizedUrl).origin;
+      const clean = sameOrigin && !/[?#]/.test(can.href);
+
+      score = clean ? 5 : 2;
+      notes = clean ? "Clean absolute canonical" : "Present but inconsistent";
+    } catch {
+      score = 1;
+      notes = "Invalid canonical URL";
+    }
+  }
+
+  return {
+    name: "Canonical Clarity",
+    score,
+    max: 5,
+    notes,
+    raw: { canonical: href }
+  };
+}
+
+function scoreBrandConsistency($: cheerio.CheerioAPI): SignalResult {
+  const favicon =
+    $('link[rel="icon"]').attr("href") ||
+    $('link[rel="shortcut icon"]').attr("href") ||
+    "";
+  const ogImage = $('meta[property="og:image"]').attr("content") || "";
+
+  const present = favicon || ogImage;
+
+  const score = present ? 5 : 0;
+  const notes = present ? "Branding consistent" : "Missing";
+
+  return {
+    name: "Brand & Technical Consistency",
+    score,
+    max: 5,
+    notes,
+    raw: { favicon, ogImage }
   };
 }
