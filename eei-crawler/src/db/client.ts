@@ -1,3 +1,3 @@
-// TODO: Initialize Prisma or Postgres client
-export const db = {};
+import { PrismaClient } from "@prisma/client";
 
+export const prisma = new PrismaClient();
