@@ -1,18 +1,15 @@
 // /api/eei-public.js
 // EEI Public Proxy — UX-safe, narrative-first, moat-protecting
+// FIXED: Hard-pinned internal origin to prevent HTML fallback
 
 import axios from "axios";
 
 /* ============================================================
-   CONFIG (FIXED)
+   CONFIG (FINAL — DO NOT AUTO-DETECT)
    ============================================================ */
 
-// Explicit, safe origin resolution
-const INTERNAL_ORIGIN = process.env.EEI_INTERNAL_ORIGIN
-  ? process.env.EEI_INTERNAL_ORIGIN
-  : process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : null;
+// 🔒 HARD PIN — prevents Vercel HTML fallback
+const INTERNAL_ORIGIN = "https://exmxc-audit.vercel.app";
 
 const INTERNAL_TIMEOUT_MS = 25000;
 
@@ -36,7 +33,7 @@ function clamp(v, min, max) {
 }
 
 /* ============================================================
-   STRUCTURAL PROFILE
+   STRUCTURAL PROFILE (Narrative Engine)
    ============================================================ */
 
 function buildStructuralProfile({ entityScore, tierScores }) {
@@ -79,20 +76,15 @@ function buildStructuralProfile({ entityScore, tierScores }) {
    ============================================================ */
 
 export default async function handler(req, res) {
+  /* ---------- CORS ---------- */
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  if (!INTERNAL_ORIGIN) {
-    return res.status(500).json({
-      success: false,
-      error: "INTERNAL_ORIGIN not configured",
-    });
-  }
-
   try {
+    /* ---------- Input ---------- */
     const input = req.query?.url;
     const normalized = normalizeUrl(input);
 
@@ -103,6 +95,7 @@ export default async function handler(req, res) {
       });
     }
 
+    /* ---------- Call INTERNAL audit ---------- */
     const auditUrl = `${INTERNAL_ORIGIN}/api/audit?url=${encodeURIComponent(
       normalized
     )}`;
@@ -129,6 +122,7 @@ export default async function handler(req, res) {
       });
     }
 
+    /* ---------- Extract + sanitize ---------- */
     const entityScore = clamp(audit.entityScore ?? 0, 0, 100);
     const tierScores = audit.tierScores || {};
 
@@ -139,6 +133,7 @@ export default async function handler(req, res) {
 
     const ch = audit.crawlHealth || {};
 
+    /* ---------- Public payload ---------- */
     return res.status(200).json({
       success: true,
 
@@ -173,7 +168,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       error: "Public EEI proxy error",
-      details: err.message,
+      details: err.message || String(err),
     });
   }
 }
