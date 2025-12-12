@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>EEI Drift History Dashboard — exmxc.ai</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 40px;
+      background: #fafafa;
+      color: #111;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-size: 20px;
+      margin-top: 30px;
+    }
+    select {
+      padding: 8px;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid #ddd;
+      font-size: 14px;
+    }
+    .small-note {
+      font-size: 12px;
+      opacity: 0.6;
+      margin-top: 10px;
+    }
+    canvas {
+      background: #fff;
+      padding: 10px;
+      border-radius: 6px;
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+  <h1>EEI Drift History Dashboard</h1>
+  <p>Select a vertical to explore historical EEI drift, score stability, and stage transitions.</p>
+
+  <!-- Vertical selector -->
+  <label><strong>Vertical:</strong></label>
+  <select id="datasetSelector">
+    <option value="core-web">Core Web</option>
+    <option value="core-media">Core Media</option>
+    <option value="core-health">Core Health</option>
+    <option value="core-finance">Finance</option>
+    <option value="ecommerce">Ecommerce</option>
+    <option value="influencers-creators">Influencers / Creators</option>
+    <option value="plastic-surgery">Plastic Surgery</option>
+    <option value="legal-services">Legal Services</option>
+    <option value="real-estate">Real Estate</option>
+    <option value="restaurants-hospitality">Restaurants / Hospitality</option>
+  </select>
+
+  <div id="dashboard"></div>
+
+<script>
+async function loadDrift(dataset) {
+  const response = await fetch(`/data/drift-history/${dataset}.json`);
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
+}
+
+// Format score trend chart
+function renderChart(ctx, labels, scores) {
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Average EEI Score",
+        data: scores,
+        fill: false,
+        borderColor: "#000",
+        tension: 0.2,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: false,
+          min: Math.min(...scores) - 5,
+          max: Math.max(...scores) + 5
+        }
+      }
+    }
+  });
+}
+
+function buildDashboard(data, dataset) {
+  const container = document.getElementById("dashboard");
+  container.innerHTML = "";
+
+  if (!data || data.length === 0) {
+    container.innerHTML = `<p>No drift history found for <strong>${dataset}</strong>.</p>`;
+    return;
+  }
+
+  const labels = data.map(r => new Date(r.timestamp).toLocaleString());
+  const scores = data.map(r => r.avgEntityScore);
+
+  // MAIN CARD
+  const card = document.createElement("div");
+  card.className = "card";
+
+  card.innerHTML = `
+    <h2>Summary — ${dataset}</h2>
+    <p><strong>Total Runs:</strong> ${data.length}</p>
+    <p><strong>Latest Avg Score:</strong> ${scores[scores.length - 1]}</p>
+    <p><strong>First vs Latest:</strong> ${scores[0]} → ${scores[scores.length - 1]}</p>
+
+    <h2>Score Trend</h2>
+    <canvas id="trendChart" height="80"></canvas>
+
+    <h2>Latest Snapshot</h2>
+    <p><strong>Timestamp:</strong> ${labels[labels.length - 1]}</p>
+
+    <p><strong>Stage Distribution:</strong></p>
+    <ul>
+      <li>Sovereign: ${data[data.length - 1].sovereign}</li>
+      <li>Structured: ${data[data.length - 1].structured}</li>
+      <li>Visible: ${data[data.length - 1].visible}</li>
+      <li>Emergent: ${data[data.length - 1].emergent}</li>
+    </ul>
+
+    <h2>Top 5 Entities (Latest)</h2>
+    <table>
+      <tr><th>URL</th><th>Score</th></tr>
+      ${data[data.length - 1].top5
+        .map(t => `<tr><td>${t.url}</td><td>${t.score}</td></tr>`)
+        .join("")}
+    </table>
+
+    <h2>Bottom 5 Entities (Latest)</h2>
+    <table>
+      <tr><th>URL</th><th>Score</th></tr>
+      ${data[data.length - 1].bottom5
+        .map(t => `<tr><td>${t.url}</td><td>${t.score}</td></tr>`)
+        .join("")}
+    </table>
+  `;
+
+  container.appendChild(card);
+
+  // After injecting, build chart
+  const ctx = document.getElementById("trendChart").getContext("2d");
+  renderChart(ctx, labels, scores);
+}
+
+// Interactive selector
+document.getElementById("datasetSelector").addEventListener("change", async (e) => {
+  const dataset = e.target.value;
+  const drift = await loadDrift(dataset);
+  buildDashboard(drift, dataset);
+});
+
+// INITIAL LOAD
+(async function () {
+  const initial = "core-web";
+  const drift = await loadDrift(initial);
+  buildDashboard(drift, initial);
+})();
+</script>
+
+</body>
+</html>
