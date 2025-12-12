@@ -1,2 +1,65 @@
-// TODO: Define jobs, entities, signals, diagnostics tables
+// ========================================
+// exmxc EEI Audit – Prisma Schema (Locked)
+// ========================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------
+// JOBS TABLE
+// ----------------------------------------
+model Job {
+  id        String   @id @default(cuid())
+  url       String
+  status    String   @default("pending") // pending | running | done | error
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // When completed, job points to the saved entity
+  entity    Entity?  @relation(fields: [entityId], references: [id])
+  entityId  String?
+}
+
+// ----------------------------------------
+// ENTITY TABLE (Stores EEI Results)
+// ----------------------------------------
+model Entity {
+  id          String    @id @default(cuid())
+  url         String
+  band        String     // Obscure | Bronze | Silver | Gold | Platinum | Sovereign
+  createdAt   DateTime   @default(now())
+
+  // Tier scores
+  tier1       Int
+  tier2       Int
+  tier3       Int
+
+  // Raw diagnostic JSON (compact)
+  diagnostics Json
+
+  // Reverse relationship to Job
+  job         Job?
+}
+
+// ----------------------------------------
+// SIGNAL RESULTS (13 per entity)
+// ----------------------------------------
+model SignalResult {
+  id          String   @id @default(cuid())
+  entityId    String
+  name        String    // e.g., "canonical integrity", "schema presence"
+  score       Int
+  details     Json?
+
+  entity      Entity    @relation(fields: [entityId], references: [id])
+
+  createdAt   DateTime  @default(now())
+}
+
 
