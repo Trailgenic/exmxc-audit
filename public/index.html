@@ -1,10 +1,50 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>exmxc Audit</title>
-  </head>
-  <body>
-    <h1>exmxc Audit Dashboard</h1>
-  </body>
-</html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>exmxc Audit Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
 
+<body>
+
+  <h1>exmxc Audit Dashboard</h1>
+
+  <div class="input-section">
+    <label for="jobIdInput">Enter Job ID:</label>
+    <input id="jobIdInput" placeholder="e.g. test123" />
+    <button id="loadBtn">Load Result</button>
+  </div>
+
+  <div id="loading" class="hidden">Loading…</div>
+  <div id="error" class="error hidden"></div>
+
+  <section id="result" class="hidden">
+
+    <h2>Entity Summary</h2>
+    <div class="summary-box">
+      <p><strong>Job ID:</strong> <span id="jobId"></span></p>
+      <p><strong>Tier:</strong> <span id="tier"></span></p>
+      <p><strong>Band:</strong> <span id="band"></span></p>
+    </div>
+
+    <h2>Signals</h2>
+    <table id="signalsTable">
+      <thead>
+        <tr>
+          <th>Signal</th>
+          <th>Points</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>Diagnostics (Raw JSON)</h2>
+    <pre id="diagnosticsBox"></pre>
+
+  </section>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>
