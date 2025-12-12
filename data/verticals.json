@@ -1,0 +1,57 @@
+{
+  "core-finance": {
+    "name": "Core Finance",
+    "file": "core-finance.json",
+    "count": 0
+  },
+  "core-health": {
+    "name": "Core Health",
+    "file": "core-health.json",
+    "count": 0
+  },
+  "core-media": {
+    "name": "Core Media",
+    "file": "core-media.json",
+    "count": 0
+  },
+  "core-web": {
+    "name": "Core Web",
+    "file": "core-web.json",
+    "count": 0
+  },
+  "ecommerce": {
+    "name": "Ecommerce",
+    "file": "ecommerce.json",
+    "count": 0
+  },
+  "influencers-creators": {
+    "name": "Influencers & Creators",
+    "file": "influencers-creators.json",
+    "count": 0
+  },
+  "legal-services": {
+    "name": "Legal Services",
+    "file": "legal-services.json",
+    "count": 0
+  },
+  "plastic-surgery": {
+    "name": "Plastic Surgery",
+    "file": "plastic-surgery.json",
+    "count": 0
+  },
+  "real-estate": {
+    "name": "Real Estate",
+    "file": "real-estate.json",
+    "count": 0
+  },
+  "restaurants-hospitality": {
+    "name": "Restaurants & Hospitality",
+    "file": "restaurants-hospitality.json",
+    "count": 0
+  },
+  "tg-strategic": {
+    "name": "TG Strategic",
+    "file": "tg-strategic.json",
+    "count": 0
+  }
+}
