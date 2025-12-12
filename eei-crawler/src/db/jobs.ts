@@ -1,13 +1,32 @@
+import { prisma } from "./client";
+
 export async function createJob(url: string) {
-  // TODO: insert into jobs table
+  const job = await prisma.job.create({
+    data: {
+      url,
+      status: "pending"
+    }
+  });
+
+  return job;
 }
 
 export async function updateJob(jobId: string, data: any) {
-  // TODO: update job row
+  const job = await prisma.job.update({
+    where: { id: jobId },
+    data
+  });
+
+  return job;
 }
 
 export async function getJob(jobId: string) {
-  // TODO: get job record
-  return null;
-}
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: {
+      entity: true // So /jobs/:jobId can return publicResult
+    }
+  });
 
+  return job;
+}
