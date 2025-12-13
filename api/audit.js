@@ -1,5 +1,9 @@
-// /api/audit.js — EEI v5.1C (Unified + CrawlHealth + UX ScoringBars)
+// /api/audit.js — EEI v5.2 (Railway-Orchestrated Crawl)
+// Orchestrator only — delegates crawling to exmxc-crawl-worker
+
 import * as cheerio from "cheerio";
+import axios from "axios";
+
 import {
   scoreTitle,
   scoreMetaDescription,
@@ -16,14 +20,19 @@ import {
   scoreFaviconOg,
   tierFromScore,
 } from "../shared/scoring.js";
+
 import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { crawlPage } from "./core-scan.js";
+
+/* ================================
+   CONFIG
+   ================================ */
+
+const CRAWL_WORKER_BASE =
+  "https://exmxc-crawl-worker-production.up.railway.app";
 
 /* ================================
    HELPERS
    ================================ */
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-audit/5.1 Safari/537.36";
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -50,6 +59,7 @@ function clamp(v, min, max) {
 /* ================================
    TIER MAPPING
    ================================ */
+
 const SIGNAL_TIER = {
   "Title Precision": "tier3",
   "Meta Description Integrity": "tier3",
@@ -80,17 +90,17 @@ const TIER_LABELS = {
 
 export default async function handler(req, res) {
   /* ---------- CORS ---------- */
-  const origin = req.headers.origin || "";
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, x-exmxc-key"
+    "Content-Type, Authorization, X-Requested-With"
   );
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  /* ---------- Input ---------- */
   try {
+    /* ---------- Input ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -99,63 +109,70 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid URL format" });
 
     const host = hostnameOf(normalized);
-    const requestedMode = req.query?.mode === "static" ? "static" : "rendered";
 
-    /* ---------- Crawl ---------- */
-    const crawl = await crawlPage({
-      url: normalized,
-      mode: requestedMode,
-      // UA rotation handled inside core-scan now
-      // userAgent: UA,
-    });
-
-    if (crawl.error || !crawl.html) {
-      return res.status(crawl.status || 500).json({
-        success: false,
-        error: crawl.error || "Failed to crawl URL",
+    /* ---------- Call Railway Crawl Worker ---------- */
+    const crawlResp = await axios.post(
+      `${CRAWL_WORKER_BASE}/crawl`,
+      {
         url: normalized,
-        mode: crawl.mode,
-        diagnostics: crawl.crawlHealth || null,
+        surfaces: ["/"],
+      },
+      { timeout: 30000 }
+    );
+
+    const crawlSurface = crawlResp.data?.surfaces?.[0];
+    if (!crawlSurface || crawlSurface.status >= 400) {
+      return res.status(502).json({
+        success: false,
+        error: "Crawl worker failed",
+        details: crawlResp.data || null,
       });
     }
 
-    const {
-      html,
-      title: crawlTitle,
-      description: crawlDescription,
-      canonicalHref: crawlCanonical,
-      pageLinks,
-      schemaObjects,
-      latestISO,
-      mode: resolvedMode,
-      status: httpStatus,
-      crawlHealth: crawlHealthRaw,
-      diagnostics: crawlDiagnostics,
-    } = crawl;
+    const html = crawlSurface.html || crawlSurface.content || "";
+    const crawlHealth = crawlSurface.crawlHealth || null;
 
     const $ = cheerio.load(html);
 
     /* ---------- Extract Fields ---------- */
-    const title = (crawlTitle || $("title").text() || "").trim();
+    const title = ($("title").text() || "").trim();
     const description =
-      crawlDescription ||
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "";
 
     const canonicalHref =
-      crawlCanonical ||
       $('link[rel="canonical"]').attr("href") ||
       normalized.replace(/\/$/, "");
 
+    /* ---------- JSON-LD ---------- */
+    const schemaObjects = $('script[type="application/ld+json"]')
+      .map((_, el) => {
+        try {
+          return JSON.parse($(el).text());
+        } catch {
+          return null;
+        }
+      })
+      .get()
+      .filter(Boolean);
+
     /* ---------- Entity Name ---------- */
-    let entityName =
+    const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      (title.includes(" | ") ? title.split(" | ")[0] : title.split(" - ")[0]) ||
-      "";
+      (title.includes(" | ")
+        ? title.split(" | ")[0]
+        : title.split(" - ")[0]) ||
+      null;
 
-    /* ---------- 13 Scoring Signals ---------- */
+    /* ---------- Links ---------- */
+    const pageLinks = $("a[href]")
+      .map((_, el) => $(el).attr("href"))
+      .get()
+      .filter(Boolean);
+
+    /* ---------- 13 Signals ---------- */
     const results = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -191,40 +208,9 @@ export default async function handler(req, res) {
       100
     );
 
-    /* ---------- Tier Output ---------- */
-    const tierScores = {
-      tier1: {
-        label: TIER_LABELS.tier1,
-        raw: tierRaw.tier1,
-        maxWeight: tierMax.tier1,
-        normalized:
-          tierMax.tier1 > 0
-            ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
-            : 0,
-      },
-      tier2: {
-        label: TIER_LABELS.tier2,
-        raw: tierRaw.tier2,
-        maxWeight: tierMax.tier2,
-        normalized:
-          tierMax.tier2 > 0
-            ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
-            : 0,
-      },
-      tier3: {
-        label: TIER_LABELS.tier3,
-        raw: tierRaw.tier3,
-        maxWeight: tierMax.tier3,
-        normalized:
-          tierMax.tier3 > 0
-            ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
-            : 0,
-      },
-    };
-
     const entityTier = tierFromScore(entityScore);
 
-    /* ---------- Prep results for UX scoring bars ---------- */
+    /* ---------- Scoring Bars ---------- */
     const scoringBars = results.map((r) => ({
       key: r.key,
       points: r.points,
@@ -233,12 +219,37 @@ export default async function handler(req, res) {
       notes: r.notes,
     }));
 
+    /* ---------- Tier Scores ---------- */
+    const tierScores = {
+      tier1: {
+        label: TIER_LABELS.tier1,
+        normalized:
+          tierMax.tier1 > 0
+            ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
+            : 0,
+      },
+      tier2: {
+        label: TIER_LABELS.tier2,
+        normalized:
+          tierMax.tier2 > 0
+            ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
+            : 0,
+      },
+      tier3: {
+        label: TIER_LABELS.tier3,
+        normalized:
+          tierMax.tier3 > 0
+            ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
+            : 0,
+      },
+    };
+
     /* ---------- Response ---------- */
     return res.status(200).json({
       success: true,
       url: normalized,
       hostname: host,
-      entityName: entityName.trim() || null,
+      entityName,
       title,
       canonical: canonicalHref,
       description,
@@ -253,16 +264,7 @@ export default async function handler(req, res) {
       scoringBars,
       tierScores,
 
-      schemaMeta: {
-        schemaBlocks: schemaObjects.length,
-        latestISO,
-        mode: resolvedMode,
-        httpStatus,
-      },
-
-      // ⭐ Prefer structured crawlHealth if present, otherwise fallback to diagnostics
-      crawlHealth: crawlHealthRaw || crawlDiagnostics || null,
-
+      crawlHealth,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
