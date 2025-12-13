@@ -93,62 +93,123 @@ function parseJsonLd(rawBlocks = []) {
 }
 
 /* ============================================================
-   STATIC CRAWL (Baseline) — FIXED
+   STATIC CRAWL (Baseline — FIXED)
    ============================================================ */
 async function staticCrawl(url, timeoutMs, userAgent) {
   const resp = await axios.get(url, {
     timeout: timeoutMs,
-    maxRedirects: 5,
-    responseType: "text",
-    decompress: true,
+    maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
       "User-Agent": userAgent,
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
-      "Cache-Control": "no-cache",
-      "Pragma": "no-cache"
+      Accept: "text/html,application/xhtml+xml",
     },
     validateStatus: (s) => s >= 200 && s < 400,
   });
 
-  const html = typeof resp.data === "string" ? resp.data : "";
-  const $ = cheerio.load(html, { decodeEntities: true });
+  // 🔑 CRITICAL: capture final resolved URL after redirects
+  const finalUrl = resp.request?.res?.responseUrl || url;
 
+  const html = typeof resp.data === "string" ? resp.data : "";
+  const $ = cheerio.load(html);
+
+  /* ---------- JSON-LD ---------- */
   const ldTexts = $('script[type="application/ld+json"]')
-    .map((_, el) => $(el).text())
+    .map((_, el) => $(el).contents().text())
     .get();
 
   const { schemaObjects, latestISO, schemaStats } = parseJsonLd(ldTexts);
 
-  const pageLinks = $("a[href]")
+  /* ---------- Links ---------- */
+  const rawLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
+  let internalLinks = 0;
+  let externalLinks = 0;
+  let totalLinks = rawLinks.length;
+
+  let origin = null;
+  try {
+    origin = new URL(finalUrl).origin;
+  } catch {
+    origin = null;
+  }
+
+  for (const href of rawLinks) {
+    try {
+      const absolute = new URL(href, finalUrl).href;
+      const linkOrigin = new URL(absolute).origin;
+      if (origin && linkOrigin === origin) internalLinks++;
+      else externalLinks++;
+    } catch {
+      // ignore malformed URLs
+    }
+  }
+
+  /* ---------- Content ---------- */
+  const scriptTags = $("script");
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
+  const robotsMeta = $('meta[name="robots"]').attr("content") || "";
+
+  /* ---------- Diagnostics ratios ---------- */
+  const scriptToWordRatio =
+    wordCount > 0 ? scriptTags.length / wordCount : 0;
+
+  const textToHtmlRatio =
+    html.length > 0 ? bodyText.length / html.length : 0;
+
+  const schemaDensity =
+    wordCount > 0 ? schemaObjects.length / wordCount : 0;
+
+  const hasNoscript = $("noscript").length > 0;
+
+  /* ---------- Return ---------- */
   return {
     _type: "static",
     status: resp.status,
     html,
+
+    // 🔑 use resolved document values
     title: $("title").first().text().trim(),
     description:
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "",
     canonicalHref:
-      $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, ""),
-    pageLinks,
+      $('link[rel="canonical"]').attr("href") ||
+      finalUrl.replace(/\/$/, ""),
+
+    pageLinks: rawLinks,
     schemaObjects,
     latestISO,
+
+    userAgentUsed: userAgent,
+
     diagnostics: {
+      finalUrl,
       htmlBytes: html.length,
+      textBytes: bodyText.length,
       wordCount,
-      linkCount: pageLinks.length,
+      domNodes: $("*").length,
+      scriptCount: scriptTags.length,
+      schemaScriptCount: ldTexts.length,
+      imageCount: $("img").length,
+      linkCount: totalLinks,
+      internalLinkCount: internalLinks,
+      externalLinkCount: externalLinks,
+      internalLinkRatio:
+        totalLinks > 0 ? internalLinks / totalLinks : 0,
+      robots: robotsMeta,
       jsonLdCount: schemaStats.ldJsonCount,
+      jsonLdValidCount: schemaStats.ldJsonValidCount,
       jsonLdErrorCount: schemaStats.ldJsonErrorCount,
+      scriptToWordRatio,
+      textToHtmlRatio,
+      schemaDensity,
+      hasNoscript,
     },
   };
 }
