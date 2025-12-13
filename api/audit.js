@@ -166,22 +166,23 @@ const canonicalHref = crawlSurface.canonicalHref || normalized;
       .get()
       .filter(Boolean);
 
-    /* ---------- 13 Signals ---------- */
-    const results = [
-      scoreTitle($),
-      scoreMetaDescription($),
-      scoreCanonical($, normalized),
-      scoreSchemaPresence(schemaObjects),
-      scoreOrgSchema(schemaObjects),
-      scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects, $),
-      scoreSocialLinks(schemaObjects, pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($),
-      scoreInternalLinks(pageLinks, host),
-      scoreExternalLinks(pageLinks, host),
-      scoreFaviconOg($),
-    ];
+   /* ---------- 13 Signals ---------- */
+const results = [
+  scoreTitle($, crawlSurface),
+  scoreMetaDescription($, crawlSurface),
+  scoreCanonical($, normalized, crawlSurface),
+  scoreSchemaPresence(schemaObjects),
+  scoreOrgSchema(schemaObjects),
+  scoreBreadcrumbSchema(schemaObjects),
+  scoreAuthorPerson(schemaObjects, $),
+  scoreSocialLinks(schemaObjects, pageLinks),
+  scoreAICrawlSignals($),
+  scoreContentDepth($, crawlSurface),
+  scoreInternalLinks(pageLinks, host),
+  scoreExternalLinks(pageLinks, host),
+  scoreFaviconOg($),
+];
+
 
     /* ---------- Aggregate Score ---------- */
     let totalRaw = 0;
