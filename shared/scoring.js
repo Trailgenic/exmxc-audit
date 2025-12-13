@@ -1,5 +1,5 @@
-// /shared/scoring.js — EEI v5.1 (TrailGenic × exmxc.ai)
-// Works with 100-point WEIGHTS (Option A)
+// /shared/scoring.js — EEI v5.2
+// SOURCE-AWARE: prefers extracted crawl fields, falls back to DOM ($)
 
 import { WEIGHTS } from "./weights.js";
 
@@ -10,16 +10,22 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+function pick(val, fallback) {
+  return val !== undefined && val !== null && val !== ""
+    ? val
+    : fallback;
+}
+
 /* ================================
-   CORE SCORING FUNCTIONS
+   Tier 3 — Page Hygiene
    ================================ */
 
-/* --------------------------------
-   Tier 3 — Page Hygiene (10 pts)
-   -------------------------------- */
+export function scoreTitle($, fields = {}) {
+  const title = pick(
+    fields.title,
+    ($("title").first().text() || "").trim()
+  );
 
-export function scoreTitle($) {
-  const title = ($("title").first().text() || "").trim();
   let points = 0, notes = "Missing";
 
   if (title) {
@@ -41,11 +47,13 @@ export function scoreTitle($) {
   return { key: "Title Precision", points, max: WEIGHTS.title, notes, raw: { title } };
 }
 
-export function scoreMetaDescription($) {
-  const md =
+export function scoreMetaDescription($, fields = {}) {
+  const md = pick(
+    fields.description,
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
-    "";
+    ""
+  );
 
   let points = 0, notes = "Missing";
 
@@ -73,8 +81,12 @@ export function scoreMetaDescription($) {
   };
 }
 
-export function scoreCanonical($, normalizedUrl) {
-  const href = ($('link[rel="canonical"]').attr("href") || "").trim();
+export function scoreCanonical($, normalizedUrl, fields = {}) {
+  const href = pick(
+    fields.canonicalHref,
+    ($('link[rel="canonical"]').attr("href") || "").trim()
+  );
+
   let points = 0, notes = "Missing";
 
   if (href) {
@@ -119,9 +131,9 @@ export function scoreFaviconOg($) {
   };
 }
 
-/* --------------------------------
-   Tier 2 — Structural Data (25 pts)
-   -------------------------------- */
+/* ================================
+   Tier 2 — Structured Data
+   ================================ */
 
 export function scoreSchemaPresence(schemaObjects) {
   const count = schemaObjects.length;
@@ -178,14 +190,11 @@ export function scoreBreadcrumbSchema(schemaObjects) {
     (Array.isArray(o["@type"]) && o["@type"].includes("BreadcrumbList"))
   );
 
-  const points = crumb ? WEIGHTS.breadcrumbSchema : 0;
-  const notes = crumb ? "Breadcrumb schema present" : "Missing";
-
   return {
     key: "Breadcrumb Schema",
-    points,
+    points: crumb ? WEIGHTS.breadcrumbSchema : 0,
     max: WEIGHTS.breadcrumbSchema,
-    notes,
+    notes: crumb ? "Breadcrumb schema present" : "Missing",
     raw: crumb || null
   };
 }
@@ -220,22 +229,15 @@ export function scoreAuthorPerson(schemaObjects, $) {
   };
 }
 
-/* --------------------------------
-   Social Graph Signal (8 pts)
-   -------------------------------- */
+/* ================================
+   Social Graph
+   ================================ */
 
 export function scoreSocialLinks(schemaObjects, pageLinks) {
   const SOCIAL_HOSTS = [
-    "linkedin.com",
-    "instagram.com",
-    "youtube.com",
-    "x.com",
-    "twitter.com",
-    "facebook.com",
-    "threads.net",
-    "tiktok.com",
-    "wikipedia.org",
-    "github.com"
+    "linkedin.com", "instagram.com", "youtube.com", "x.com",
+    "twitter.com", "facebook.com", "threads.net",
+    "tiktok.com", "wikipedia.org", "github.com"
   ];
 
   const seen = new Set();
@@ -274,9 +276,9 @@ export function scoreSocialLinks(schemaObjects, pageLinks) {
   };
 }
 
-/* --------------------------------
-   Tier 1 — AI Comprehension / Graph (45 pts)
-   -------------------------------- */
+/* ================================
+   Tier 1 — Graph / AI Comprehension
+   ================================ */
 
 export function scoreInternalLinks(pageLinks, originHost) {
   let total = 0, internal = 0;
@@ -324,14 +326,11 @@ export function scoreExternalLinks(pageLinks, originHost) {
 
   const count = external.size;
 
-  const points = count >= 1 ? WEIGHTS.externalLinks : 0;
-  const notes = count >= 1 ? "Outbound credibility present" : "No outbound links";
-
   return {
     key: "External Authority Signal",
-    points,
+    points: count >= 1 ? WEIGHTS.externalLinks : 0,
     max: WEIGHTS.externalLinks,
-    notes,
+    notes: count >= 1 ? "Outbound credibility present" : "No outbound links",
     raw: { count, distinctOutboundHosts: Array.from(external) }
   };
 }
@@ -365,13 +364,15 @@ export function scoreAICrawlSignals($) {
   };
 }
 
-/* --------------------------------
-   Content Layer (12 pts)
-   -------------------------------- */
+/* ================================
+   Content Depth
+   ================================ */
 
-export function scoreContentDepth($) {
-  const text = $("body").text().replace(/\s+/g, " ").trim();
-  const words = text.split(" ").length;
+export function scoreContentDepth($, fields = {}) {
+  const words = pick(
+    fields.wordCount,
+    $("body").text().replace(/\s+/g, " ").trim().split(" ").length
+  );
 
   let points = 0, notes = "Shallow (<300 words)";
 
@@ -392,9 +393,9 @@ export function scoreContentDepth($) {
   };
 }
 
-/* =========================================
-   EEI STAGE MAPPING (same thresholds)
-   ========================================= */
+/* ================================
+   EEI STAGE MAPPING
+   ================================ */
 
 export function tierFromScore(score) {
   if (score >= 80) {
@@ -402,33 +403,28 @@ export function tierFromScore(score) {
       stage: "☀️ Sovereign Entity",
       verb: "Maintain",
       description: "Self-propagating identity. Schema-dense and trusted across crawlers.",
-      coreFocus: "Maintain parity, monitor crawl fidelity, and evolve schema depth.",
-      truth: "AI trusts you and elevates you."
+      coreFocus: "Maintain parity, monitor crawl fidelity, and evolve schema depth."
     };
   } else if (score >= 60) {
     return {
       stage: "🌕 Structured Entity",
       verb: "Expand",
       description: "AI reconstructs identity reliably. Schema diversity and internal lattice aligned.",
-      coreFocus: "Build graph authority, deepen relationships, expand structured coverage.",
-      truth: "AI understands you but won’t rely on you."
+      coreFocus: "Build graph authority, deepen relationships, expand structured coverage."
     };
   } else if (score >= 40) {
     return {
       stage: "🌗 Visible Entity",
       verb: "Clarify",
       description: "Recognized but inconsistent. Schema present but incomplete.",
-      coreFocus: "Standardize structure, fix canonicals, and strengthen schema links.",
-      truth: "AI sees you but doesn’t believe you."
+      coreFocus: "Standardize structure, fix canonicals, and strengthen schema links."
     };
   } else {
     return {
       stage: "🌑 Emergent Entity",
       verb: "Define",
       description: "Early-stage identity forming. Schema sparse; AI relies on guesses.",
-      coreFocus: "Clarify your signal. Add foundational meta + first JSON-LD.",
-      truth: "AI can’t see you."
+      coreFocus: "Clarify your signal. Add foundational meta + first JSON-LD."
     };
   }
 }
-
