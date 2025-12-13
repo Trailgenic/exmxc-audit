@@ -1,5 +1,5 @@
-// /api/audit.js — EEI v5.2 (Railway-Orchestrated Crawl)
-// Orchestrator only — delegates crawling to exmxc-crawl-worker
+// /api/audit.js — EEI v5.2 FIXED
+// Orchestrator only — trusts exmxc-crawl-worker as source of truth
 
 import * as cheerio from "cheerio";
 import axios from "axios";
@@ -110,13 +110,10 @@ export default async function handler(req, res) {
 
     const host = hostnameOf(normalized);
 
-    /* ---------- Call Railway Crawl Worker ---------- */
+    /* ---------- Call Crawl Worker ---------- */
     const crawlResp = await axios.post(
       `${CRAWL_WORKER_BASE}/crawl`,
-      {
-        url: normalized,
-        surfaces: ["/"],
-      },
+      { url: normalized, surfaces: ["/"] },
       { timeout: 30000 }
     );
 
@@ -129,27 +126,21 @@ export default async function handler(req, res) {
       });
     }
 
-    const html = crawlSurface.html || crawlSurface.content || "";
-    const crawlHealth = crawlSurface.crawlHealth || null;
+    /* ---------- Source of Truth ---------- */
+    const html = crawlSurface.html || "";
+    const title = crawlSurface.title || "";
+    const description = crawlSurface.description || "";
+    const canonicalHref = crawlSurface.canonicalHref || normalized;
+    const schemaObjects = Array.isArray(crawlSurface.schemaObjects)
+      ? crawlSurface.schemaObjects
+      : [];
+    const pageLinks = Array.isArray(crawlSurface.pageLinks)
+      ? crawlSurface.pageLinks
+      : [];
+    const crawlHealth = crawlSurface.diagnostics || null;
 
-    const $ = cheerio.load(html);
-
-   /* ---------- Extract Fields (from worker) ---------- */
-const title = crawlSurface.title || "";
-const description = crawlSurface.description || "";
-const canonicalHref = crawlSurface.canonicalHref || normalized;
-
-    /* ---------- JSON-LD ---------- */
-    const schemaObjects = $('script[type="application/ld+json"]')
-      .map((_, el) => {
-        try {
-          return JSON.parse($(el).text());
-        } catch {
-          return null;
-        }
-      })
-      .get()
-      .filter(Boolean);
+    /* ---------- Cheerio (scoring helpers only) ---------- */
+    const $ = cheerio.load(html || "<html></html>");
 
     /* ---------- Entity Name ---------- */
     const entityName =
@@ -160,29 +151,22 @@ const canonicalHref = crawlSurface.canonicalHref || normalized;
         : title.split(" - ")[0]) ||
       null;
 
-    /* ---------- Links ---------- */
-    const pageLinks = $("a[href]")
-      .map((_, el) => $(el).attr("href"))
-      .get()
-      .filter(Boolean);
-
-   /* ---------- 13 Signals ---------- */
-const results = [
-  scoreTitle($, crawlSurface),
-  scoreMetaDescription($, crawlSurface),
-  scoreCanonical($, normalized, crawlSurface),
-  scoreSchemaPresence(schemaObjects),
-  scoreOrgSchema(schemaObjects),
-  scoreBreadcrumbSchema(schemaObjects),
-  scoreAuthorPerson(schemaObjects, $),
-  scoreSocialLinks(schemaObjects, pageLinks),
-  scoreAICrawlSignals($),
-  scoreContentDepth($, crawlSurface),
-  scoreInternalLinks(pageLinks, host),
-  scoreExternalLinks(pageLinks, host),
-  scoreFaviconOg($),
-];
-
+    /* ---------- 13 Signals ---------- */
+    const results = [
+      scoreTitle($),
+      scoreMetaDescription($),
+      scoreCanonical($, normalized),
+      scoreSchemaPresence(schemaObjects),
+      scoreOrgSchema(schemaObjects),
+      scoreBreadcrumbSchema(schemaObjects),
+      scoreAuthorPerson(schemaObjects, $),
+      scoreSocialLinks(schemaObjects, pageLinks),
+      scoreAICrawlSignals($),
+      scoreContentDepth($),
+      scoreInternalLinks(pageLinks, host),
+      scoreExternalLinks(pageLinks, host),
+      scoreFaviconOg($),
+    ];
 
     /* ---------- Aggregate Score ---------- */
     let totalRaw = 0;
