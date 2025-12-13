@@ -95,56 +95,56 @@ function parseJsonLd(rawBlocks = []) {
 /* ============================================================
    STATIC CRAWL (Baseline)
    ============================================================ */
-async function staticCrawl(url) {
+async function staticCrawl(url, timeoutMs, userAgent) {
   const resp = await axios.get(url, {
-    timeout: CRAWL_CONFIG.TIMEOUT_MS,
-    maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
+    timeout: timeoutMs,
+    maxRedirects: 5,
+    responseType: "text",
     headers: {
-      "User-Agent": CRAWL_CONFIG.STATIC_UA,
-      Accept: "text/html"
+      "User-Agent": userAgent,
+      "Accept": "text/html,application/xhtml+xml"
     },
-    validateStatus: (s) => s >= 200 && s < 400
+    validateStatus: (s) => s >= 200 && s < 400,
   });
 
-  const html = resp.data || "";
+  const html = typeof resp.data === "string" ? resp.data : "";
   const $ = cheerio.load(html);
 
-  const ldBlocks = $('script[type="application/ld+json"]')
-    .map((_, el) => $(el).text())
+  const ldTexts = $('script[type="application/ld+json"]')
+    .map((_, el) => $(el).contents().text())
     .get();
 
-  const { schemaObjects, latestISO, jsonLdErrorCount } =
-    parseJsonLd(ldBlocks);
+  const { schemaObjects, latestISO, schemaStats } = parseJsonLd(ldTexts);
 
-  const links = $("a[href]")
+  const pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
-  const wordCount = bodyText.split(" ").length;
+  const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
   return {
-    mode: "static",
+    _type: "static",
     status: resp.status,
     html,
-    title: $("title").text().trim(),
+    title: $("title").first().text().trim(),
     description:
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "",
     canonicalHref:
       $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, ""),
-    pageLinks: links,
+    pageLinks,
     schemaObjects,
     latestISO,
     diagnostics: {
+      htmlBytes: html.length,
       wordCount,
-      linkCount: links.length,
-      scriptCount: $("script").length,
-      jsonLdErrorCount,
-      hasNoscript: $("noscript").length > 0
-    }
+      linkCount: pageLinks.length,
+      jsonLdCount: schemaStats.ldJsonCount,
+      jsonLdErrorCount: schemaStats.ldJsonErrorCount,
+    },
   };
 }
 
