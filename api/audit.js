@@ -134,16 +134,10 @@ export default async function handler(req, res) {
 
     const $ = cheerio.load(html);
 
-    /* ---------- Extract Fields ---------- */
-    const title = ($("title").text() || "").trim();
-    const description =
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "";
-
-    const canonicalHref =
-      $('link[rel="canonical"]').attr("href") ||
-      normalized.replace(/\/$/, "");
+   /* ---------- Extract Fields (from worker) ---------- */
+const title = crawlSurface.title || "";
+const description = crawlSurface.description || "";
+const canonicalHref = crawlSurface.canonicalHref || normalized;
 
     /* ---------- JSON-LD ---------- */
     const schemaObjects = $('script[type="application/ld+json"]')
