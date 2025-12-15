@@ -1,6 +1,6 @@
-// /api/core-scan.js — EEI Crawl v2.7
-// Single-URL | Static-first | Conditional Playwright Escalation
-// Designed for defensible EEI scoring & AI-crawl simulation
+// /api/core-scan.js — EEI Crawl v2.8
+// Static-first | Conditional Playwright | Multi-surface Entity Crawl
+// No ontology. No recursion. AI-comprehension aligned.
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -11,32 +11,20 @@ import * as cheerio from "cheerio";
 export const CRAWL_CONFIG = {
   TIMEOUT_MS: 20000,
   MAX_REDIRECTS: 5,
-  RETRIES: 1,
-  RETRY_DELAY_MS: 300,
 
   STATIC_UA:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.7 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-crawl/2.8 Safari/537.36",
 
   AI_UAS: [
     "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
     "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
-    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-    "Mozilla/5.0 (compatible; exmxc-crawl/2.7; +https://exmxc.ai/eei)"
-  ],
-
-  IS_VERCEL:
-    !!process.env.VERCEL ||
-    !!process.env.NOW_REGION ||
-    !!process.env.VERCEL_ENV
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+  ]
 };
 
 /* ============================================================
    HELPERS
    ============================================================ */
-function sleep(ms) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-
 function getRandomAiUA() {
   return CRAWL_CONFIG.AI_UAS[
     Math.floor(Math.random() * CRAWL_CONFIG.AI_UAS.length)
@@ -46,9 +34,44 @@ function getRandomAiUA() {
 function classifyError(err) {
   const msg = err?.message || "";
   if (/timeout/i.test(msg)) return "timeout";
-  if (/blocked|403|429/i.test(msg)) return "blocked";
-  if (/network|ECONNREFUSED/i.test(msg)) return "network";
+  if (/403|429|blocked/i.test(msg)) return "blocked";
   return "unknown";
+}
+
+/* ============================================================
+   SURFACE DISCOVERY (ENTITY LEVEL)
+   ============================================================ */
+
+const DEFAULT_SURFACES = [
+  "/",
+  "/about",
+  "/about-us",
+  "/method",
+  "/longevity",
+  "/science",
+  "/blog",
+  "/trail-logs",
+  "/podcast"
+];
+
+function resolveSurfaces(baseUrl, discoveredLinks = []) {
+  const origin = new URL(baseUrl).origin;
+
+  const discovered = discoveredLinks
+    .map((href) => {
+      try {
+        return new URL(href, origin).pathname;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  return Array.from(
+    new Set(["/", ...DEFAULT_SURFACES, ...discovered])
+  )
+    .filter((p) => p.startsWith("/"))
+    .slice(0, 6); // 🔒 HARD CAP
 }
 
 /* ============================================================
@@ -70,109 +93,55 @@ function parseJsonLd(rawBlocks = []) {
   }
 
   let latestISO = null;
-  const dateKeys = ["dateModified", "datePublished", "uploadDate"];
-
   for (const o of objects) {
-    for (const k of dateKeys) {
-      if (o?.[k]) {
-        const d = new Date(o[k]);
-        if (!isNaN(d)) {
-          if (!latestISO || d > new Date(latestISO)) {
-            latestISO = d.toISOString();
-          }
+    const d = o?.dateModified || o?.datePublished;
+    if (d) {
+      const parsed = new Date(d);
+      if (!isNaN(parsed)) {
+        if (!latestISO || parsed > new Date(latestISO)) {
+          latestISO = parsed.toISOString();
         }
       }
     }
   }
 
-  return {
-    schemaObjects: objects,
-    latestISO,
-    jsonLdErrorCount: errorCount
-  };
+  return { schemaObjects: objects, latestISO, errorCount };
 }
 
 /* ============================================================
-   STATIC CRAWL (Baseline — FIXED)
+   STATIC CRAWL (SINGLE SURFACE)
    ============================================================ */
-async function staticCrawl(url, timeoutMs, userAgent) {
+async function staticCrawl(url) {
   const resp = await axios.get(url, {
-    timeout: timeoutMs,
+    timeout: CRAWL_CONFIG.TIMEOUT_MS,
     maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
-      "User-Agent": userAgent,
-      Accept: "text/html,application/xhtml+xml",
-    },
-    validateStatus: (s) => s >= 200 && s < 400,
+      "User-Agent": CRAWL_CONFIG.STATIC_UA,
+      Accept: "text/html"
+    }
   });
 
-  // 🔑 CRITICAL: capture final resolved URL after redirects
   const finalUrl = resp.request?.res?.responseUrl || url;
-
-  const html = typeof resp.data === "string" ? resp.data : "";
+  const html = resp.data || "";
   const $ = cheerio.load(html);
 
-  /* ---------- JSON-LD ---------- */
   const ldTexts = $('script[type="application/ld+json"]')
-    .map((_, el) => $(el).contents().text())
+    .map((_, el) => $(el).text())
     .get();
 
-  const { schemaObjects, latestISO, schemaStats } = parseJsonLd(ldTexts);
+  const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
 
-  /* ---------- Links ---------- */
-  const rawLinks = $("a[href]")
+  const links = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
-  let internalLinks = 0;
-  let externalLinks = 0;
-  let totalLinks = rawLinks.length;
-
-  let origin = null;
-  try {
-    origin = new URL(finalUrl).origin;
-  } catch {
-    origin = null;
-  }
-
-  for (const href of rawLinks) {
-    try {
-      const absolute = new URL(href, finalUrl).href;
-      const linkOrigin = new URL(absolute).origin;
-      if (origin && linkOrigin === origin) internalLinks++;
-      else externalLinks++;
-    } catch {
-      // ignore malformed URLs
-    }
-  }
-
-  /* ---------- Content ---------- */
-  const scriptTags = $("script");
   const bodyText = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = bodyText ? bodyText.split(" ").length : 0;
 
-  const robotsMeta = $('meta[name="robots"]').attr("content") || "";
-
-  /* ---------- Diagnostics ratios ---------- */
-  const scriptToWordRatio =
-    wordCount > 0 ? scriptTags.length / wordCount : 0;
-
-  const textToHtmlRatio =
-    html.length > 0 ? bodyText.length / html.length : 0;
-
-  const schemaDensity =
-    wordCount > 0 ? schemaObjects.length / wordCount : 0;
-
-  const hasNoscript = $("noscript").length > 0;
-
-  /* ---------- Return ---------- */
   return {
-    _type: "static",
+    mode: "static",
     status: resp.status,
-    html,
-
-    // 🔑 use resolved document values
     title: $("title").first().text().trim(),
     description:
       $('meta[name="description"]').attr("content") ||
@@ -181,101 +150,53 @@ async function staticCrawl(url, timeoutMs, userAgent) {
     canonicalHref:
       $('link[rel="canonical"]').attr("href") ||
       finalUrl.replace(/\/$/, ""),
-
-    pageLinks: rawLinks,
+    pageLinks: links,
     schemaObjects,
     latestISO,
-
-    userAgentUsed: userAgent,
-
     diagnostics: {
       finalUrl,
-      htmlBytes: html.length,
-      textBytes: bodyText.length,
       wordCount,
-      domNodes: $("*").length,
-      scriptCount: scriptTags.length,
-      schemaScriptCount: ldTexts.length,
-      imageCount: $("img").length,
-      linkCount: totalLinks,
-      internalLinkCount: internalLinks,
-      externalLinkCount: externalLinks,
-      internalLinkRatio:
-        totalLinks > 0 ? internalLinks / totalLinks : 0,
-      robots: robotsMeta,
-      jsonLdCount: schemaStats.ldJsonCount,
-      jsonLdValidCount: schemaStats.ldJsonValidCount,
-      jsonLdErrorCount: schemaStats.ldJsonErrorCount,
-      scriptToWordRatio,
-      textToHtmlRatio,
-      schemaDensity,
-      hasNoscript,
-    },
+      scriptCount: $("script").length,
+      hasNoscript: $("noscript").length > 0
+    }
   };
 }
 
-
 /* ============================================================
-   CONDITIONAL PLAYWRIGHT
+   CONDITIONAL PLAYWRIGHT (ESCALATION ONLY)
    ============================================================ */
 async function renderedCrawl(url) {
-  let chromium;
-  try {
-    chromium = (await import("playwright-core")).chromium;
-  } catch {
-    throw new Error("playwright-unavailable");
-  }
-
+  const { chromium } = await import("playwright-core");
   const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage({
-      userAgent: getRandomAiUA()
-    });
 
-    await page.goto(url, {
-      timeout: CRAWL_CONFIG.TIMEOUT_MS,
-      waitUntil: "networkidle"
-    });
+  try {
+    const page = await browser.newPage({ userAgent: getRandomAiUA() });
+    await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
 
     const html = await page.content();
-
-    const ldBlocks = await page.$$eval(
-      'script[type="application/ld+json"]',
-      (nodes) => nodes.map((n) => n.textContent || "")
-    );
-
-    const { schemaObjects, latestISO, jsonLdErrorCount } =
-      parseJsonLd(ldBlocks);
-
-    const links =
-      (await page.$$eval("a[href]", (nodes) =>
-        nodes.map((n) => n.getAttribute("href"))
-      )) || [];
-
     const $ = cheerio.load(html);
+
+    const ldTexts = $('script[type="application/ld+json"]')
+      .map((_, el) => $(el).text())
+      .get();
+
+    const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
     const bodyText = $("body").text().replace(/\s+/g, " ").trim();
-    const wordCount = bodyText.split(" ").length;
 
     return {
       mode: "rendered",
-      status: page.response()?.status() || 200,
-      html,
       title: await page.title(),
       description:
         $('meta[name="description"]').attr("content") ||
         $('meta[property="og:description"]').attr("content") ||
         "",
       canonicalHref:
-        $('link[rel="canonical"]').attr("href") || url.replace(/\/$/, ""),
-      pageLinks: links,
+        $('link[rel="canonical"]').attr("href") || url,
+      pageLinks: $("a[href]").map((_, el) => $(el).attr("href")).get(),
       schemaObjects,
       latestISO,
       diagnostics: {
-        wordCount,
-        linkCount: links.length,
-        scriptCount: $("script").length,
-        jsonLdErrorCount,
-        hasNoscript: $("noscript").length > 0
+        wordCount: bodyText.split(" ").length
       }
     };
   } finally {
@@ -284,58 +205,69 @@ async function renderedCrawl(url) {
 }
 
 /* ============================================================
-   ESCALATION DECISION
+   SINGLE SURFACE API (UNCHANGED CONTRACT)
    ============================================================ */
-function shouldEscalate(staticResult, requestedMode) {
-  if (requestedMode === "rendered") return true;
+export async function crawlPage({ url, mode = "static" }) {
+  try {
+    const result = await staticCrawl(url);
 
-  const d = staticResult.diagnostics || {};
+    if (
+      mode === "rendered" ||
+      result.diagnostics.wordCount < 200 ||
+      result.schemaObjects.length === 0
+    ) {
+      return await renderedCrawl(url);
+    }
 
-  if (d.wordCount < 200) return true;
-  if (d.scriptCount > 60) return true;
-  if (staticResult.schemaObjects.length === 0) return true;
-  if (d.hasNoscript) return true;
-
-  return false;
+    return result;
+  } catch (err) {
+    return {
+      error: err.message,
+      diagnostics: { errorType: classifyError(err) }
+    };
+  }
 }
 
 /* ============================================================
-   PUBLIC API
+   MULTI-SURFACE ENTITY CRAWL (NEW)
    ============================================================ */
-export async function crawlPage({
-  url,
-  mode = "static"
-}) {
-  let attempts = 0;
+export async function crawlEntity({ url, mode = "static" }) {
+  const base = await crawlPage({ url, mode });
+  const surfaces = resolveSurfaces(
+    base.diagnostics?.finalUrl || url,
+    base.pageLinks || []
+  );
 
-  try {
-    const staticResult = await staticCrawl(url);
-
-    if (shouldEscalate(staticResult, mode)) {
-      try {
-        return await renderedCrawl(url);
-      } catch (err) {
-        return staticResult;
-      }
-    }
-
-    return staticResult;
-  } catch (err) {
-    return {
-      mode,
-      status: null,
-      html: "",
-      title: "",
-      description: "",
-      canonicalHref: url,
-      pageLinks: [],
-      schemaObjects: [],
-      latestISO: null,
-      error: err.message,
-      diagnostics: {
-        errorType: classifyError(err),
-        retryAttempts: attempts
-      }
-    };
+  const results = [];
+  for (const path of surfaces) {
+    const surfaceUrl = new URL(path, url).href;
+    try {
+      results.push(await crawlPage({ url: surfaceUrl, mode }));
+    } catch {}
   }
+
+  // 🔑 ENTITY MERGE (AI-style)
+  const schemaMap = new Map();
+  let latestISO = base.latestISO || null;
+  let maxWordCount = 0;
+
+  for (const r of results) {
+    for (const s of r.schemaObjects || []) {
+      schemaMap.set(s["@id"] || JSON.stringify(s), s);
+    }
+    if (r.latestISO && (!latestISO || r.latestISO > latestISO)) {
+      latestISO = r.latestISO;
+    }
+    maxWordCount = Math.max(maxWordCount, r.diagnostics?.wordCount || 0);
+  }
+
+  return {
+    mode: "multi-surface",
+    surfaces,
+    schemaObjects: Array.from(schemaMap.values()),
+    latestISO,
+    diagnostics: {
+      wordCount: maxWordCount
+    }
+  };
 }
