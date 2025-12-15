@@ -1,8 +1,10 @@
-// /api/audit.js — EEI v5.2 FIXED
-// Orchestrator only — trusts exmxc-crawl-worker as source of truth
+// /api/audit.js — EEI v5.3
+// Entity-level orchestrator — multi-surface, AI-comprehension aligned
+// Source of truth: exmxc-crawl-worker
+// No crawling logic here. No Playwright. No guessing.
 
-import * as cheerio from "cheerio";
 import axios from "axios";
+import * as cheerio from "cheerio";
 
 import {
   scoreTitle,
@@ -23,16 +25,19 @@ import {
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 
-/* ================================
+import discoverSurfaces from "../lib/surface-discovery.js";
+import aggregateSurfaces from "../lib/surface-aggregator.js";
+
+/* ============================================================
    CONFIG
-   ================================ */
+   ============================================================ */
 
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
 
-/* ================================
+/* ============================================================
    HELPERS
-   ================================ */
+   ============================================================ */
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -56,9 +61,9 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-/* ================================
+/* ============================================================
    TIER MAPPING
-   ================================ */
+   ============================================================ */
 
 const SIGNAL_TIER = {
   "Title Precision": "tier3",
@@ -84,9 +89,9 @@ const TIER_LABELS = {
   tier3: "Page-level hygiene",
 };
 
-/* ================================
+/* ============================================================
    MAIN HANDLER
-   ================================ */
+   ============================================================ */
 
 export default async function handler(req, res) {
   /* ---------- CORS ---------- */
@@ -110,48 +115,85 @@ export default async function handler(req, res) {
 
     const host = hostnameOf(normalized);
 
-    /* ---------- Call Crawl Worker ---------- */
+    /* ========================================================
+       1) SURFACE DISCOVERY (ENTITY-FIRST)
+       ======================================================== */
+
+    const surfaces = discoverSurfaces(normalized);
+    // example output: ["/", "/about", "/science", "/blog", "/podcast"]
+
+    /* ========================================================
+       2) CALL CRAWL WORKER (MULTI-SURFACE)
+       ======================================================== */
+
     const crawlResp = await axios.post(
       `${CRAWL_WORKER_BASE}/crawl`,
-      { url: normalized, surfaces: ["/"] },
-      { timeout: 30000 }
+      { url: normalized, surfaces },
+      { timeout: 45000 }
     );
 
-    const crawlSurface = crawlResp.data?.surfaces?.[0];
-    if (!crawlSurface || crawlSurface.status >= 400) {
+    const crawlData = crawlResp.data;
+
+    if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
       return res.status(502).json({
         success: false,
         error: "Crawl worker failed",
-        details: crawlResp.data || null,
+        details: crawlData || null,
       });
     }
 
-    /* ---------- Source of Truth ---------- */
-    const html = crawlSurface.html || "";
-    const title = crawlSurface.title || "";
-    const description = crawlSurface.description || "";
-    const canonicalHref = crawlSurface.canonicalHref || normalized;
-    const schemaObjects = Array.isArray(crawlSurface.schemaObjects)
-      ? crawlSurface.schemaObjects
-      : [];
-    const pageLinks = Array.isArray(crawlSurface.pageLinks)
-      ? crawlSurface.pageLinks
-      : [];
-    const crawlHealth = crawlSurface.diagnostics || null;
+    /* ========================================================
+       3) AGGREGATE SURFACES → ENTITY SNAPSHOT
+       ======================================================== */
 
-    /* ---------- Cheerio (scoring helpers only) ---------- */
+    const entitySnapshot = aggregateSurfaces({
+      baseUrl: normalized,
+      hostname: host,
+      surfaces: crawlData.surfaces,
+    });
+
+    /*
+      entitySnapshot = {
+        html,
+        title,
+        description,
+        canonical,
+        schemaObjects,
+        pageLinks,
+        crawlHealth,
+        surfaceCoverage
+      }
+    */
+
+    const {
+      html,
+      title,
+      description,
+      canonical,
+      schemaObjects,
+      pageLinks,
+      crawlHealth,
+      surfaceCoverage,
+    } = entitySnapshot;
+
     const $ = cheerio.load(html || "<html></html>");
 
-    /* ---------- Entity Name ---------- */
+    /* ========================================================
+       4) ENTITY NAME RESOLUTION
+       ======================================================== */
+
     const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      (title.includes(" | ")
+      (title?.includes(" | ")
         ? title.split(" | ")[0]
-        : title.split(" - ")[0]) ||
+        : title?.split(" - ")[0]) ||
       null;
 
-    /* ---------- 13 Signals ---------- */
+    /* ========================================================
+       5) RUN 13 EEI SIGNALS (ENTITY-WIDE)
+       ======================================================== */
+
     const results = [
       scoreTitle($),
       scoreMetaDescription($),
@@ -168,7 +210,10 @@ export default async function handler(req, res) {
       scoreFaviconOg($),
     ];
 
-    /* ---------- Aggregate Score ---------- */
+    /* ========================================================
+       6) SCORE AGGREGATION
+       ======================================================== */
+
     let totalRaw = 0;
     const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
     const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
@@ -189,7 +234,10 @@ export default async function handler(req, res) {
 
     const entityTier = tierFromScore(entityScore);
 
-    /* ---------- Scoring Bars ---------- */
+    /* ========================================================
+       7) RESPONSE
+       ======================================================== */
+
     const scoringBars = results.map((r) => ({
       key: r.key,
       points: r.points,
@@ -198,7 +246,6 @@ export default async function handler(req, res) {
       notes: r.notes,
     }));
 
-    /* ---------- Tier Scores ---------- */
     const tierScores = {
       tier1: {
         label: TIER_LABELS.tier1,
@@ -223,17 +270,16 @@ export default async function handler(req, res) {
       },
     };
 
-    /* ---------- Response ---------- */
     return res.status(200).json({
       success: true,
       url: normalized,
       hostname: host,
       entityName,
       title,
-      canonical: canonicalHref,
+      canonical,
       description,
-      entityScore,
 
+      entityScore,
       entityStage: entityTier.stage,
       entityVerb: entityTier.verb,
       entityDescription: entityTier.description,
@@ -243,7 +289,9 @@ export default async function handler(req, res) {
       scoringBars,
       tierScores,
 
+      surfacesAnalyzed: surfaceCoverage,
       crawlHealth,
+
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
