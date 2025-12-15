@@ -1,6 +1,5 @@
 // /api/core-scan.js — EEI Crawl v2.8
-// Static-first | Conditional Playwright | Multi-surface Entity Crawl
-// No ontology. No recursion. AI-comprehension aligned.
+// Entity-first | Multi-surface | Static-first | AI crawl simulation
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -18,7 +17,8 @@ export const CRAWL_CONFIG = {
   AI_UAS: [
     "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
     "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
-    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; exmxc-crawl/2.8; +https://exmxc.ai/eei)"
   ]
 };
 
@@ -35,13 +35,13 @@ function classifyError(err) {
   const msg = err?.message || "";
   if (/timeout/i.test(msg)) return "timeout";
   if (/403|429|blocked/i.test(msg)) return "blocked";
+  if (/network|ECONNREFUSED/i.test(msg)) return "network";
   return "unknown";
 }
 
 /* ============================================================
-   SURFACE DISCOVERY (ENTITY LEVEL)
+   SURFACE DISCOVERY (ENTITY-LEVEL)
    ============================================================ */
-
 const DEFAULT_SURFACES = [
   "/",
   "/about",
@@ -67,11 +67,16 @@ function resolveSurfaces(baseUrl, discoveredLinks = []) {
     })
     .filter(Boolean);
 
-  return Array.from(
-    new Set(["/", ...DEFAULT_SURFACES, ...discovered])
-  )
+  const merged = new Set([
+    "/",
+    ...DEFAULT_SURFACES,
+    ...discovered
+  ]);
+
+  // Hard cap: AI samples surfaces, it doesn’t index the site
+  return Array.from(merged)
     .filter((p) => p.startsWith("/"))
-    .slice(0, 6); // 🔒 HARD CAP
+    .slice(0, 6);
 }
 
 /* ============================================================
@@ -80,6 +85,7 @@ function resolveSurfaces(baseUrl, discoveredLinks = []) {
 function parseJsonLd(rawBlocks = []) {
   const objects = [];
   let errorCount = 0;
+  let latestISO = null;
 
   for (const raw of rawBlocks) {
     try {
@@ -92,24 +98,22 @@ function parseJsonLd(rawBlocks = []) {
     }
   }
 
-  let latestISO = null;
   for (const o of objects) {
-    const d = o?.dateModified || o?.datePublished;
-    if (d) {
-      const parsed = new Date(d);
-      if (!isNaN(parsed)) {
-        if (!latestISO || parsed > new Date(latestISO)) {
-          latestISO = parsed.toISOString();
+    for (const k of ["dateModified", "datePublished", "uploadDate"]) {
+      if (o?.[k]) {
+        const d = new Date(o[k]);
+        if (!isNaN(d) && (!latestISO || d > new Date(latestISO))) {
+          latestISO = d.toISOString();
         }
       }
     }
   }
 
-  return { schemaObjects: objects, latestISO, errorCount };
+  return { schemaObjects: objects, latestISO, jsonLdErrorCount: errorCount };
 }
 
 /* ============================================================
-   STATIC CRAWL (SINGLE SURFACE)
+   STATIC CRAWL (BASELINE)
    ============================================================ */
 async function staticCrawl(url) {
   const resp = await axios.get(url, {
@@ -117,21 +121,23 @@ async function staticCrawl(url) {
     maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
     headers: {
       "User-Agent": CRAWL_CONFIG.STATIC_UA,
-      Accept: "text/html"
-    }
+      Accept: "text/html,application/xhtml+xml"
+    },
+    validateStatus: (s) => s >= 200 && s < 400
   });
 
   const finalUrl = resp.request?.res?.responseUrl || url;
-  const html = resp.data || "";
+  const html = typeof resp.data === "string" ? resp.data : "";
   const $ = cheerio.load(html);
 
   const ldTexts = $('script[type="application/ld+json"]')
     .map((_, el) => $(el).text())
     .get();
 
-  const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
+  const { schemaObjects, latestISO, jsonLdErrorCount } =
+    parseJsonLd(ldTexts);
 
-  const links = $("a[href]")
+  const rawLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
@@ -142,6 +148,7 @@ async function staticCrawl(url) {
   return {
     mode: "static",
     status: resp.status,
+    url: finalUrl,
     title: $("title").first().text().trim(),
     description:
       $('meta[name="description"]').attr("content") ||
@@ -150,41 +157,52 @@ async function staticCrawl(url) {
     canonicalHref:
       $('link[rel="canonical"]').attr("href") ||
       finalUrl.replace(/\/$/, ""),
-    pageLinks: links,
+    pageLinks: rawLinks,
     schemaObjects,
     latestISO,
     diagnostics: {
-      finalUrl,
       wordCount,
-      scriptCount: $("script").length,
-      hasNoscript: $("noscript").length > 0
+      linkCount: rawLinks.length,
+      schemaCount: schemaObjects.length,
+      jsonLdErrorCount
     }
   };
 }
 
 /* ============================================================
-   CONDITIONAL PLAYWRIGHT (ESCALATION ONLY)
+   CONDITIONAL RENDERED CRAWL
    ============================================================ */
 async function renderedCrawl(url) {
   const { chromium } = await import("playwright-core");
   const browser = await chromium.launch({ headless: true });
 
   try {
-    const page = await browser.newPage({ userAgent: getRandomAiUA() });
-    await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
+    const page = await browser.newPage({
+      userAgent: getRandomAiUA()
+    });
+
+    await page.goto(url, {
+      timeout: CRAWL_CONFIG.TIMEOUT_MS,
+      waitUntil: "networkidle"
+    });
 
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    const ldTexts = $('script[type="application/ld+json"]')
-      .map((_, el) => $(el).text())
-      .get();
+    const ldBlocks = await page.$$eval(
+      'script[type="application/ld+json"]',
+      (nodes) => nodes.map((n) => n.textContent || "")
+    );
 
-    const { schemaObjects, latestISO } = parseJsonLd(ldTexts);
+    const { schemaObjects, latestISO, jsonLdErrorCount } =
+      parseJsonLd(ldBlocks);
+
     const bodyText = $("body").text().replace(/\s+/g, " ").trim();
 
     return {
       mode: "rendered",
+      status: page.response()?.status() || 200,
+      url,
       title: await page.title(),
       description:
         $('meta[name="description"]').attr("content") ||
@@ -192,11 +210,12 @@ async function renderedCrawl(url) {
         "",
       canonicalHref:
         $('link[rel="canonical"]').attr("href") || url,
-      pageLinks: $("a[href]").map((_, el) => $(el).attr("href")).get(),
+      pageLinks: [],
       schemaObjects,
       latestISO,
       diagnostics: {
-        wordCount: bodyText.split(" ").length
+        wordCount: bodyText.split(" ").length,
+        jsonLdErrorCount
       }
     };
   } finally {
@@ -205,69 +224,76 @@ async function renderedCrawl(url) {
 }
 
 /* ============================================================
-   SINGLE SURFACE API (UNCHANGED CONTRACT)
+   ESCALATION DECISION
    ============================================================ */
-export async function crawlPage({ url, mode = "static" }) {
-  try {
-    const result = await staticCrawl(url);
-
-    if (
-      mode === "rendered" ||
-      result.diagnostics.wordCount < 200 ||
-      result.schemaObjects.length === 0
-    ) {
-      return await renderedCrawl(url);
-    }
-
-    return result;
-  } catch (err) {
-    return {
-      error: err.message,
-      diagnostics: { errorType: classifyError(err) }
-    };
-  }
+function shouldEscalate(result) {
+  const d = result.diagnostics || {};
+  if (d.wordCount < 200) return true;
+  if (d.schemaCount === 0) return true;
+  return false;
 }
 
 /* ============================================================
-   MULTI-SURFACE ENTITY CRAWL (NEW)
+   MULTI-SURFACE ENTITY CRAWL
    ============================================================ */
-export async function crawlEntity({ url, mode = "static" }) {
-  const base = await crawlPage({ url, mode });
+async function crawlSurfaces({ url, mode }) {
+  const root = await staticCrawl(url);
+
   const surfaces = resolveSurfaces(
-    base.diagnostics?.finalUrl || url,
-    base.pageLinks || []
+    root.url,
+    root.pageLinks || []
   );
 
-  const results = [];
+  const surfaceResults = [];
+
   for (const path of surfaces) {
-    const surfaceUrl = new URL(path, url).href;
+    const surfaceUrl = new URL(path, root.url).href;
     try {
-      results.push(await crawlPage({ url: surfaceUrl, mode }));
+      let r = await staticCrawl(surfaceUrl);
+      if (shouldEscalate(r) || mode === "rendered") {
+        try {
+          r = await renderedCrawl(surfaceUrl);
+        } catch {}
+      }
+      surfaceResults.push({ surface: path, ...r });
     } catch {}
   }
 
-  // 🔑 ENTITY MERGE (AI-style)
-  const schemaMap = new Map();
-  let latestISO = base.latestISO || null;
-  let maxWordCount = 0;
-
-  for (const r of results) {
-    for (const s of r.schemaObjects || []) {
-      schemaMap.set(s["@id"] || JSON.stringify(s), s);
-    }
-    if (r.latestISO && (!latestISO || r.latestISO > latestISO)) {
-      latestISO = r.latestISO;
-    }
-    maxWordCount = Math.max(maxWordCount, r.diagnostics?.wordCount || 0);
-  }
-
   return {
-    mode: "multi-surface",
-    surfaces,
-    schemaObjects: Array.from(schemaMap.values()),
-    latestISO,
-    diagnostics: {
-      wordCount: maxWordCount
-    }
+    entity: root,
+    surfaces: surfaceResults
   };
+}
+
+/* ============================================================
+   PUBLIC API
+   ============================================================ */
+export async function crawlPage({
+  url,
+  mode = "static",
+  multiSurface = true
+}) {
+  try {
+    if (multiSurface) {
+      return await crawlSurfaces({ url, mode });
+    }
+
+    const single = await staticCrawl(url);
+    if (shouldEscalate(single) || mode === "rendered") {
+      try {
+        return await renderedCrawl(url);
+      } catch {
+        return single;
+      }
+    }
+
+    return single;
+  } catch (err) {
+    return {
+      error: err.message,
+      diagnostics: {
+        errorType: classifyError(err)
+      }
+    };
+  }
 }
