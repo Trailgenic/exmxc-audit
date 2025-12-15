@@ -25,7 +25,7 @@ import {
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 
-import discoverSurfaces from "../lib/surface-discovery.js";
+import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 /* ============================================================
@@ -119,7 +119,7 @@ export default async function handler(req, res) {
        1) SURFACE DISCOVERY (ENTITY-FIRST)
        ======================================================== */
 
-    const surfaces = discoverSurfaces(normalized);
+    const surfaces = await discoverSurfaces(normalized);
     // example output: ["/", "/about", "/science", "/blog", "/podcast"]
 
     /* ========================================================
