@@ -26,7 +26,7 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 
 import discoverSurfaces from "../lib/surface-discovery.js";
-import aggregateSurfaces from "../lib/surface-aggregator.js";
+import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 /* ============================================================
    CONFIG
