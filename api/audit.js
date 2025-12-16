@@ -119,11 +119,8 @@ export default async function handler(req, res) {
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
-      surfaces: crawlData.surfaces.reduce((acc, s) => {
-        acc[s.surface || s.url] = { result: s };
-        return acc;
-      }, {}),
-    });
+  surfaces: crawlData.surfaces
+});
 
     /* ========================================================
        4) USE HOMEPAGE AS CONTENT ANCHOR
