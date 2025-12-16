@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v5.3 (FIXED, HOLISTIC)
+// /api/audit.js — EEI v5.4 (POLICY-ALIGNED, SCALE-SAFE)
 // Entity-level orchestrator — multi-surface, AI-comprehension aligned
 // Source of truth: exmxc-crawl-worker
+// Policy: downgrade on scale constraint, never hard-fail
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -89,45 +90,71 @@ export default async function handler(req, res) {
        ======================================================== */
 
     const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces; // ✅ ARRAY ONLY
+    const surfaceUrls = discovery.surfaces; // array only
 
     /* ========================================================
-       2) CRAWL WORKER (MULTI-SURFACE)
+       2) CRAWL WORKER (POLICY-AWARE)
        ======================================================== */
 
-    const crawlResp = await axios.post(
-      `${CRAWL_WORKER_BASE}/crawl`,
-      {
-        url: normalized,
-        surfaces: surfaceUrls,
-      },
-      { timeout: 45000 }
-    );
+    let crawlData;
+    let entityComprehensionMode = "bounded-multi-surface";
 
-    const crawlData = crawlResp.data;
+    try {
+      const crawlResp = await axios.post(
+        `${CRAWL_WORKER_BASE}/crawl`,
+        {
+          url: normalized,
+          surfaces: surfaceUrls,
+        },
+        { timeout: 45000 }
+      );
 
-    if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-      return res.status(502).json({
-        success: false,
-        error: "Crawl worker failed",
-        details: crawlData || null,
-      });
+      crawlData = crawlResp.data;
+
+      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+        throw new Error("multi-surface-crawl-failed");
+      }
+    } catch {
+      /* ======================================================
+         SCALE-CONSTRAINED DOWNGRADE (EXPECTED FOR APPLE-CLASS)
+         ====================================================== */
+
+      entityComprehensionMode = "scale-constrained";
+
+      const fallbackResp = await axios.post(
+        `${CRAWL_WORKER_BASE}/crawl`,
+        {
+          url: normalized,
+          surfaces: [normalized], // homepage only
+        },
+        { timeout: 25000 }
+      );
+
+      crawlData = fallbackResp.data;
+
+      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+        return res.status(502).json({
+          success: false,
+          error: "Crawl worker failed (fallback)",
+          details: crawlData || null,
+        });
+      }
     }
 
     /* ========================================================
-       3) ENTITY AGGREGATION (MULTI-SURFACE)
+       3) ENTITY AGGREGATION (ARRAY-NATIVE)
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
-  surfaces: crawlData.surfaces
-});
-
+      surfaces: crawlData.surfaces,
+    });
 
     /* ========================================================
-       4) USE HOMEPAGE AS CONTENT ANCHOR
+       4) CONTENT ANCHOR (HOMEPAGE)
        ======================================================== */
 
     const homepage = crawlData.surfaces[0];
+
     const {
       html = "",
       title = "",
@@ -175,12 +202,9 @@ export default async function handler(req, res) {
        ======================================================== */
 
     let totalRaw = 0;
-    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
-    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const sig of results) {
-      const safe = clamp(sig.points || 0, 0, sig.max);
-      totalRaw += safe;
+      totalRaw += clamp(sig.points || 0, 0, sig.max);
     }
 
     const entityScore = clamp(
@@ -214,6 +238,7 @@ export default async function handler(req, res) {
       entitySignals: entityAggregate.entitySignals,
       entitySummary: entityAggregate.entitySummary,
 
+      entityComprehensionMode,
       crawlHealth,
       degradedDiscovery: discovery.degraded,
 
