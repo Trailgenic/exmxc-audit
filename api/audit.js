@@ -1,5 +1,5 @@
-// /api/audit.js — EEI v5.4
-// Entity-level orchestrator — time-budgeted multi-surface, AI-aligned
+// /api/audit.js — EEI v5.3 (FIXED, HOLISTIC)
+// Entity-level orchestrator — multi-surface, AI-comprehension aligned
 // Source of truth: exmxc-crawl-worker
 
 import axios from "axios";
@@ -32,9 +32,6 @@ import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
-
-const WORKER_TIMEOUT_MS = 40000;
-const SURFACE_TIME_BUDGET_MS = 35000;
 
 /* ============================================================
    HELPERS
@@ -77,19 +74,13 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    /* ========================================================
-       0) INPUT
-       ======================================================== */
-
+    /* ---------- INPUT ---------- */
     const input = req.query?.url;
-    if (!input) {
-      return res.status(400).json({ success: false, error: "Missing URL" });
-    }
+    if (!input) return res.status(400).json({ error: "Missing URL" });
 
     const normalized = normalizeUrl(input);
-    if (!normalized) {
-      return res.status(400).json({ success: false, error: "Invalid URL" });
-    }
+    if (!normalized)
+      return res.status(400).json({ error: "Invalid URL format" });
 
     const host = hostnameOf(normalized);
 
@@ -98,10 +89,10 @@ export default async function handler(req, res) {
        ======================================================== */
 
     const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces || [];
+    const surfaceUrls = discovery.surfaces; // ✅ ARRAY ONLY
 
     /* ========================================================
-       2) CRAWL WORKER (TIME-BUDGETED)
+       2) CRAWL WORKER (MULTI-SURFACE)
        ======================================================== */
 
     const crawlResp = await axios.post(
@@ -109,42 +100,36 @@ export default async function handler(req, res) {
       {
         url: normalized,
         surfaces: surfaceUrls,
-        timeBudgetMs: SURFACE_TIME_BUDGET_MS,
       },
-      { timeout: WORKER_TIMEOUT_MS }
+      { timeout: 45000 }
     );
 
     const crawlData = crawlResp.data;
 
-    if (
-      !crawlData?.success ||
-      !Array.isArray(crawlData.surfaces) ||
-      crawlData.surfaces.length === 0
-    ) {
+    if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
       return res.status(502).json({
         success: false,
-        error: "Crawl worker returned no usable surfaces",
+        error: "Crawl worker failed",
         details: crawlData || null,
       });
     }
 
     /* ========================================================
-       3) ENTITY AGGREGATION (PARTIAL OK)
+       3) ENTITY AGGREGATION (MULTI-SURFACE)
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
       surfaces: crawlData.surfaces.reduce((acc, s) => {
-        acc[s.url] = { result: s };
+        acc[s.surface || s.url] = { result: s };
         return acc;
       }, {}),
     });
 
     /* ========================================================
-       4) HOMEPAGE ANCHOR (FIRST RETURNED SURFACE)
+       4) USE HOMEPAGE AS CONTENT ANCHOR
        ======================================================== */
 
     const homepage = crawlData.surfaces[0];
-
     const {
       html = "",
       title = "",
@@ -158,7 +143,7 @@ export default async function handler(req, res) {
     const $ = cheerio.load(html || "<html></html>");
 
     /* ========================================================
-       5) ENTITY NAME RESOLUTION
+       5) ENTITY NAME
        ======================================================== */
 
     const entityName =
@@ -168,7 +153,7 @@ export default async function handler(req, res) {
       null;
 
     /* ========================================================
-       6) EEI SIGNAL SCORING (HOMEPAGE-BASED)
+       6) EEI SIGNALS
        ======================================================== */
 
     const results = [
@@ -192,9 +177,12 @@ export default async function handler(req, res) {
        ======================================================== */
 
     let totalRaw = 0;
+    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
     for (const sig of results) {
-      totalRaw += clamp(sig.points || 0, 0, sig.max);
+      const safe = clamp(sig.points || 0, 0, sig.max);
+      totalRaw += safe;
     }
 
     const entityScore = clamp(
@@ -225,21 +213,11 @@ export default async function handler(req, res) {
       entityFocus: entityTier.coreFocus,
 
       breakdown: results,
-
       entitySignals: entityAggregate.entitySignals,
       entitySummary: entityAggregate.entitySummary,
 
-      surfaceCoverage: {
-        discovered: surfaceUrls.length,
-        crawled: crawlData.surfaces.length,
-        ratio:
-          surfaceUrls.length > 0
-            ? crawlData.surfaces.length / surfaceUrls.length
-            : 1,
-      },
-
       crawlHealth,
-      degradedDiscovery: discovery.degraded || false,
+      degradedDiscovery: discovery.degraded,
 
       timestamp: new Date().toISOString(),
     });
