@@ -1,28 +1,43 @@
-// /api/batch-worker.js — EEI Async Batch Worker (TIME-BOUNDED)
-// Processes ONE SAFE chunk per invocation
+// /api/batch-worker.js
+// EEI Batch Worker v1.1 — SERIAL + COOLDOWN SAFE
+// Processes small slices of a batch job without timing out
+// Designed for hostile / bot-protected domains (finance, insurance)
 
+import { getBatchJob, updateBatchJob } from "../lib/batch-db.js";
 import auditHandler from "./audit.js";
-import { getJob, updateJob } from "../lib/jobs-db.js";
 
-const MAX_WORKER_MS = 240000; // 4 minutes hard cap (Vercel-safe)
+/* ============================================================
+   CONFIG (LOCK THESE)
+   ============================================================ */
+
+const MAX_WORKER_MS = 240000; // 4 minutes hard cap
+const CRAWL_COOLDOWN_MS = 20000; // 20s cooldown between crawls
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* ============================================================
+   MAIN WORKER
+   ============================================================ */
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-
-  const startedAt = Date.now();
-
   try {
-    const jobId = req.query.jobId;
+    const jobId = req.query?.jobId;
     if (!jobId) {
       return res.status(400).json({ error: "Missing jobId" });
     }
 
-    const job = await getJob(jobId);
+    const job = await getBatchJob(jobId);
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
     }
 
+    // Do not re-run completed jobs
     if (job.status === "completed") {
       return res.status(200).json({
         success: true,
@@ -31,86 +46,92 @@ export default async function handler(req, res) {
       });
     }
 
-    const start = job.cursor;
-    const end = Math.min(start + job.chunkSize, job.urls.length);
-    const urls = job.urls.slice(start, end);
+    const startedAt = Date.now();
+    let cursor = job.cursor || 0;
 
-    for (const url of urls) {
-      // ⏱️ HARD TIME GUARD
-      if (Date.now() - startedAt > MAX_WORKER_MS) {
-        break;
-      }
+    const results = job.results || [];
+    const urls = job.urls || [];
 
-      let out = null;
+    while (cursor < urls.length) {
+      // ⛔ Time guard (never 504)
+      if (Date.now() - startedAt > MAX_WORKER_MS) break;
+
+      const url = urls[cursor];
+
+      let auditResult = null;
 
       try {
+        // --- Fake req/res to reuse audit handler ---
         const fakeReq = {
           query: { url },
-          headers: { origin: "http://localhost" },
+          headers: {},
           method: "GET",
         };
 
+        let jsonPayload = null;
+
         const fakeRes = {
-          status() {
-            return this;
+          status: () => fakeRes,
+          json: (data) => {
+            jsonPayload = data;
+            return data;
           },
-          json(obj) {
-            out = obj;
-            return obj;
-          },
-          setHeader() {},
+          setHeader: () => {},
         };
 
         await auditHandler(fakeReq, fakeRes);
 
-        if (out && out.success) {
-          job.results.push({
-            success: true,
-            url: out.url,
-            hostname: out.hostname,
-            entityName: out.entityName,
-            entityScore: out.entityScore,
-            entityStage: out.entityStage,
-            entityVerb: out.entityVerb,
-            entityFocus: out.entityFocus,
-            canonical: out.canonical,
-            entityComprehensionMode: out.entityComprehensionMode,
-            degradedDiscovery: out.degradedDiscovery,
-          });
-        } else {
-          job.errors.push({
-            url,
-            error: out?.details || out?.error || "Audit failed",
-          });
-        }
+        auditResult = jsonPayload;
       } catch (err) {
-        job.errors.push({
+        auditResult = {
+          success: false,
           url,
-          error: err.message || "Unhandled audit exception",
-        });
+          error: err.message || "Audit execution failed",
+        };
       }
 
-      job.cursor += 1;
+      // --- Store THIN result ---
+      results.push({
+        success: auditResult?.success || false,
+        url,
+        hostname: auditResult?.hostname || null,
+        entityName: auditResult?.entityName || null,
+        entityScore: auditResult?.entityScore || null,
+        entityStage: auditResult?.entityStage || null,
+        entityVerb: auditResult?.entityVerb || null,
+        entityFocus: auditResult?.entityFocus || null,
+        canonical: auditResult?.canonical || null,
+        entityComprehensionMode:
+          auditResult?.entityComprehensionMode || "unknown",
+      });
+
+      cursor++;
+
+      // ⏳ CRITICAL: cooldown to protect crawl-worker
+      await sleep(CRAWL_COOLDOWN_MS);
     }
 
-    job.status =
-      job.cursor >= job.urls.length ? "completed" : "running";
-    job.updatedAt = new Date().toISOString();
+    const completed = cursor >= urls.length;
 
-    await updateJob(jobId, () => job);
+    await updateBatchJob(jobId, {
+      cursor,
+      results,
+      status: completed ? "completed" : "running",
+      updatedAt: new Date().toISOString(),
+    });
 
     return res.status(200).json({
       success: true,
       jobId,
-      status: job.status,
-      processed: job.cursor,
-      total: job.urls.length,
+      processed: cursor,
+      total: urls.length,
+      status: completed ? "completed" : "running",
     });
   } catch (err) {
     return res.status(500).json({
       success: false,
-      error: "Batch worker failed",
-      details: err.message,
+      error: "Batch worker failure",
+      details: err.message || String(err),
     });
   }
 }
