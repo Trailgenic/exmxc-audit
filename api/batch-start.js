@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       vertical: dataset.vertical || safeDataset,
       urls,
       cursor: 0,
-      chunkSize: 10,
+      chunkSize: 5,
       results: [],
       errors: [],
       status: "queued",
