@@ -1,8 +1,9 @@
-// /api/audit.js — EEI v5.4.2
-// Single-URL SAFE • Batch SAFE • Scale-aware
-// Rule: Single URL bypasses discovery entirely
+// /api/audit.js — EEI v5.4.1
+// POLICY-ALIGNED • SINGLE-URL SAFE • SCALE-SAFE
+// Rule: discovery may degrade, scoring must not
 
 import axios from "axios";
+import https from "https";
 import * as cheerio from "cheerio";
 
 import {
@@ -25,6 +26,19 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
+
+/* ============================================================
+   NETWORK HARDENING (DO NOT TOUCH)
+   ============================================================ */
+
+const httpsAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 1,
+});
+
+/* ============================================================
+   CONFIG
+   ============================================================ */
 
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
@@ -56,12 +70,17 @@ function clamp(v, min, max) {
 }
 
 /* ============================================================
-   MAIN
+   MAIN HANDLER
    ============================================================ */
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
@@ -74,45 +93,73 @@ export default async function handler(req, res) {
 
     const host = hostnameOf(normalized);
 
-    let crawlData;
-    let entityComprehensionMode = "single-url";
-
     /* ========================================================
-       SINGLE URL PATH (NO DISCOVERY)
+       1) SURFACE DISCOVERY (NON-AUTHORITATIVE)
        ======================================================== */
 
+    const discovery = await discoverSurfaces(normalized);
+    const surfaceUrls = discovery.surfaces;
+
+    /* ========================================================
+       2) CRAWL WORKER (AUTHORITATIVE)
+       ======================================================== */
+
+    let crawlData;
+    let entityComprehensionMode = "bounded-multi-surface";
+
     try {
-      const resp = await axios.post(
+      const crawlResp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
+        { url: normalized, surfaces: surfaceUrls },
         {
-          url: normalized,
-          surfaces: [normalized],
-        },
-        { timeout: 45000 }
+          timeout: 45000,
+          httpsAgent,
+        }
       );
 
-      crawlData = resp.data;
+      crawlData = crawlResp.data;
 
       if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        throw new Error("crawl-failed");
+        throw new Error("multi-surface-crawl-failed");
       }
-    } catch (err) {
-      return res.status(502).json({
-        success: false,
-        error: "Crawl worker failed",
-        details: err.message,
-      });
+    } catch {
+      entityComprehensionMode = "scale-constrained";
+
+      const fallbackResp = await axios.post(
+        `${CRAWL_WORKER_BASE}/crawl`,
+        { url: normalized, surfaces: [normalized] },
+        {
+          timeout: 25000,
+          httpsAgent,
+        }
+      );
+
+      crawlData = fallbackResp.data;
+
+      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+        return res.status(502).json({
+          success: false,
+          error: "Crawl worker failed (fallback)",
+          details: crawlData || null,
+        });
+      }
     }
 
     /* ========================================================
-       AGGREGATION
+       3) ENTITY AGGREGATION
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
       surfaces: crawlData.surfaces,
     });
 
-    const homepage = crawlData.surfaces[0];
+    /* ========================================================
+       4) CONTENT ANCHOR (AUTHORITATIVE HOME)
+       ======================================================== */
+
+    const homepage =
+      crawlData.surfaces.find((s) => s.url === normalized) ||
+      crawlData.surfaces[0];
 
     const {
       html = "",
@@ -127,7 +174,7 @@ export default async function handler(req, res) {
     const $ = cheerio.load(html || "<html></html>");
 
     /* ========================================================
-       ENTITY NAME
+       5) ENTITY NAME
        ======================================================== */
 
     const entityName =
@@ -137,7 +184,7 @@ export default async function handler(req, res) {
       host;
 
     /* ========================================================
-       SCORING
+       6) EEI SIGNALS
        ======================================================== */
 
     const results = [
@@ -190,6 +237,7 @@ export default async function handler(req, res) {
 
       entityComprehensionMode,
       crawlHealth,
+      degradedDiscovery: discovery.degraded,
 
       timestamp: new Date().toISOString(),
     });
