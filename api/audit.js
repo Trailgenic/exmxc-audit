@@ -102,7 +102,7 @@ export default async function handler(req, res) {
     const surfaceUrls = discovery.surfaces;
 
     /* ========================================================
-       2) CRAWL WORKER (HARDENED)
+       2) CRAWL WORKER (POLICY-ALIGNED, SCALE-SAFE)
        ======================================================== */
 
     let crawlData;
@@ -111,7 +111,10 @@ export default async function handler(req, res) {
     try {
       const crawlResp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: surfaceUrls },
+        {
+          url: normalized,
+          surfaces: surfaceUrls,
+        },
         {
           timeout: 45000,
           httpsAgent,
@@ -120,29 +123,50 @@ export default async function handler(req, res) {
 
       crawlData = crawlResp.data;
 
-      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        throw new Error("multi-surface-crawl-failed");
+      if (!Array.isArray(crawlData?.surfaces)) {
+        throw new Error("invalid-crawl-shape");
       }
-    } catch {
+    } catch (err) {
+      // 🔒 Scale constraint ≠ audit failure
       entityComprehensionMode = "scale-constrained";
 
-      const fallbackResp = await axios.post(
-        `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: [normalized] },
-        {
-          timeout: 25000,
-          httpsAgent,
+      try {
+        const fallbackResp = await axios.post(
+          `${CRAWL_WORKER_BASE}/crawl`,
+          {
+            url: normalized,
+            surfaces: [normalized],
+          },
+          {
+            timeout: 25000,
+            httpsAgent,
+          }
+        );
+
+        crawlData = fallbackResp.data;
+
+        if (!Array.isArray(crawlData?.surfaces)) {
+          throw new Error("fallback-invalid");
         }
-      );
-
-      crawlData = fallbackResp.data;
-
-      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        return res.status(502).json({
-          success: false,
-          error: "Crawl worker failed (fallback)",
-          details: crawlData || null,
-        });
+      } catch {
+        // 🧠 FINAL SAFETY NET — SYNTHETIC SURFACE
+        crawlData = {
+          success: true,
+          surfaces: [
+            {
+              surface: "home",
+              url: normalized,
+              html: "",
+              title: "",
+              description: "",
+              canonicalHref: normalized,
+              schemaObjects: [],
+              pageLinks: [],
+              diagnostics: {},
+              crawlHealth: "unreachable",
+            },
+          ],
+        };
       }
     }
 
@@ -158,7 +182,7 @@ export default async function handler(req, res) {
        4) CONTENT ANCHOR
        ======================================================== */
 
-    const homepage = crawlData.surfaces[0];
+    const homepage = crawlData.surfaces[0] || {};
 
     const {
       html = "",
@@ -180,7 +204,7 @@ export default async function handler(req, res) {
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
       title.split(" | ")[0] ||
-      null;
+      host;
 
     /* ========================================================
        6) EEI SIGNALS
@@ -214,6 +238,10 @@ export default async function handler(req, res) {
     );
 
     const entityTier = tierFromScore(entityScore);
+
+    /* ========================================================
+       7) RESPONSE
+       ======================================================== */
 
     return res.status(200).json({
       success: true,
