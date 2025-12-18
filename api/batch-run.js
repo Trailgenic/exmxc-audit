@@ -1,106 +1,140 @@
-// /api/batch-run.js — EEI v5.4 Unified Batch Endpoint + Drift History
-// Contract-safe with verticals.json + audit.js
-// No re-crawling logic. No aggregation here. Orchestration only.
+// /api/batch-run.js
+// EEI Batch Runner v5.5 — EXECUTIVE SUMMARY MODE
+// Policy: batch = thin summary only, single audit = full forensics
 
-import fs from "fs/promises";
-import path from "path";
-import auditHandler from "./audit.js";
+import axios from "axios";
 import { saveDriftSnapshot } from "../lib/drift-db.js";
 
+const AUDIT_ENDPOINT =
+  "https://exmxc-audit.vercel.app/api/audit";
+
+/* ============================================================
+   MAIN HANDLER
+   ============================================================ */
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-
   try {
-    const datasetName = (req.query.dataset || "core-web").toLowerCase();
-    const safeDataset = datasetName.replace(/[^a-z0-9\-]/g, "");
+    const dataset = req.query?.dataset;
+    if (!dataset) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing dataset"
+      });
+    }
 
-    const filePath = path.join(process.cwd(), "data", `${safeDataset}.json`);
-    const raw = await fs.readFile(filePath, "utf8");
-    const dataset = JSON.parse(raw);
+    /* ========================================================
+       DATASET REGISTRY
+       ======================================================== */
 
-    const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
+    const DATASETS = {
+      "tg-strategic": [
+        "https://www.trailgenic.com",
+        "https://www.exmxc.ai",
+        "https://www.lineps.com",
+        "https://www.athletechnews.com"
+      ]
+    };
+
+    const urls = DATASETS[dataset];
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Unknown or empty dataset"
+      });
+    }
+
+    /* ========================================================
+       BATCH EXECUTION
+       ======================================================== */
+
     const results = [];
+    let audited = 0;
+    let failed = 0;
 
     for (const url of urls) {
-      // ⏳ pacing to avoid serverless socket churn
-      await new Promise((r) => setTimeout(r, 750));
-
-      let out = null;
-
       try {
-        const fakeReq = {
-          query: { url },
-          headers: { origin: "http://localhost" },
-          method: "GET",
-        };
-
-        const fakeRes = {
-          status(code) {
-            this.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            out = obj;
-            return obj;
-          },
-          setHeader() {},
-        };
-
-        await auditHandler(fakeReq, fakeRes);
-
-        if (out && out.success) {
-          results.push(out);
-        } else {
-          results.push({
-            url,
-            success: false,
-            error: out?.details || out?.error || "EEI audit failed",
-          });
-        }
-      } catch (err) {
-        results.push({
-          url,
-          success: false,
-          error: err.message || "Unhandled audit exception",
+        const resp = await axios.get(AUDIT_ENDPOINT, {
+          params: { url },
+          timeout: 60000
         });
+
+        const out = resp.data;
+
+        /* ====================================================
+           ✅ THIN RESULT (SAFE FOR SCALE)
+           ==================================================== */
+        if (out && out.success) {
+          results.push({
+            url: out.url,
+            hostname: out.hostname,
+            entityName: out.entityName,
+            entityScore: out.entityScore,
+            entityStage: out.entityStage,
+            entityVerb: out.entityVerb,
+            entityFocus: out.entityFocus,
+            entityComprehensionMode: out.entityComprehensionMode
+          });
+          audited++;
+        } else {
+          failed++;
+        }
+
+      } catch (err) {
+        failed++;
       }
     }
 
-    const successful = results.filter(
-      (r) => r && r.success && typeof r.entityScore === "number"
-    );
+    /* ========================================================
+       SCORE AGGREGATION
+       ======================================================== */
 
-    const avgScore =
-      successful.reduce((sum, r) => sum + r.entityScore, 0) /
-      (successful.length || 1);
+    const avgEntityScore =
+      results.length > 0
+        ? Math.round(
+            results.reduce((sum, r) => sum + (r.entityScore || 0), 0) /
+              results.length *
+              10
+          ) / 10
+        : null;
 
-    const payload = {
-      vertical: dataset.vertical || safeDataset,
-      dataset: safeDataset,
-      totalUrls: urls.length,
-      audited: successful.length,
-      failed: urls.length - successful.length,
-      avgEntityScore: Number(avgScore.toFixed(2)),
-      results,
+    /* ========================================================
+       DRIFT SNAPSHOT (THIN)
+       ======================================================== */
+
+    await saveDriftSnapshot(dataset, {
       timestamp: new Date().toISOString(),
-    };
+      dataset,
+      totalUrls: urls.length,
+      audited,
+      failed,
+      avgEntityScore,
+      results: results.map(r => ({
+        url: r.url,
+        entityScore: r.entityScore
+      }))
+    });
 
-    saveDriftSnapshot(payload.vertical, payload)
-  .catch(err => {
-    console.warn("Drift snapshot failed:", err.message);
-  });
-
+    /* ========================================================
+       RESPONSE
+       ======================================================== */
 
     return res.status(200).json({
       success: true,
-      ...payload,
+      vertical: dataset,
+      dataset,
+      totalUrls: urls.length,
+      audited,
+      failed,
+      avgEntityScore,
+      results,
+      timestamp: new Date().toISOString()
     });
+
   } catch (err) {
     return res.status(500).json({
       success: false,
       error: "Batch run failed",
-      details: err.message,
+      details: err.message || String(err)
     });
   }
 }
