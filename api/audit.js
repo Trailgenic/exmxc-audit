@@ -1,4 +1,4 @@
-// /api/audit.js — EEI v5.4.1 (CANONICAL-SAFE, SCALE-STABLE)
+// /api/audit.js — EEI v5.4 (POLICY-ALIGNED, SCALE-SAFE)
 // Entity-level orchestrator — multi-surface, AI-comprehension aligned
 // Source of truth: exmxc-crawl-worker
 // Policy: downgrade on scale constraint, never hard-fail
@@ -58,20 +58,6 @@ function normalizeUrl(input) {
   }
 }
 
-async function resolveCanonicalUrl(url) {
-  try {
-    const resp = await axios.get(url, {
-      maxRedirects: 5,
-      timeout: 15000,
-      httpsAgent,
-      validateStatus: (s) => s >= 200 && s < 400,
-    });
-    return resp.request?.res?.responseUrl || url;
-  } catch {
-    return url;
-  }
-}
-
 function hostnameOf(urlStr) {
   try {
     return new URL(urlStr).hostname.replace(/^www\./i, "");
@@ -102,12 +88,10 @@ export default async function handler(req, res) {
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
-    const normalizedInput = normalizeUrl(input);
-    if (!normalizedInput)
+    const normalized = normalizeUrl(input);
+    if (!normalized)
       return res.status(400).json({ error: "Invalid URL format" });
 
-    // 🔑 CRITICAL FIX: resolve canonical BEFORE crawling
-    const normalized = await resolveCanonicalUrl(normalizedInput);
     const host = hostnameOf(normalized);
 
     /* ========================================================
@@ -196,7 +180,7 @@ export default async function handler(req, res) {
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
       title.split(" | ")[0] ||
-      host;
+      null;
 
     /* ========================================================
        6) EEI SIGNALS
