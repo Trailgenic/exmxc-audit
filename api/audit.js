@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v5.4.1
-// POLICY-ALIGNED • SINGLE-URL SAFE • SCALE-SAFE
-// Rule: discovery may degrade, scoring must not
+// /api/audit.js — EEI v5.4.1 (CANONICAL-SAFE, SCALE-STABLE)
+// Entity-level orchestrator — multi-surface, AI-comprehension aligned
+// Source of truth: exmxc-crawl-worker
+// Policy: downgrade on scale constraint, never hard-fail
 
 import axios from "axios";
 import https from "https";
@@ -28,7 +29,7 @@ import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 /* ============================================================
-   NETWORK HARDENING (DO NOT TOUCH)
+   NETWORK HARDENING (SERVERLESS-SAFE)
    ============================================================ */
 
 const httpsAgent = new https.Agent({
@@ -54,6 +55,20 @@ function normalizeUrl(input) {
     return new URL(url).toString();
   } catch {
     return null;
+  }
+}
+
+async function resolveCanonicalUrl(url) {
+  try {
+    const resp = await axios.get(url, {
+      maxRedirects: 5,
+      timeout: 15000,
+      httpsAgent,
+      validateStatus: (s) => s >= 200 && s < 400,
+    });
+    return resp.request?.res?.responseUrl || url;
+  } catch {
+    return url;
   }
 }
 
@@ -87,21 +102,23 @@ export default async function handler(req, res) {
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
-    const normalized = normalizeUrl(input);
-    if (!normalized)
+    const normalizedInput = normalizeUrl(input);
+    if (!normalizedInput)
       return res.status(400).json({ error: "Invalid URL format" });
 
+    // 🔑 CRITICAL FIX: resolve canonical BEFORE crawling
+    const normalized = await resolveCanonicalUrl(normalizedInput);
     const host = hostnameOf(normalized);
 
     /* ========================================================
-       1) SURFACE DISCOVERY (NON-AUTHORITATIVE)
+       1) SURFACE DISCOVERY
        ======================================================== */
 
     const discovery = await discoverSurfaces(normalized);
     const surfaceUrls = discovery.surfaces;
 
     /* ========================================================
-       2) CRAWL WORKER (AUTHORITATIVE)
+       2) CRAWL WORKER (HARDENED)
        ======================================================== */
 
     let crawlData;
@@ -154,12 +171,10 @@ export default async function handler(req, res) {
     });
 
     /* ========================================================
-       4) CONTENT ANCHOR (AUTHORITATIVE HOME)
+       4) CONTENT ANCHOR
        ======================================================== */
 
-    const homepage =
-      crawlData.surfaces.find((s) => s.url === normalized) ||
-      crawlData.surfaces[0];
+    const homepage = crawlData.surfaces[0];
 
     const {
       html = "",
@@ -180,7 +195,7 @@ export default async function handler(req, res) {
     const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      (title ? title.split(" | ")[0] : null) ||
+      title.split(" | ")[0] ||
       host;
 
     /* ========================================================
