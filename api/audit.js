@@ -4,6 +4,7 @@
 // Policy: downgrade on scale constraint, never hard-fail
 
 import axios from "axios";
+import https from "https";
 import * as cheerio from "cheerio";
 
 import {
@@ -26,6 +27,15 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
+
+/* ============================================================
+   NETWORK HARDENING (SERVERLESS-SAFE)
+   ============================================================ */
+
+const httpsAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 1,
+});
 
 /* ============================================================
    CONFIG
@@ -75,7 +85,6 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    /* ---------- INPUT ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -90,10 +99,10 @@ export default async function handler(req, res) {
        ======================================================== */
 
     const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces; // array only
+    const surfaceUrls = discovery.surfaces;
 
     /* ========================================================
-       2) CRAWL WORKER (POLICY-AWARE)
+       2) CRAWL WORKER (HARDENED)
        ======================================================== */
 
     let crawlData;
@@ -102,11 +111,11 @@ export default async function handler(req, res) {
     try {
       const crawlResp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
+        { url: normalized, surfaces: surfaceUrls },
         {
-          url: normalized,
-          surfaces: surfaceUrls,
-        },
-        { timeout: 45000 }
+          timeout: 45000,
+          httpsAgent,
+        }
       );
 
       crawlData = crawlResp.data;
@@ -115,19 +124,15 @@ export default async function handler(req, res) {
         throw new Error("multi-surface-crawl-failed");
       }
     } catch {
-      /* ======================================================
-         SCALE-CONSTRAINED DOWNGRADE (EXPECTED FOR APPLE-CLASS)
-         ====================================================== */
-
       entityComprehensionMode = "scale-constrained";
 
       const fallbackResp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
+        { url: normalized, surfaces: [normalized] },
         {
-          url: normalized,
-          surfaces: [normalized], // homepage only
-        },
-        { timeout: 25000 }
+          timeout: 25000,
+          httpsAgent,
+        }
       );
 
       crawlData = fallbackResp.data;
@@ -142,7 +147,7 @@ export default async function handler(req, res) {
     }
 
     /* ========================================================
-       3) ENTITY AGGREGATION (ARRAY-NATIVE)
+       3) ENTITY AGGREGATION
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
@@ -150,7 +155,7 @@ export default async function handler(req, res) {
     });
 
     /* ========================================================
-       4) CONTENT ANCHOR (HOMEPAGE)
+       4) CONTENT ANCHOR
        ======================================================== */
 
     const homepage = crawlData.surfaces[0];
@@ -197,12 +202,7 @@ export default async function handler(req, res) {
       scoreFaviconOg($),
     ];
 
-    /* ========================================================
-       7) SCORE AGGREGATION
-       ======================================================== */
-
     let totalRaw = 0;
-
     for (const sig of results) {
       totalRaw += clamp(sig.points || 0, 0, sig.max);
     }
@@ -214,10 +214,6 @@ export default async function handler(req, res) {
     );
 
     const entityTier = tierFromScore(entityScore);
-
-    /* ========================================================
-       8) RESPONSE
-       ======================================================== */
 
     return res.status(200).json({
       success: true,
