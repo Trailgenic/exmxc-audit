@@ -1,12 +1,16 @@
-// /api/batch-worker.js — EEI Async Batch Worker
-// Processes ONE chunk per invocation (scale-safe)
+// /api/batch-worker.js — EEI Async Batch Worker (TIME-BOUNDED)
+// Processes ONE SAFE chunk per invocation
 
 import auditHandler from "./audit.js";
 import { getJob, updateJob } from "../lib/jobs-db.js";
 
+const MAX_WORKER_MS = 240000; // 4 minutes hard cap (Vercel-safe)
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
+
+  const startedAt = Date.now();
 
   try {
     const jobId = req.query.jobId;
@@ -32,6 +36,11 @@ export default async function handler(req, res) {
     const urls = job.urls.slice(start, end);
 
     for (const url of urls) {
+      // ⏱️ HARD TIME GUARD
+      if (Date.now() - startedAt > MAX_WORKER_MS) {
+        break;
+      }
+
       let out = null;
 
       try {
@@ -80,10 +89,12 @@ export default async function handler(req, res) {
           error: err.message || "Unhandled audit exception",
         });
       }
+
+      job.cursor += 1;
     }
 
-    job.cursor = end;
-    job.status = end >= job.urls.length ? "completed" : "running";
+    job.status =
+      job.cursor >= job.urls.length ? "completed" : "running";
     job.updatedAt = new Date().toISOString();
 
     await updateJob(jobId, () => job);
@@ -92,7 +103,7 @@ export default async function handler(req, res) {
       success: true,
       jobId,
       status: job.status,
-      processed: end,
+      processed: job.cursor,
       total: job.urls.length,
     });
   } catch (err) {
@@ -103,4 +114,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
