@@ -1,7 +1,9 @@
-// /api/audit.js — EEI v5.4 (POLICY-ALIGNED, SCALE-SAFE)
+// /api/audit.js — EEI v5.4.1 (POLICY-ALIGNED, SCALE-SAFE, SINGLE-URL SAFE)
 // Entity-level orchestrator — multi-surface, AI-comprehension aligned
 // Source of truth: exmxc-crawl-worker
-// Policy: downgrade on scale constraint, never hard-fail
+// Policy:
+//   • Single URL = accuracy-first (never downgrade silently)
+//   • Multi-surface / batch = availability-first (graceful degradation)
 
 import axios from "axios";
 import https from "https";
@@ -85,6 +87,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
+    /* ---------- INPUT ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -99,22 +102,21 @@ export default async function handler(req, res) {
        ======================================================== */
 
     const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces;
+    const surfaceUrls = discovery.surfaces || [];
+
+    const isSingleUrlAudit = surfaceUrls.length === 1;
+
+    let entityComprehensionMode = "bounded-multi-surface";
+    let crawlData;
 
     /* ========================================================
-       2) CRAWL WORKER (POLICY-ALIGNED, SCALE-SAFE)
+       2) CRAWL WORKER (POLICY-AWARE)
        ======================================================== */
-
-    let crawlData;
-    let entityComprehensionMode = "bounded-multi-surface";
 
     try {
       const crawlResp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
-        {
-          url: normalized,
-          surfaces: surfaceUrls,
-        },
+        { url: normalized, surfaces: surfaceUrls },
         {
           timeout: 45000,
           httpsAgent,
@@ -123,33 +125,36 @@ export default async function handler(req, res) {
 
       crawlData = crawlResp.data;
 
-      if (!Array.isArray(crawlData?.surfaces)) {
+      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
         throw new Error("invalid-crawl-shape");
       }
     } catch (err) {
-      // 🔒 Scale constraint ≠ audit failure
+      // 🚨 CRITICAL RULE:
+      // Single-URL audits must NEVER downgrade silently
+      if (isSingleUrlAudit) {
+        throw err;
+      }
+
+      /* ---------- SCALE-CONSTRAINED DOWNGRADE ---------- */
       entityComprehensionMode = "scale-constrained";
 
       try {
         const fallbackResp = await axios.post(
           `${CRAWL_WORKER_BASE}/crawl`,
+          { url: normalized, surfaces: [normalized] },
           {
-            url: normalized,
-            surfaces: [normalized],
-          },
-          {
-            timeout: 25000,
+            timeout: 30000,
             httpsAgent,
           }
         );
 
         crawlData = fallbackResp.data;
 
-        if (!Array.isArray(crawlData?.surfaces)) {
+        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
           throw new Error("fallback-invalid");
         }
       } catch {
-        // 🧠 FINAL SAFETY NET — SYNTHETIC SURFACE
+        // FINAL SAFETY NET — ONLY FOR BATCH / VERTICAL MODE
         crawlData = {
           success: true,
           surfaces: [
@@ -179,10 +184,10 @@ export default async function handler(req, res) {
     });
 
     /* ========================================================
-       4) CONTENT ANCHOR
+       4) CONTENT ANCHOR (HOMEPAGE)
        ======================================================== */
 
-    const homepage = crawlData.surfaces[0] || {};
+    const homepage = crawlData.surfaces[0];
 
     const {
       html = "",
@@ -203,7 +208,7 @@ export default async function handler(req, res) {
     const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      title.split(" | ")[0] ||
+      (title ? title.split(" | ")[0] : null) ||
       host;
 
     /* ========================================================
