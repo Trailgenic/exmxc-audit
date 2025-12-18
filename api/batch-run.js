@@ -12,26 +12,20 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
 
   try {
-    /* ============================================================
-       1) Resolve dataset
-       ============================================================ */
-
     const datasetName = (req.query.dataset || "core-web").toLowerCase();
     const safeDataset = datasetName.replace(/[^a-z0-9\-]/g, "");
 
     const filePath = path.join(process.cwd(), "data", `${safeDataset}.json`);
-
     const raw = await fs.readFile(filePath, "utf8");
     const dataset = JSON.parse(raw);
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
     const results = [];
 
-    /* ============================================================
-       2) Sequential audit execution (intentional)
-       ============================================================ */
-
     for (const url of urls) {
+      // ⏳ pacing to avoid serverless socket churn
+      await new Promise((r) => setTimeout(r, 750));
+
       let out = null;
 
       try {
@@ -73,10 +67,6 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ============================================================
-       3) Batch-level scoring
-       ============================================================ */
-
     const successful = results.filter(
       (r) => r && r.success && typeof r.entityScore === "number"
     );
@@ -96,15 +86,7 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     };
 
-    /* ============================================================
-       4) Drift snapshot (non-optional)
-       ============================================================ */
-
     await saveDriftSnapshot(payload.vertical, payload);
-
-    /* ============================================================
-       5) Response
-       ============================================================ */
 
     return res.status(200).json({
       success: true,
