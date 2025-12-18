@@ -86,7 +86,11 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     };
 
-    await saveDriftSnapshot(payload.vertical, payload);
+    saveDriftSnapshot(payload.vertical, payload)
+  .catch(err => {
+    console.warn("Drift snapshot failed:", err.message);
+  });
+
 
     return res.status(200).json({
       success: true,
