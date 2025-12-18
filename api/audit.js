@@ -1,12 +1,8 @@
-// /api/audit.js — EEI v5.4.1 (POLICY-ALIGNED, SCALE-SAFE, SINGLE-URL SAFE)
-// Entity-level orchestrator — multi-surface, AI-comprehension aligned
-// Source of truth: exmxc-crawl-worker
-// Policy:
-//   • Single URL = accuracy-first (never downgrade silently)
-//   • Multi-surface / batch = availability-first (graceful degradation)
+// /api/audit.js — EEI v5.4.2
+// Single-URL SAFE • Batch SAFE • Scale-aware
+// Rule: Single URL bypasses discovery entirely
 
 import axios from "axios";
-import https from "https";
 import * as cheerio from "cheerio";
 
 import {
@@ -29,19 +25,6 @@ import {
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
-
-/* ============================================================
-   NETWORK HARDENING (SERVERLESS-SAFE)
-   ============================================================ */
-
-const httpsAgent = new https.Agent({
-  keepAlive: false,
-  maxSockets: 1,
-});
-
-/* ============================================================
-   CONFIG
-   ============================================================ */
 
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
@@ -73,21 +56,15 @@ function clamp(v, min, max) {
 }
 
 /* ============================================================
-   MAIN HANDLER
+   MAIN
    ============================================================ */
 
 export default async function handler(req, res) {
-  const origin = req.headers.origin || "*";
-  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
-  );
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    /* ---------- INPUT ---------- */
     const input = req.query?.url;
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
@@ -97,95 +74,43 @@ export default async function handler(req, res) {
 
     const host = hostnameOf(normalized);
 
-    /* ========================================================
-       1) SURFACE DISCOVERY
-       ======================================================== */
-
-    const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces || [];
-
-    const isSingleUrlAudit = surfaceUrls.length === 1;
-
-    let entityComprehensionMode = "bounded-multi-surface";
     let crawlData;
+    let entityComprehensionMode = "single-url";
 
     /* ========================================================
-       2) CRAWL WORKER (POLICY-AWARE)
+       SINGLE URL PATH (NO DISCOVERY)
        ======================================================== */
 
     try {
-      const crawlResp = await axios.post(
+      const resp = await axios.post(
         `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: surfaceUrls },
         {
-          timeout: 45000,
-          httpsAgent,
-        }
+          url: normalized,
+          surfaces: [normalized],
+        },
+        { timeout: 45000 }
       );
 
-      crawlData = crawlResp.data;
+      crawlData = resp.data;
 
       if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        throw new Error("invalid-crawl-shape");
+        throw new Error("crawl-failed");
       }
     } catch (err) {
-      // 🚨 CRITICAL RULE:
-      // Single-URL audits must NEVER downgrade silently
-      if (isSingleUrlAudit) {
-        throw err;
-      }
-
-      /* ---------- SCALE-CONSTRAINED DOWNGRADE ---------- */
-      entityComprehensionMode = "scale-constrained";
-
-      try {
-        const fallbackResp = await axios.post(
-          `${CRAWL_WORKER_BASE}/crawl`,
-          { url: normalized, surfaces: [normalized] },
-          {
-            timeout: 30000,
-            httpsAgent,
-          }
-        );
-
-        crawlData = fallbackResp.data;
-
-        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-          throw new Error("fallback-invalid");
-        }
-      } catch {
-        // FINAL SAFETY NET — ONLY FOR BATCH / VERTICAL MODE
-        crawlData = {
-          success: true,
-          surfaces: [
-            {
-              surface: "home",
-              url: normalized,
-              html: "",
-              title: "",
-              description: "",
-              canonicalHref: normalized,
-              schemaObjects: [],
-              pageLinks: [],
-              diagnostics: {},
-              crawlHealth: "unreachable",
-            },
-          ],
-        };
-      }
+      return res.status(502).json({
+        success: false,
+        error: "Crawl worker failed",
+        details: err.message,
+      });
     }
 
     /* ========================================================
-       3) ENTITY AGGREGATION
+       AGGREGATION
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
       surfaces: crawlData.surfaces,
     });
-
-    /* ========================================================
-       4) CONTENT ANCHOR (HOMEPAGE)
-       ======================================================== */
 
     const homepage = crawlData.surfaces[0];
 
@@ -202,7 +127,7 @@ export default async function handler(req, res) {
     const $ = cheerio.load(html || "<html></html>");
 
     /* ========================================================
-       5) ENTITY NAME
+       ENTITY NAME
        ======================================================== */
 
     const entityName =
@@ -212,7 +137,7 @@ export default async function handler(req, res) {
       host;
 
     /* ========================================================
-       6) EEI SIGNALS
+       SCORING
        ======================================================== */
 
     const results = [
@@ -244,10 +169,6 @@ export default async function handler(req, res) {
 
     const entityTier = tierFromScore(entityScore);
 
-    /* ========================================================
-       7) RESPONSE
-       ======================================================== */
-
     return res.status(200).json({
       success: true,
       url: normalized,
@@ -269,7 +190,6 @@ export default async function handler(req, res) {
 
       entityComprehensionMode,
       crawlHealth,
-      degradedDiscovery: discovery.degraded,
 
       timestamp: new Date().toISOString(),
     });
