@@ -31,12 +31,16 @@ function loadVerticalFile(slug) {
 }
 
 function shouldPromote(lite) {
+  // Never promote failed or degraded lite crawls
+  if (!lite?.success) return false;
+
+  // Require at least ONE strong structural signal
   return (
-    lite?.schemaObjects?.length > 0 ||
-    (lite?.title && lite.title.length > 20) ||
-    Boolean(lite?.canonical)
+    Array.isArray(lite.schemaObjects) &&
+    lite.schemaObjects.length >= 2
   );
 }
+
 
 /* ============================================================
    HANDLER
