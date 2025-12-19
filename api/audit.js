@@ -1,7 +1,6 @@
-// /api/audit.js — EEI v5.6
+// /api/audit.js — EEI v5.5
 // Sovereign dual-crawler orchestration (lite → heavy)
-// Lite = discovery only
-// Heavy = authoritative EEI scoring
+// AUTO mode now escalates to heavy for scoring
 
 import axios from "axios";
 import https from "https";
@@ -91,22 +90,20 @@ export default async function handler(req, res) {
     const input = req.query?.url;
     const mode = req.query?.mode || "auto"; // auto | lite | heavy
 
-    if (!input) {
-      return res.status(400).json({ success: false, error: "Missing URL" });
-    }
+    if (!input) return res.status(400).json({ error: "Missing URL" });
 
     const normalized = normalizeUrl(input);
-    if (!normalized) {
-      return res.status(400).json({ success: false, error: "Invalid URL" });
-    }
+    if (!normalized)
+      return res.status(400).json({ error: "Invalid URL format" });
 
     const host = hostnameOf(normalized);
 
     let crawlData = null;
+    let liteWasUsed = false;
     let entityComprehensionMode = "heavy";
 
     /* ========================================================
-       LITE MODE — DISCOVERY ONLY (NO SCORING)
+       LITE PROBE (lite OR auto)
        ======================================================== */
 
     if (mode === "lite" || mode === "auto") {
@@ -123,10 +120,10 @@ export default async function handler(req, res) {
           success: true,
           surfaces: [
             {
-              html: "", // ⛔ intentionally empty
-              title: lite.title || "",
-              description: lite.description || "",
-              canonicalHref: lite.canonical || normalized,
+              html: "",
+              title: lite.title,
+              description: lite.description,
+              canonicalHref: lite.canonical,
               schemaObjects: lite.schemaObjects || [],
               pageLinks: [],
               crawlHealth: { mode: "lite" },
@@ -134,23 +131,27 @@ export default async function handler(req, res) {
           ],
         };
 
+        liteWasUsed = true;
         entityComprehensionMode = "lite";
 
       } catch (err) {
         if (mode === "lite") {
-          return res.status(502).json({
-            success: false,
-            error: "Lite crawl failed",
-          });
+          throw err; // explicit lite must fail hard
         }
       }
     }
 
     /* ========================================================
-       HEAVY MODE — AUTHORITATIVE CRAWL
+       HEAVY ESCALATION
+       - mode=heavy → always
+       - mode=auto  → always after lite probe
        ======================================================== */
 
-    if (!crawlData) {
+    if (
+      !crawlData ||
+      mode === "heavy" ||
+      (mode === "auto" && liteWasUsed)
+    ) {
       entityComprehensionMode = "heavy";
 
       const discovery = await discoverSurfaces(normalized);
@@ -205,16 +206,14 @@ export default async function handler(req, res) {
       null;
 
     /* ========================================================
-       EEI SCORING — HEAVY ONLY
+       EEI SCORING (HEAVY ONLY)
        ======================================================== */
-
-    const isLiteOnly = entityComprehensionMode === "lite";
 
     let results = [];
     let entityScore = null;
     let entityTier = null;
 
-    if (!isLiteOnly) {
+    if (entityComprehensionMode === "heavy") {
       results = [
         scoreTitle($),
         scoreMetaDescription($),
@@ -258,7 +257,10 @@ export default async function handler(req, res) {
       canonical,
       description,
 
-      eeiScoringStatus: isLiteOnly ? "unscored-lite" : "scored-heavy",
+      eeiScoringStatus:
+        entityComprehensionMode === "heavy"
+          ? "scored-heavy"
+          : "unscored-lite",
 
       entityScore,
       entityStage: entityTier?.stage || null,
@@ -266,7 +268,7 @@ export default async function handler(req, res) {
       entityDescription: entityTier?.description || null,
       entityFocus: entityTier?.coreFocus || null,
 
-      breakdown: isLiteOnly ? [] : results,
+      breakdown: results,
       entitySignals: entityAggregate.entitySignals,
       entitySummary: entityAggregate.entitySummary,
 
