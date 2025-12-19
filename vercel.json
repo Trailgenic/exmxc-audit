@@ -11,6 +11,8 @@
     { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
     { "src": "^/api/verticals$", "dest": "/api/verticals.js" },
 
+    🔥 { "src": "^/api/audit-batch$", "dest": "/api/audit-batch.js" },
+
     { "src": "^/batch$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
@@ -22,7 +24,6 @@
     { "src": "^/verticals.html$", "dest": "/public/verticals.html" },
 
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
-
     { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
 
     { "src": "^/(.*)$", "dest": "/public/index.html" }
