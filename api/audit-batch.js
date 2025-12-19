@@ -56,6 +56,9 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 240_000; // 4 minutes hard stop
+
   try {
     const verticalSlug = req.query?.vertical;
     if (!verticalSlug) {
@@ -64,6 +67,97 @@ export default async function handler(req, res) {
         error: "Missing ?vertical parameter",
       });
     }
+
+    const offset = parseInt(req.query.offset || "0", 10);
+    const limit  = parseInt(req.query.limit  || "8", 10);
+
+    const dataset = loadVerticalFile(verticalSlug);
+    if (!dataset || !Array.isArray(dataset.urls)) {
+      return res.status(404).json({
+        success: false,
+        error: "Vertical not found or invalid format",
+      });
+    }
+
+    const urls = dataset.urls;
+    const slice = urls.slice(offset, offset + limit);
+
+    const liteResults = [];
+    const heavyResults = [];
+
+    for (const url of slice) {
+      // ---- time guard
+      if (Date.now() - startTime > MAX_RUNTIME_MS) break;
+
+      try {
+        const liteResp = await axios.post(
+          `${CRAWL_LITE_BASE}/crawl-lite`,
+          { url },
+          { timeout: 15000 }
+        );
+
+        const lite = liteResp.data;
+        liteResults.push(lite);
+
+        if (shouldPromote(lite)) {
+          try {
+            const heavyResp = await axios.get(AUDIT_BASE, {
+              params: { url },
+              timeout: 30000,
+            });
+
+            heavyResults.push(heavyResp.data);
+          } catch {
+            heavyResults.push({
+              url,
+              success: false,
+              error: "heavy-audit-failed",
+            });
+          }
+        }
+      } catch {
+        liteResults.push({
+          url,
+          success: false,
+          error: "lite-crawl-failed",
+        });
+      }
+    }
+
+    const nextOffset = offset + slice.length;
+    const hasMore = nextOffset < urls.length;
+
+    return res.status(200).json({
+      success: true,
+      vertical: dataset.vertical,
+      description: dataset.description,
+
+      offset,
+      limit,
+      nextOffset,
+      hasMore,
+
+      totals: {
+        totalUrls: urls.length,
+        processed: slice.length,
+        liteAudits: liteResults.length,
+        heavyAudits: heavyResults.length,
+      },
+
+      liteResults,
+      heavyResults,
+
+      timestamp: new Date().toISOString(),
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: "Batch audit failed",
+      details: err.message || String(err),
+    });
+  }
+}
 
     /* ========================================================
        1) LOAD DATASET
