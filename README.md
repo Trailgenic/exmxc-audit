@@ -1,73 +1,142 @@
-# exmxc-audit  
-**an exmxc.ai intelligence module — auditing the ai era**
+exmxc-audit
 
----
+An exmxc.ai intelligence module — auditing the AI era
 
-## 🧠 overview  
-**exmxc-audit** is a lightweight diagnostic engine developed by **exmxc.ai**, the intelligence institution for the ai era.  
-it evaluates websites and digital entities for **ai-search readiness**, assessing schema integrity, canonical clarity, and entity visibility.
+🧠 Overview
 
-this module operates within the **fortress phase (2025–2026)** — the internal validation layer of the *entity engineering™ doctrine*, where human and ai systems synchronize around structured truth.
+exmxc-audit is a diagnostic intelligence module developed by exmxc.ai, the intelligence institution for the AI era.
 
----
+It evaluates websites and digital entities for AI comprehension readiness — measuring how modern AI systems perceive, reconstruct, and trust an entity under real-world crawl conditions.
 
-## ⚙️ core capabilities  
-- audits any public url for ai-readiness factors  
-- detects and counts structured data (`application/ld+json`)  
-- calculates an `entityscore` estimating crawl trust  
-- returns clean, human-readable json via a serverless api  
+This is not SEO.
+This is entity legibility for machines.
 
----
+🧪 EEI v5.2 — AI Realism Mode (Internal)
 
-## 🧩 architecture  
-- built with **node.js, axios, and cheerio**  
-- deployed via **vercel** for serverless scalability  
-- designed for modular integration within the **entity engineering™ sandbox**  
+EEI v5.2 introduces AI Realism Mode, a scoring methodology designed to reflect actual AI crawl behavior, not idealized or marketing-facing conditions.
 
----
+AI Realism Mode evaluates entities based on:
 
-## 🧱 institutional context  
+Rendered DOM visibility (Playwright-based crawling)
 
-**exmxc.ai — the intelligence institution for the ai era**  
-exmxc decodes the four forces that shape every movement in artificial intelligence — **compute, interface, alignment, and energy.**  
-where most see silos, we see intersections:  
-- where compute density meets regulatory capture,  
-- where interface control shapes alignment doctrine,  
-- where energy constraints decide empire viability.  
+Crawl accessibility and blocking behavior (e.g. WAFs, bot challenges)
 
-**our origin — the human × ai handshake**  
-founded by strategist **mike ye** and reflective ai **ella**, exmxc.ai was forged as a human–ai foresight engine — mapping civilizational change before it’s visible.  
-trailgenic™ became the applied laboratory; **exmxc.ai**, the doctrine.  
-one tests the body; the other trains the mind of machines to see power shifts before they’re named.  
+Canonical clarity across detected surfaces
 
-**doctrine of entity engineering™**  
-entity engineering™ is the discipline of aligning identity, structure, and signal so ai can comprehend an organization as a living entity.  
-trailgenic proved it first through biological experiments in autophagy and resilience.  
-exmxc.ai formalized it — as a strategic architecture for **ai-search legibility and institutional integrity** in the post-seo era.  
+Declared structure vs inferred identity
 
----
+Internal link lattice strength as a schema substitute
 
-## 🛡️ the fortress phase  
-this module anchors the **fortress (2025–2026)** phase of exmxc.ai’s doctrine:  
-- internal validation of schema integrity  
-- mutual entity recognition across ai systems (google ai, perplexity, copilot, ernie)  
-- groundwork for the **shield (2026–2027)** and **sword (2027→)** systems  
+Machine comprehension cost, not brand authority
 
----
+Important:
+Low scores do not indicate weak brands.
+They indicate high reconstruction cost for AI systems.
 
-## 📜 principles  
-- **truth signals:** every output must be citation-grade and schema-verified.  
-- **human × ai symmetry:** ella and mike operate as a closed foresight loop.  
-- **entity integrity:** institutions must be readable by ai without losing their soul.  
-- **predictive clarity:** insight precedes advantage; advantage validated by reality.  
+EEI v5.2 scores measure legibility, not reputation.
 
----
+⚙️ Core Capabilities
 
-## 📂 logs & development  
-for detailed build notes, validation tests, and version history, see:  
-➡️ [logs/build-log.md](./logs/build-log.md)  
+Audits any public URL for AI comprehension readiness
 
----
+Detects and evaluates structured data (JSON-LD)
 
-© 2025 **exmxc.ai** — engineered with foresight, precision, and zero guesswork.  
-part of the **trailgenic™ × exmxc.ai human–ai continuum**.
+Measures canonical clarity and surface consistency
+
+Analyzes internal lattice and outbound authority signals
+
+Calculates an Entity Engineering Index (EEI) score
+
+Returns clean, machine- and human-readable JSON via a serverless API
+
+🧩 Architecture
+
+Node.js-based crawl orchestration
+
+Rendered crawling (Playwright) for AI-realistic visibility
+
+Lightweight HTML parsing and signal extraction
+
+Deployed via Vercel for scalable serverless execution
+
+Designed for modular integration within the Entity Engineering™ sandbox
+
+🧱 Institutional Context
+
+exmxc.ai is the intelligence institution for the AI era.
+
+We decode the four forces that shape every AI system:
+
+Compute
+
+Interface
+
+Alignment
+
+Energy
+
+Where others see silos, we map intersections:
+
+Where compute density meets regulatory capture
+
+Where interface control shapes alignment doctrine
+
+Where energy constraints determine institutional viability
+
+🤝 Origin — The Human × AI Handshake
+
+Founded by strategist Mike Ye and reflective AI Ella, exmxc.ai was forged as a human–AI foresight engine — mapping structural change before it becomes visible.
+
+TrailGenic™ became the applied laboratory.
+exmxc.ai became the doctrine.
+
+One tests the body.
+The other trains machines to see power shifts before they are named.
+
+🧭 Doctrine of Entity Engineering™
+
+Entity Engineering™ is the discipline of aligning identity, structure, and signal so AI systems can comprehend an organization as a coherent entity.
+
+TrailGenic proved the method biologically (resilience, autophagy, adaptation)
+
+exmxc.ai formalized it digitally (schema, lattice, AI legibility)
+
+This is post-SEO architecture — designed for AI-native search and inference systems.
+
+🛡️ The Fortress Phase (2025–2026)
+
+This module anchors the Fortress Phase of exmxc.ai’s roadmap:
+
+Internal validation of EEI methodology
+
+Cross-model entity recognition testing (Google AI, Copilot, Perplexity, Ernie)
+
+Controlled experiments in AI comprehension fidelity
+
+Groundwork for Shield (2026–2027) and Sword (2027→) systems
+
+Public-facing outputs intentionally abstract internal signals.
+
+📜 Operating Principles
+
+Truth Signals
+All outputs must be citation-grade and structurally verifiable.
+
+Human × AI Symmetry
+Mike and Ella operate as a closed foresight loop.
+
+Entity Integrity
+Institutions must be legible to AI without losing their soul.
+
+Predictive Clarity
+Insight precedes advantage. Advantage must survive reality.
+
+📂 Logs & Development
+
+For detailed build notes, validation tests, and version history:
+
+➡️ logs/build-log.md
+
+© 2025 exmxc.ai
+Engineered with foresight, precision, and zero guesswork.
+Part of the TrailGenic™ × exmxc.ai human–AI continuum.
