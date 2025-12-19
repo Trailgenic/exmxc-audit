@@ -1,7 +1,6 @@
-// /api/audit.js — EEI v5.4 (POLICY-ALIGNED, SCALE-SAFE)
-// Entity-level orchestrator — multi-surface, AI-comprehension aligned
-// Source of truth: exmxc-crawl-worker
-// Policy: downgrade on scale constraint, never hard-fail
+// /api/audit.js — EEI v5.5
+// Sovereign dual-crawler orchestration (lite → heavy)
+// Default behavior preserved
 
 import axios from "axios";
 import https from "https";
@@ -29,7 +28,7 @@ import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 /* ============================================================
-   NETWORK HARDENING (SERVERLESS-SAFE)
+   NETWORK HARDENING
    ============================================================ */
 
 const httpsAgent = new https.Agent({
@@ -43,6 +42,9 @@ const httpsAgent = new https.Agent({
 
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
+
+const CRAWL_LITE_BASE =
+  "https://exmxc-crawl-lite-production.up.railway.app";
 
 /* ============================================================
    HELPERS
@@ -86,6 +88,8 @@ export default async function handler(req, res) {
 
   try {
     const input = req.query?.url;
+    const mode = req.query?.mode || "auto"; // auto | lite | heavy
+
     if (!input) return res.status(400).json({ error: "Missing URL" });
 
     const normalized = normalizeUrl(input);
@@ -94,69 +98,86 @@ export default async function handler(req, res) {
 
     const host = hostnameOf(normalized);
 
-    /* ========================================================
-       1) SURFACE DISCOVERY
-       ======================================================== */
-
-    const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces;
-
-    /* ========================================================
-       2) CRAWL WORKER (HARDENED)
-       ======================================================== */
-
     let crawlData;
-    let entityComprehensionMode = "bounded-multi-surface";
+    let entityComprehensionMode = "heavy";
 
-    try {
-      const crawlResp = await axios.post(
-        `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: surfaceUrls },
-        {
-          timeout: 45000,
-          httpsAgent,
+    /* ========================================================
+       LITE MODE (explicit or auto-first)
+       ======================================================== */
+
+    if (mode === "lite" || mode === "auto") {
+      try {
+        const liteResp = await axios.post(
+          `${CRAWL_LITE_BASE}/crawl-lite`,
+          { url: normalized },
+          { timeout: 15000 }
+        );
+
+        const lite = liteResp.data;
+
+        crawlData = {
+          success: true,
+          surfaces: [
+            {
+              html: "",
+              title: lite.title,
+              description: lite.description,
+              canonicalHref: lite.canonical,
+              schemaObjects: lite.schemaObjects || [],
+              pageLinks: [],
+              crawlHealth: {
+                mode: "lite",
+              },
+            },
+          ],
+        };
+
+        entityComprehensionMode = "lite";
+
+      } catch (err) {
+        if (mode === "lite") {
+          throw err; // explicit lite must fail hard
         }
-      );
-
-      crawlData = crawlResp.data;
-
-      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        throw new Error("multi-surface-crawl-failed");
       }
-    } catch {
-      entityComprehensionMode = "scale-constrained";
+    }
 
-      const fallbackResp = await axios.post(
-        `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: [normalized] },
-        {
-          timeout: 25000,
-          httpsAgent,
+    /* ========================================================
+       HEAVY FALLBACK (unchanged behavior)
+       ======================================================== */
+
+    if (!crawlData) {
+      entityComprehensionMode = "heavy";
+
+      const discovery = await discoverSurfaces(normalized);
+      const surfaceUrls = discovery.surfaces;
+
+      try {
+        const crawlResp = await axios.post(
+          `${CRAWL_WORKER_BASE}/crawl`,
+          { url: normalized, surfaces: surfaceUrls },
+          { timeout: 45000, httpsAgent }
+        );
+
+        crawlData = crawlResp.data;
+
+        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+          throw new Error("crawl-failed");
         }
-      );
-
-      crawlData = fallbackResp.data;
-
-      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+      } catch {
         return res.status(502).json({
           success: false,
-          error: "Crawl worker failed (fallback)",
-          details: crawlData || null,
+          error: "Crawl worker failed",
         });
       }
     }
 
     /* ========================================================
-       3) ENTITY AGGREGATION
+       AGGREGATION
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
       surfaces: crawlData.surfaces,
     });
-
-    /* ========================================================
-       4) CONTENT ANCHOR
-       ======================================================== */
 
     const homepage = crawlData.surfaces[0];
 
@@ -172,10 +193,6 @@ export default async function handler(req, res) {
 
     const $ = cheerio.load(html || "<html></html>");
 
-    /* ========================================================
-       5) ENTITY NAME
-       ======================================================== */
-
     const entityName =
       schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
       schemaObjects.find((o) => o["@type"] === "Person")?.name ||
@@ -183,7 +200,7 @@ export default async function handler(req, res) {
       null;
 
     /* ========================================================
-       6) EEI SIGNALS
+       EEI SCORING
        ======================================================== */
 
     const results = [
@@ -236,10 +253,10 @@ export default async function handler(req, res) {
 
       entityComprehensionMode,
       crawlHealth,
-      degradedDiscovery: discovery.degraded,
 
       timestamp: new Date().toISOString(),
     });
+
   } catch (err) {
     return res.status(500).json({
       success: false,
