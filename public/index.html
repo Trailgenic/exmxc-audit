@@ -86,7 +86,7 @@
         <span class="font-semibold">Crawl Health</span>
         <span id="crawlHealthScore" class="badge bg-gray-200">--</span>
       </div>
-      <div id="crawlHealthCategory" class="text-xs mb-1"></div>
+      <div id="crawlHealthCategory" class="text-xs mb-1">—</div>
       <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
     </div>
 
@@ -103,6 +103,7 @@
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier1Bar" class="h-2 rounded"></div>
       </div>
+      <div id="tier1Meta" class="text-[11px] text-gray-500 mt-1"></div>
     </div>
     <div class="bg-white border rounded p-3">
       <strong>Tier 2</strong>
@@ -110,6 +111,7 @@
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier2Bar" class="h-2 rounded"></div>
       </div>
+      <div id="tier2Meta" class="text-[11px] text-gray-500 mt-1"></div>
     </div>
     <div class="bg-white border rounded p-3">
       <strong>Tier 3</strong>
@@ -117,6 +119,7 @@
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier3Bar" class="h-2 rounded"></div>
       </div>
+      <div id="tier3Meta" class="text-[11px] text-gray-500 mt-1"></div>
     </div>
   </div>
 </section>
@@ -159,6 +162,7 @@
 <script>
 const runButton = document.getElementById("runButton");
 const resultEl = document.getElementById("result");
+const timestampEl = document.getElementById("timestamp");
 
 const scoreDisplay = document.getElementById("scoreDisplay");
 const scoreBar = document.getElementById("scoreBar");
@@ -179,6 +183,9 @@ const tier3ScoreEl = document.getElementById("tier3Score");
 const tier1BarEl = document.getElementById("tier1Bar");
 const tier2BarEl = document.getElementById("tier2Bar");
 const tier3BarEl = document.getElementById("tier3Bar");
+const tier1MetaEl = document.getElementById("tier1Meta");
+const tier2MetaEl = document.getElementById("tier2Meta");
+const tier3MetaEl = document.getElementById("tier3Meta");
 
 const metaSignalsEl = document.getElementById("metaSignals");
 const schemaSignalsEl = document.getElementById("schemaSignals");
@@ -192,13 +199,23 @@ function color(score) {
   return "bg-red-500";
 }
 
+/* ----------------------------
+   13 SIGNALS GROUPING
+----------------------------- */
+const GROUPS = {
+  meta: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
+  schema: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
+  lattice: ["Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
+  content: ["Inference Efficiency"]
+};
+
 function renderSignal(signal) {
   const pct = signal.max ? Math.round((signal.points / signal.max) * 100) : 0;
   const div = document.createElement("div");
   div.innerHTML = `
     <div class="flex justify-between text-xs mb-1">
-      <span>${signal.key}</span>
-      <span>${signal.points}/${signal.max}</span>
+      <span class="font-medium text-gray-900">${signal.key}</span>
+      <span class="text-gray-700">${signal.points}/${signal.max}</span>
     </div>
     <div class="h-2 bg-gray-200 rounded">
       <div class="h-2 rounded ${color(pct)}" style="width:${pct}%"></div>
@@ -208,47 +225,239 @@ function renderSignal(signal) {
   return div;
 }
 
-const GROUPS = {
-  meta: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
-  schema: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
-  lattice: ["Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
-  content: ["Inference Efficiency"]
+/* ----------------------------
+   TIERS (DERIVED FROM BREAKDOWN)
+----------------------------- */
+const TIER_MAP = {
+  tier1: [
+    "Inference Efficiency",
+    "Internal Lattice Integrity",
+    "External Authority Signal",
+    "Social Entity Links",
+    "AI Crawl Fidelity",
+  ],
+  tier2: [
+    "Schema Presence & Validity",
+    "Organization Schema",
+    "Breadcrumb Schema",
+    "Author/Person Schema",
+  ],
+  tier3: [
+    "Title Precision",
+    "Meta Description Integrity",
+    "Canonical Clarity",
+    "Brand & Technical Consistency",
+  ],
 };
 
-runButton.onclick = async () => {
-  const input = document.getElementById("urlInput").value.trim();
-  if (!input) return;
+function computeTier(breakdown, keys) {
+  let raw = 0;
+  let max = 0;
 
-  const url = input.startsWith("http") ? input : `https://${input}`;
-  const res = await fetch(`https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`, {
-    headers: { "x-exmxc-key": "exmxc-internal" }
+  breakdown.forEach(sig => {
+    if (keys.includes(sig.key)) {
+      raw += sig.points || 0;
+      max += sig.max || 0;
+    }
   });
-  const data = await res.json();
 
-  resultEl.textContent = JSON.stringify(data, null, 2);
+  const pct = max ? Math.round((raw / max) * 100) : 0;
+  return { raw, max, pct };
+}
 
-  const score = data.entityScore || 0;
-  scoreDisplay.textContent = `EEI: ${score} / 100`;
-  scoreBar.style.width = `${score}%`;
-  scoreBar.className = `h-3 rounded-full ${color(score)}`;
-  scoreBadge.textContent = data.entityStage || "";
+function setTier(elScore, elBar, elMeta, tier) {
+  if (!tier || !tier.max) {
+    elScore.textContent = "--";
+    elBar.style.width = "0%";
+    elBar.className = "h-2 rounded bg-gray-300";
+    elMeta.textContent = "";
+    return;
+  }
 
-  entityNameEl.textContent = `Entity: ${data.entityName || data.hostname}`;
-  entityStageEl.textContent = data.entityStage || "";
-  entityVerbEl.textContent = data.entityDescription || "";
-  entityFocusEl.textContent = data.entityFocus || "";
+  elScore.textContent = `${tier.pct}/100`;
+  elBar.style.width = `${tier.pct}%`;
+  elBar.className = `h-2 rounded ${color(tier.pct)}`;
+  elMeta.textContent = `Raw ${tier.raw} / ${tier.max}`;
+}
 
+/* ----------------------------
+   CRAWL HEALTH (DERIVED FROM crawlHealth)
+   NOTE: If API later returns crawlHealth.score/category/notes, we prefer that.
+----------------------------- */
+function deriveCrawlHealth(ch = {}, modeHint = "") {
+  // Prefer server-scored crawl health if present (future-proofing)
+  if (typeof ch.score === "number") {
+    return {
+      score: ch.score,
+      category: ch.category || ch.mode || modeHint || "unknown",
+      notes: Array.isArray(ch.notes) ? ch.notes : []
+    };
+  }
+
+  let score = 50;
+  const notes = [];
+  const mode = ch.mode || modeHint || "unknown";
+
+  if (mode === "lite") {
+    score = 40;
+    notes.push("Lite crawl only");
+  } else {
+    notes.push("Rendered crawl");
+  }
+
+  if (typeof ch.wordCount === "number") {
+    if (ch.wordCount > 800) {
+      score += 20;
+      notes.push("Sufficient content depth");
+    } else if (ch.wordCount > 300) {
+      score += 10;
+      notes.push("Moderate content depth");
+    } else {
+      notes.push("Shallow content depth");
+    }
+  }
+
+  if (typeof ch.internalLinkRatio === "number") {
+    if (ch.internalLinkRatio >= 0.9) {
+      score += 20;
+      notes.push("Strong internal lattice");
+    } else if (ch.internalLinkRatio > 0) {
+      score += 10;
+      notes.push("Some internal lattice");
+    } else {
+      notes.push("Weak internal lattice");
+    }
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return { score, category: mode, notes };
+}
+
+function setCrawlHealthUI(chComputed) {
+  const score = typeof chComputed.score === "number" ? chComputed.score : null;
+
+  crawlHealthScoreEl.textContent = score === null ? "--" : `${score}/100`;
+  crawlHealthScoreEl.className =
+    "badge " +
+    (score === null ? "bg-gray-200 text-gray-700" : `${color(score)} text-white`);
+
+  crawlHealthCategoryEl.textContent = chComputed.category
+    ? String(chComputed.category)
+    : "—";
+
+  crawlHealthNotesEl.innerHTML = "";
+  (chComputed.notes || []).forEach(n => {
+    const li = document.createElement("li");
+    li.textContent = n;
+    crawlHealthNotesEl.appendChild(li);
+  });
+}
+
+function resetUIForRun() {
+  // Clear 13 signals
   metaSignalsEl.innerHTML = "";
   schemaSignalsEl.innerHTML = "";
   latticeSignalsEl.innerHTML = "";
   contentSignalsEl.innerHTML = "";
 
-  (data.breakdown || []).forEach(sig => {
-    if (GROUPS.meta.includes(sig.key)) metaSignalsEl.appendChild(renderSignal(sig));
-    if (GROUPS.schema.includes(sig.key)) schemaSignalsEl.appendChild(renderSignal(sig));
-    if (GROUPS.lattice.includes(sig.key)) latticeSignalsEl.appendChild(renderSignal(sig));
-    if (GROUPS.content.includes(sig.key)) contentSignalsEl.appendChild(renderSignal(sig));
-  });
+  // Reset tiers
+  setTier(tier1ScoreEl, tier1BarEl, tier1MetaEl, null);
+  setTier(tier2ScoreEl, tier2BarEl, tier2MetaEl, null);
+  setTier(tier3ScoreEl, tier3BarEl, tier3MetaEl, null);
+
+  // Reset crawl health
+  crawlHealthCategoryEl.textContent = "—";
+  crawlHealthNotesEl.innerHTML = "";
+  crawlHealthScoreEl.textContent = "--";
+  crawlHealthScoreEl.className = "badge bg-gray-200 text-gray-700";
+}
+
+runButton.onclick = async () => {
+  const input = document.getElementById("urlInput").value.trim();
+  if (!input) return;
+
+  resetUIForRun();
+  resultEl.textContent = "Loading...";
+
+  const url = input.startsWith("http") ? input : `https://${input}`;
+
+  try {
+    const res = await fetch(
+      `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
+      { headers: { "x-exmxc-key": "exmxc-internal" } }
+    );
+
+    const data = await res.json();
+    resultEl.textContent = JSON.stringify(data, null, 2);
+
+    const now = new Date();
+    timestampEl.textContent = `Last run: ${now.toLocaleString()}`;
+
+    if (!data || !data.success) {
+      scoreDisplay.textContent = "EEI: -- / 100";
+      scoreBar.style.width = "0%";
+      scoreBar.className = "h-3 rounded-full bg-gray-300";
+      scoreBadge.textContent = "Error";
+      scoreBadge.className = "badge bg-red-100 text-red-700";
+      entityNameEl.textContent = "";
+      entityStageEl.textContent = "";
+      entityVerbEl.textContent = "";
+      entityFocusEl.textContent = "";
+      return;
+    }
+
+    // Score + headline
+    const score = (typeof data.entityScore === "number") ? data.entityScore : 0;
+
+    scoreDisplay.textContent = `EEI: ${score} / 100`;
+    scoreBar.style.width = `${score}%`;
+    scoreBar.className = `h-3 rounded-full ${color(score)}`;
+
+    scoreBadge.textContent = data.entityStage || "—";
+    scoreBadge.className = "badge bg-gray-200";
+
+    // Entity naming / descriptors
+    entityNameEl.textContent = `Entity: ${data.entityName || data.hostname || ""}`;
+    entityStageEl.textContent = data.entityStage || "";
+    entityVerbEl.textContent = data.entityDescription || "";
+    entityFocusEl.textContent = data.entityFocus || "";
+
+    // 13-signal bars
+    const breakdown = Array.isArray(data.breakdown) ? data.breakdown : [];
+
+    breakdown.forEach(sig => {
+      if (!sig || !sig.key) return;
+      if (GROUPS.meta.includes(sig.key)) metaSignalsEl.appendChild(renderSignal(sig));
+      if (GROUPS.schema.includes(sig.key)) schemaSignalsEl.appendChild(renderSignal(sig));
+      if (GROUPS.lattice.includes(sig.key)) latticeSignalsEl.appendChild(renderSignal(sig));
+      if (GROUPS.content.includes(sig.key)) contentSignalsEl.appendChild(renderSignal(sig));
+    });
+
+    // Tier 1/2/3 derived from breakdown
+    const t1 = computeTier(breakdown, TIER_MAP.tier1);
+    const t2 = computeTier(breakdown, TIER_MAP.tier2);
+    const t3 = computeTier(breakdown, TIER_MAP.tier3);
+
+    setTier(tier1ScoreEl, tier1BarEl, tier1MetaEl, t1);
+    setTier(tier2ScoreEl, tier2BarEl, tier2MetaEl, t2);
+    setTier(tier3ScoreEl, tier3BarEl, tier3MetaEl, t3);
+
+    // Crawl health derived from crawlHealth + comprehension mode hint
+    const chComputed = deriveCrawlHealth(
+      data.crawlHealth || {},
+      data.entityComprehensionMode || ""
+    );
+    setCrawlHealthUI(chComputed);
+
+  } catch (err) {
+    resultEl.textContent = JSON.stringify({ success: false, error: err.message }, null, 2);
+    scoreDisplay.textContent = "EEI: -- / 100";
+    scoreBar.style.width = "0%";
+    scoreBar.className = "h-3 rounded-full bg-gray-300";
+    scoreBadge.textContent = "Error";
+    scoreBadge.className = "badge bg-red-100 text-red-700";
+  }
 };
 </script>
 
