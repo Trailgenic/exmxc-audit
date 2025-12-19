@@ -1,130 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EEI Single URL Audit — Internal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EEI Single URL Audit — Internal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 
-    <style>
-      body {
-        background-color: #f9fafb;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      }
-      .json-box {
-        background-color: #020617;
-        color: #e2e8f0;
-        padding: 1rem;
-        border-radius: 0.75rem;
-        font-size: 0.9rem;
-        white-space: pre-wrap;
-        overflow-x: auto;
-      }
-      .badge {
-        font-size: 0.7rem;
-        padding: 0.15rem 0.5rem;
-        border-radius: 999px;
-      }
-    </style>
-  </head>
+  <style>
+    body {
+      background-color: #f9fafb;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    .json-box {
+      background-color: #020617;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    .badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+    }
+  </style>
+</head>
 
-  <body class="max-w-6xl mx-auto py-10 px-5">
+<body class="max-w-6xl mx-auto py-10 px-5">
 
-    <!-- HEADER -->
-    <header class="mb-8">
-      <div class="flex justify-between items-start">
-        <div>
-          <h1 class="text-3xl font-bold text-gray-900">
-            EEI Single URL Audit <span class="text-xs text-gray-500">INTERNAL</span>
-          </h1>
-          <p class="text-sm text-gray-600 mt-1">
-            exmxc.ai · Entity Engineering Index — full 13-signal diagnostic
-          </p>
-        </div>
-        <div class="text-xs text-gray-500 text-right">
-          <div>Powered by <strong>exmxc.ai</strong></div>
-          <div id="timestamp"></div>
-        </div>
+<!-- HEADER -->
+<header class="mb-8">
+  <div class="flex justify-between items-start">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">
+        EEI Single URL Audit <span class="text-xs text-gray-500">INTERNAL</span>
+      </h1>
+      <p class="text-sm text-gray-600 mt-1">
+        exmxc.ai · Entity Engineering Index — full 13-signal diagnostic
+      </p>
+    </div>
+    <div class="text-xs text-gray-500 text-right">
+      <div>Powered by <strong>exmxc.ai</strong></div>
+      <div id="timestamp"></div>
+    </div>
+  </div>
+</header>
+
+<!-- INPUT -->
+<section class="bg-white border rounded-xl p-4 mb-6 shadow-sm">
+  <label class="text-xs text-gray-600">URL to audit</label>
+  <div class="flex gap-2 mt-1">
+    <input id="urlInput" class="flex-1 border rounded px-3 py-2 text-sm" placeholder="example.com" />
+    <button id="runButton" class="bg-black text-white px-4 py-2 rounded">Run Audit</button>
+  </div>
+</section>
+
+<!-- SCORE -->
+<section class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+  <div class="flex justify-between items-start gap-6">
+
+    <div>
+      <div id="entityName" class="text-sm font-semibold text-gray-800"></div>
+
+      <div class="flex items-center gap-2 mt-1">
+        <div id="scoreDisplay" class="text-3xl font-bold">EEI: -- / 100</div>
+        <span id="scoreBadge" class="badge bg-gray-200">Awaiting</span>
       </div>
-    </header>
 
-    <!-- INPUT -->
-    <section class="bg-white border rounded-xl p-4 mb-6 shadow-sm">
-      <label class="text-xs text-gray-600">URL to audit</label>
-      <div class="flex gap-2 mt-1">
-        <input id="urlInput" class="flex-1 border rounded px-3 py-2 text-sm" placeholder="example.com" />
-        <button id="runButton" class="bg-black text-white px-4 py-2 rounded">Run Audit</button>
+      <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
+        <div id="scoreBar" class="h-3 rounded-full"></div>
       </div>
-    </section>
 
-    <!-- SCORE -->
-    <section class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
-      <div class="flex justify-between items-start gap-6">
-
-        <div>
-          <div id="entityName" class="text-sm font-semibold text-gray-800"></div>
-          <div class="flex items-center gap-2 mt-1">
-            <div id="scoreDisplay" class="text-3xl font-bold">EEI: -- / 100</div>
-            <span id="scoreBadge" class="badge bg-gray-200">Awaiting</span>
-          </div>
-
-          <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
-            <div id="scoreBar" class="h-3 rounded-full"></div>
-          </div>
-
-          <div class="mt-2">
-            <div id="entityStage" class="font-semibold"></div>
-            <div id="entityVerb" class="text-xs text-gray-700"></div>
-            <div id="entityFocus" class="text-xs text-gray-500"></div>
-          </div>
-        </div>
-
-        <!-- CRAWL HEALTH -->
-        <div class="bg-white border rounded-lg p-3 w-60 text-xs">
-          <div class="flex justify-between items-center mb-1">
-            <span class="font-semibold">Crawl Health</span>
-            <span id="crawlHealthScore" class="badge bg-gray-200">--</span>
-          </div>
-          <div id="crawlHealthCategory" class="text-xs mb-1"></div>
-          <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
-        </div>
-
+      <div class="mt-2">
+        <div id="entityStage" class="font-semibold"></div>
+        <div id="entityVerb" class="text-xs text-gray-700"></div>
+        <div id="entityFocus" class="text-xs text-gray-500"></div>
       </div>
-    </section>
+    </div>
 
-    <!-- TIERS -->
-    <section class="mb-8">
-      <h2 class="text-sm font-semibold mb-2">Tier Summary</h2>
-      <div class="grid grid-cols-3 gap-3 text-xs">
-        <div class="bg-white border rounded p-3">
-          <strong>Tier 1</strong>
-          <div id="tier1Score">--</div>
-          <div class="h-2 bg-gray-200 rounded">
-            <div id="tier1Bar" class="h-2 rounded"></div>
-          </div>
-        </div>
-        <div class="bg-white border rounded p-3">
-          <strong>Tier 2</strong>
-          <div id="tier2Score">--</div>
-          <div class="h-2 bg-gray-200 rounded">
-            <div id="tier2Bar" class="h-2 rounded"></div>
-          </div>
-        </div>
-        <div class="bg-white border rounded p-3">
-          <strong>Tier 3</strong>
-          <div id="tier3Score">--</div>
-          <div class="h-2 bg-gray-200 rounded">
-            <div id="tier3Bar" class="h-2 rounded"></div>
-          </div>
-        </div>
+    <!-- CRAWL HEALTH -->
+    <div class="bg-white border rounded-lg p-3 w-60 text-xs">
+      <div class="flex justify-between items-center mb-1">
+        <span class="font-semibold">Crawl Health</span>
+        <span id="crawlHealthScore" class="badge bg-gray-200">--</span>
       </div>
-    </section>
+      <div id="crawlHealthCategory" class="text-xs mb-1"></div>
+      <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
+    </div>
 
-    <!-- RAW JSON -->
-    <section>
-      <h2 class="text-sm font-semibold mb-2">Raw JSON</h2>
-      <pre id="result" class="json-box">// Awaiting input…</pre>
-    </section>
+  </div>
+</section>
+
+<!-- TIERS -->
+<section class="mb-8">
+  <h2 class="text-sm font-semibold mb-2">Tier Summary</h2>
+  <div class="grid grid-cols-3 gap-3 text-xs">
+    <div class="bg-white border rounded p-3">
+      <strong>Tier 1</strong>
+      <div id="tier1Score">--</div>
+      <div class="h-2 bg-gray-200 rounded">
+        <div id="tier1Bar" class="h-2 rounded"></div>
+      </div>
+    </div>
+    <div class="bg-white border rounded p-3">
+      <strong>Tier 2</strong>
+      <div id="tier2Score">--</div>
+      <div class="h-2 bg-gray-200 rounded">
+        <div id="tier2Bar" class="h-2 rounded"></div>
+      </div>
+    </div>
+    <div class="bg-white border rounded p-3">
+      <strong>Tier 3</strong>
+      <div id="tier3Score">--</div>
+      <div class="h-2 bg-gray-200 rounded">
+        <div id="tier3Bar" class="h-2 rounded"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 SIGNAL BREAKDOWN -->
+<section class="mb-10">
+  <h2 class="text-sm font-semibold mb-4">13 Signal Breakdown</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+
+    <div class="bg-white border rounded-xl p-4">
+      <h3 class="font-semibold mb-2">Meta Signals</h3>
+      <div id="metaSignals" class="space-y-4"></div>
+    </div>
+
+    <div class="bg-white border rounded-xl p-4">
+      <h3 class="font-semibold mb-2">Schema Signals</h3>
+      <div id="schemaSignals" class="space-y-4"></div>
+    </div>
+
+    <div class="bg-white border rounded-xl p-4">
+      <h3 class="font-semibold mb-2">Lattice & Crawl Signals</h3>
+      <div id="latticeSignals" class="space-y-4"></div>
+    </div>
+
+    <div class="bg-white border rounded-xl p-4">
+      <h3 class="font-semibold mb-2">Content Signals</h3>
+      <div id="contentSignals" class="space-y-4"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- RAW JSON -->
+<section>
+  <h2 class="text-sm font-semibold mb-2">Raw JSON</h2>
+  <pre id="result" class="json-box">// Awaiting input…</pre>
+</section>
 
 <script>
 const runButton = document.getElementById("runButton");
@@ -150,6 +180,11 @@ const tier1BarEl = document.getElementById("tier1Bar");
 const tier2BarEl = document.getElementById("tier2Bar");
 const tier3BarEl = document.getElementById("tier3Bar");
 
+const metaSignalsEl = document.getElementById("metaSignals");
+const schemaSignalsEl = document.getElementById("schemaSignals");
+const latticeSignalsEl = document.getElementById("latticeSignals");
+const contentSignalsEl = document.getElementById("contentSignals");
+
 function color(score) {
   if (score >= 80) return "bg-green-500";
   if (score >= 60) return "bg-yellow-400";
@@ -157,32 +192,28 @@ function color(score) {
   return "bg-red-500";
 }
 
-const TIER_MAP = {
-  tier1: ["Inference Efficiency","Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
-  tier2: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
-  tier3: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
+function renderSignal(signal) {
+  const pct = signal.max ? Math.round((signal.points / signal.max) * 100) : 0;
+  const div = document.createElement("div");
+  div.innerHTML = `
+    <div class="flex justify-between text-xs mb-1">
+      <span>${signal.key}</span>
+      <span>${signal.points}/${signal.max}</span>
+    </div>
+    <div class="h-2 bg-gray-200 rounded">
+      <div class="h-2 rounded ${color(pct)}" style="width:${pct}%"></div>
+    </div>
+    <div class="text-[11px] text-gray-500">${signal.notes || ""}</div>
+  `;
+  return div;
+}
+
+const GROUPS = {
+  meta: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
+  schema: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
+  lattice: ["Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
+  content: ["Inference Efficiency"]
 };
-
-function computeTier(breakdown, keys) {
-  let raw = 0, max = 0;
-  breakdown.forEach(s => {
-    if (keys.includes(s.key)) {
-      raw += s.points || 0;
-      max += s.max || 0;
-    }
-  });
-  const pct = max ? Math.round((raw / max) * 100) : 0;
-  return { raw, max, pct };
-}
-
-function deriveCrawlHealth(ch) {
-  let score = 60;
-  const notes = [];
-  if (ch.mode === "lite") { score = 40; notes.push("Lite crawl"); }
-  if (ch.wordCount > 1000) notes.push("Sufficient content depth");
-  if (ch.internalLinkRatio === 1) notes.push("Strong internal lattice");
-  return { score, category: ch.mode, notes };
-}
 
 runButton.onclick = async () => {
   const input = document.getElementById("urlInput").value.trim();
@@ -207,32 +238,19 @@ runButton.onclick = async () => {
   entityVerbEl.textContent = data.entityDescription || "";
   entityFocusEl.textContent = data.entityFocus || "";
 
-  const breakdown = data.breakdown || [];
+  metaSignalsEl.innerHTML = "";
+  schemaSignalsEl.innerHTML = "";
+  latticeSignalsEl.innerHTML = "";
+  contentSignalsEl.innerHTML = "";
 
-  const t1 = computeTier(breakdown, TIER_MAP.tier1);
-  const t2 = computeTier(breakdown, TIER_MAP.tier2);
-  const t3 = computeTier(breakdown, TIER_MAP.tier3);
-
-  tier1ScoreEl.textContent = `${t1.pct}/100`;
-  tier2ScoreEl.textContent = `${t2.pct}/100`;
-  tier3ScoreEl.textContent = `${t3.pct}/100`;
-
-  tier1BarEl.style.width = `${t1.pct}%`; tier1BarEl.className = `h-2 ${color(t1.pct)}`;
-  tier2BarEl.style.width = `${t2.pct}%`; tier2BarEl.className = `h-2 ${color(t2.pct)}`;
-  tier3BarEl.style.width = `${t3.pct}%`; tier3BarEl.className = `h-2 ${color(t3.pct)}`;
-
-  const ch = deriveCrawlHealth(data.crawlHealth || {});
-  crawlHealthScoreEl.textContent = `${ch.score}/100`;
-  crawlHealthScoreEl.className = `badge ${color(ch.score)} text-white`;
-  crawlHealthCategoryEl.textContent = ch.category || "";
-  crawlHealthNotesEl.innerHTML = "";
-  ch.notes.forEach(n => {
-    const li = document.createElement("li");
-    li.textContent = n;
-    crawlHealthNotesEl.appendChild(li);
+  (data.breakdown || []).forEach(sig => {
+    if (GROUPS.meta.includes(sig.key)) metaSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.schema.includes(sig.key)) schemaSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.lattice.includes(sig.key)) latticeSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.content.includes(sig.key)) contentSignalsEl.appendChild(renderSignal(sig));
   });
 };
 </script>
 
-  </body>
+</body>
 </html>
