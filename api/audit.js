@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v5.5
+// /api/audit.js — EEI v5.6
 // Sovereign dual-crawler orchestration (lite → heavy)
-// Default behavior preserved
+// Lite = discovery only
+// Heavy = authoritative EEI scoring
 
 import axios from "axios";
 import https from "https";
@@ -90,19 +91,22 @@ export default async function handler(req, res) {
     const input = req.query?.url;
     const mode = req.query?.mode || "auto"; // auto | lite | heavy
 
-    if (!input) return res.status(400).json({ error: "Missing URL" });
+    if (!input) {
+      return res.status(400).json({ success: false, error: "Missing URL" });
+    }
 
     const normalized = normalizeUrl(input);
-    if (!normalized)
-      return res.status(400).json({ error: "Invalid URL format" });
+    if (!normalized) {
+      return res.status(400).json({ success: false, error: "Invalid URL" });
+    }
 
     const host = hostnameOf(normalized);
 
-    let crawlData;
+    let crawlData = null;
     let entityComprehensionMode = "heavy";
 
     /* ========================================================
-       LITE MODE (explicit or auto-first)
+       LITE MODE — DISCOVERY ONLY (NO SCORING)
        ======================================================== */
 
     if (mode === "lite" || mode === "auto") {
@@ -119,15 +123,13 @@ export default async function handler(req, res) {
           success: true,
           surfaces: [
             {
-              html: "",
-              title: lite.title,
-              description: lite.description,
-              canonicalHref: lite.canonical,
+              html: "", // ⛔ intentionally empty
+              title: lite.title || "",
+              description: lite.description || "",
+              canonicalHref: lite.canonical || normalized,
               schemaObjects: lite.schemaObjects || [],
               pageLinks: [],
-              crawlHealth: {
-                mode: "lite",
-              },
+              crawlHealth: { mode: "lite" },
             },
           ],
         };
@@ -136,13 +138,16 @@ export default async function handler(req, res) {
 
       } catch (err) {
         if (mode === "lite") {
-          throw err; // explicit lite must fail hard
+          return res.status(502).json({
+            success: false,
+            error: "Lite crawl failed",
+          });
         }
       }
     }
 
     /* ========================================================
-       HEAVY FALLBACK (unchanged behavior)
+       HEAVY MODE — AUTHORITATIVE CRAWL
        ======================================================== */
 
     if (!crawlData) {
@@ -200,37 +205,49 @@ export default async function handler(req, res) {
       null;
 
     /* ========================================================
-       EEI SCORING
+       EEI SCORING — HEAVY ONLY
        ======================================================== */
 
-    const results = [
-      scoreTitle($),
-      scoreMetaDescription($),
-      scoreCanonical($, normalized),
-      scoreSchemaPresence(schemaObjects),
-      scoreOrgSchema(schemaObjects),
-      scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects, $),
-      scoreSocialLinks(schemaObjects, pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($),
-      scoreInternalLinks(pageLinks, host),
-      scoreExternalLinks(pageLinks, host),
-      scoreFaviconOg($),
-    ];
+    const isLiteOnly = entityComprehensionMode === "lite";
 
-    let totalRaw = 0;
-    for (const sig of results) {
-      totalRaw += clamp(sig.points || 0, 0, sig.max);
+    let results = [];
+    let entityScore = null;
+    let entityTier = null;
+
+    if (!isLiteOnly) {
+      results = [
+        scoreTitle($),
+        scoreMetaDescription($),
+        scoreCanonical($, normalized),
+        scoreSchemaPresence(schemaObjects),
+        scoreOrgSchema(schemaObjects),
+        scoreBreadcrumbSchema(schemaObjects),
+        scoreAuthorPerson(schemaObjects, $),
+        scoreSocialLinks(schemaObjects, pageLinks),
+        scoreAICrawlSignals($),
+        scoreContentDepth($),
+        scoreInternalLinks(pageLinks, host),
+        scoreExternalLinks(pageLinks, host),
+        scoreFaviconOg($),
+      ];
+
+      let totalRaw = 0;
+      for (const sig of results) {
+        totalRaw += clamp(sig.points || 0, 0, sig.max);
+      }
+
+      entityScore = clamp(
+        Math.round((totalRaw * 100) / TOTAL_WEIGHT),
+        0,
+        100
+      );
+
+      entityTier = tierFromScore(entityScore);
     }
 
-    const entityScore = clamp(
-      Math.round((totalRaw * 100) / TOTAL_WEIGHT),
-      0,
-      100
-    );
-
-    const entityTier = tierFromScore(entityScore);
+    /* ========================================================
+       RESPONSE
+       ======================================================== */
 
     return res.status(200).json({
       success: true,
@@ -241,13 +258,15 @@ export default async function handler(req, res) {
       canonical,
       description,
 
-      entityScore,
-      entityStage: entityTier.stage,
-      entityVerb: entityTier.verb,
-      entityDescription: entityTier.description,
-      entityFocus: entityTier.coreFocus,
+      eeiScoringStatus: isLiteOnly ? "unscored-lite" : "scored-heavy",
 
-      breakdown: results,
+      entityScore,
+      entityStage: entityTier?.stage || null,
+      entityVerb: entityTier?.verb || null,
+      entityDescription: entityTier?.description || null,
+      entityFocus: entityTier?.coreFocus || null,
+
+      breakdown: isLiteOnly ? [] : results,
       entitySignals: entityAggregate.entitySignals,
       entitySummary: entityAggregate.entitySummary,
 
