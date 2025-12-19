@@ -1,5 +1,5 @@
 // /api/audit-batch.js
-// EEI Batch Orchestrator — Lite → Heavy Promotion Pipeline
+// EEI Batch Orchestrator — Lite → Heavy Promotion Pipeline (PAGINATED)
 // Reads from /data/*.json, never mutates sources
 
 import fs from "fs";
@@ -34,13 +34,12 @@ function shouldPromote(lite) {
   // Never promote failed or degraded lite crawls
   if (!lite?.success) return false;
 
-  // Require at least ONE strong structural signal
+  // Require strong structural signal
   return (
     Array.isArray(lite.schemaObjects) &&
     lite.schemaObjects.length >= 2
   );
 }
-
 
 /* ============================================================
    HANDLER
@@ -57,9 +56,13 @@ export default async function handler(req, res) {
   }
 
   const startTime = Date.now();
-  const MAX_RUNTIME_MS = 240_000; // 4 minutes hard stop
+  const MAX_RUNTIME_MS = 240_000; // 4 minutes hard stop (safety)
 
   try {
+    /* --------------------------------------------------------
+       INPUTS
+       -------------------------------------------------------- */
+
     const verticalSlug = req.query?.vertical;
     if (!verticalSlug) {
       return res.status(400).json({
@@ -69,7 +72,11 @@ export default async function handler(req, res) {
     }
 
     const offset = parseInt(req.query.offset || "0", 10);
-    const limit  = parseInt(req.query.limit  || "8", 10);
+    const limit  = parseInt(req.query.limit  || "5", 10);
+
+    /* --------------------------------------------------------
+       LOAD DATASET
+       -------------------------------------------------------- */
 
     const dataset = loadVerticalFile(verticalSlug);
     if (!dataset || !Array.isArray(dataset.urls)) {
@@ -85,8 +92,12 @@ export default async function handler(req, res) {
     const liteResults = [];
     const heavyResults = [];
 
+    /* --------------------------------------------------------
+       LITE → HEAVY LOOP (PAGINATED)
+       -------------------------------------------------------- */
+
     for (const url of slice) {
-      // ---- time guard
+      // ---- hard time guard
       if (Date.now() - startTime > MAX_RUNTIME_MS) break;
 
       try {
@@ -124,8 +135,16 @@ export default async function handler(req, res) {
       }
     }
 
+    /* --------------------------------------------------------
+       PAGINATION METADATA
+       -------------------------------------------------------- */
+
     const nextOffset = offset + slice.length;
     const hasMore = nextOffset < urls.length;
+
+    /* --------------------------------------------------------
+       RESPONSE (ALWAYS JSON)
+       -------------------------------------------------------- */
 
     return res.status(200).json({
       success: true,
@@ -158,90 +177,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-    /* ========================================================
-       1) LOAD DATASET
-       ======================================================== */
-
-    const dataset = loadVerticalFile(verticalSlug);
-    if (!dataset || !Array.isArray(dataset.urls)) {
-      return res.status(404).json({
-        success: false,
-        error: "Vertical not found or invalid format",
-      });
-    }
-
-    const liteResults = [];
-    const heavyResults = [];
-
-    /* ========================================================
-       2) LITE CRAWL LOOP
-       ======================================================== */
-
-    for (const url of dataset.urls) {
-      try {
-        const liteResp = await axios.post(
-          `${CRAWL_LITE_BASE}/crawl-lite`,
-          { url },
-          { timeout: 15000 }
-        );
-
-        const lite = liteResp.data;
-        liteResults.push(lite);
-
-        /* ====================================================
-           3) PROMOTION CHECK
-           ==================================================== */
-
-        if (shouldPromote(lite)) {
-          try {
-            const heavyResp = await axios.get(AUDIT_BASE, {
-              params: { url },
-              timeout: 30000,
-            });
-
-            heavyResults.push(heavyResp.data);
-          } catch (heavyErr) {
-            heavyResults.push({
-              url,
-              success: false,
-              error: "heavy-audit-failed",
-            });
-          }
-        }
-      } catch (liteErr) {
-        liteResults.push({
-          url,
-          success: false,
-          error: "lite-crawl-failed",
-        });
-      }
-    }
-
-    /* ========================================================
-       4) RESPONSE
-       ======================================================== */
-
-    return res.status(200).json({
-      success: true,
-      vertical: dataset.vertical,
-      description: dataset.description,
-      totals: {
-        urls: dataset.urls.length,
-        liteAudits: liteResults.length,
-        heavyAudits: heavyResults.length,
-      },
-      liteResults,
-      heavyResults,
-      timestamp: new Date().toISOString(),
-    });
-
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: "Batch audit failed",
-      details: err.message || String(err),
-    });
-  }
-}
-
