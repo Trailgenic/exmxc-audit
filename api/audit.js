@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v5.5
-// Sovereign dual-crawler orchestration (lite → heavy)
-// AUTO mode now escalates to heavy for scoring
+// /api/audit.js — EEI v5.6
+// Static-first EEI audit
+// Scoring is ALWAYS based on static crawl
+// Rendered crawl is DIAGNOSTIC ONLY (AI obstruction detection)
 
 import axios from "axios";
 import https from "https";
@@ -20,21 +21,12 @@ import {
   scoreInternalLinks,
   scoreExternalLinks,
   scoreFaviconOg,
-  tierFromScore,
+  tierFromScore
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
-
-/* ============================================================
-   NETWORK HARDENING
-   ============================================================ */
-
-const httpsAgent = new https.Agent({
-  keepAlive: false,
-  maxSockets: 1,
-});
 
 /* ============================================================
    CONFIG
@@ -43,8 +35,10 @@ const httpsAgent = new https.Agent({
 const CRAWL_WORKER_BASE =
   "https://exmxc-crawl-worker-production.up.railway.app";
 
-const CRAWL_LITE_BASE =
-  "https://exmxc-crawl-lite-production.up.railway.app";
+const httpsAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 1
+});
 
 /* ============================================================
    HELPERS
@@ -88,104 +82,59 @@ export default async function handler(req, res) {
 
   try {
     const input = req.query?.url;
-    const mode = req.query?.mode || "auto"; // auto | lite | heavy
+    const includeRenderedProbe = req.query?.probe === "true";
 
-    if (!input) return res.status(400).json({ error: "Missing URL" });
+    if (!input) {
+      return res.status(400).json({ error: "Missing URL" });
+    }
 
     const normalized = normalizeUrl(input);
-    if (!normalized)
+    if (!normalized) {
       return res.status(400).json({ error: "Invalid URL format" });
+    }
 
     const host = hostnameOf(normalized);
 
-    let crawlData = null;
-    let liteWasUsed = false;
-    let entityComprehensionMode = "heavy";
-
     /* ========================================================
-       LITE PROBE (lite OR auto)
+       SURFACE DISCOVERY (STATIC)
        ======================================================== */
 
-    if (mode === "lite" || mode === "auto") {
-      try {
-        const liteResp = await axios.post(
-          `${CRAWL_LITE_BASE}/crawl-lite`,
-          { url: normalized },
-          { timeout: 15000 }
-        );
+    const discovery = await discoverSurfaces(normalized);
+    const surfaceUrls = discovery.surfaces;
 
-        const lite = liteResp.data;
+    /* ========================================================
+       STATIC MULTI-SURFACE CRAWL (AUTHORITATIVE)
+       ======================================================== */
 
-        crawlData = {
-          success: true,
-          surfaces: [
-            {
-              html: "",
-              title: lite.title,
-              description: lite.description,
-              canonicalHref: lite.canonical,
-              schemaObjects: lite.schemaObjects || [],
-              pageLinks: [],
-              crawlHealth: { mode: "lite" },
-            },
-          ],
-        };
+    let crawlData;
+    try {
+      const crawlResp = await axios.post(
+        `${CRAWL_WORKER_BASE}/crawl`,
+        { url: normalized, surfaces: surfaceUrls },
+        { timeout: 45000, httpsAgent }
+      );
 
-        liteWasUsed = true;
-        entityComprehensionMode = "lite";
+      crawlData = crawlResp.data;
 
-      } catch (err) {
-        if (mode === "lite") {
-          throw err; // explicit lite must fail hard
-        }
+      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+        throw new Error("static-crawl-failed");
       }
+    } catch {
+      return res.status(502).json({
+        success: false,
+        error: "Static crawl failed"
+      });
     }
 
     /* ========================================================
-       HEAVY ESCALATION
-       - mode=heavy → always
-       - mode=auto  → always after lite probe
-       ======================================================== */
-
-    if (
-      !crawlData ||
-      mode === "heavy" ||
-      (mode === "auto" && liteWasUsed)
-    ) {
-      entityComprehensionMode = "heavy";
-
-      const discovery = await discoverSurfaces(normalized);
-      const surfaceUrls = discovery.surfaces;
-
-      try {
-        const crawlResp = await axios.post(
-          `${CRAWL_WORKER_BASE}/crawl`,
-          { url: normalized, surfaces: surfaceUrls },
-          { timeout: 45000, httpsAgent }
-        );
-
-        crawlData = crawlResp.data;
-
-        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-          throw new Error("crawl-failed");
-        }
-      } catch {
-        return res.status(502).json({
-          success: false,
-          error: "Crawl worker failed",
-        });
-      }
-    }
-
-    /* ========================================================
-       AGGREGATION
+       AGGREGATE ENTITY SIGNALS
        ======================================================== */
 
     const entityAggregate = aggregateSurfaces({
-      surfaces: crawlData.surfaces,
+      surfaces: crawlData.surfaces
     });
 
-    const homepage = crawlData.surfaces[0];
+    const homepage = crawlData.surfaces[0] || {};
 
     const {
       html = "",
@@ -194,54 +143,82 @@ export default async function handler(req, res) {
       canonicalHref: canonical = normalized,
       schemaObjects = [],
       pageLinks = [],
-      crawlHealth = null,
+      diagnostics = {},
+      crawlHealth = null
     } = homepage;
 
     const $ = cheerio.load(html || "<html></html>");
 
     const entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person")?.name ||
+      schemaObjects.find(o => o["@type"] === "Organization")?.name ||
+      schemaObjects.find(o => o["@type"] === "Person")?.name ||
       title.split(" | ")[0] ||
       null;
 
     /* ========================================================
-       EEI SCORING (HEAVY ONLY)
+       EEI SCORING (STATIC ONLY)
        ======================================================== */
 
-    let results = [];
-    let entityScore = null;
-    let entityTier = null;
+    const results = [
+      scoreTitle($, { title }),
+      scoreMetaDescription($, { description }),
+      scoreCanonical($, normalized, { canonicalHref: canonical }),
+      scoreSchemaPresence(schemaObjects),
+      scoreOrgSchema(schemaObjects),
+      scoreBreadcrumbSchema(schemaObjects),
+      scoreAuthorPerson(schemaObjects, $),
+      scoreSocialLinks(schemaObjects, pageLinks),
+      scoreAICrawlSignals($),
+      scoreContentDepth($, { wordCount: diagnostics.wordCount }),
+      scoreInternalLinks(pageLinks, host),
+      scoreExternalLinks(pageLinks, host),
+      scoreFaviconOg($)
+    ];
 
-    if (entityComprehensionMode === "heavy") {
-      results = [
-        scoreTitle($),
-        scoreMetaDescription($),
-        scoreCanonical($, normalized),
-        scoreSchemaPresence(schemaObjects),
-        scoreOrgSchema(schemaObjects),
-        scoreBreadcrumbSchema(schemaObjects),
-        scoreAuthorPerson(schemaObjects, $),
-        scoreSocialLinks(schemaObjects, pageLinks),
-        scoreAICrawlSignals($),
-        scoreContentDepth($),
-        scoreInternalLinks(pageLinks, host),
-        scoreExternalLinks(pageLinks, host),
-        scoreFaviconOg($),
-      ];
+    let totalRaw = 0;
+    for (const sig of results) {
+      totalRaw += clamp(sig.points || 0, 0, sig.max);
+    }
 
-      let totalRaw = 0;
-      for (const sig of results) {
-        totalRaw += clamp(sig.points || 0, 0, sig.max);
+    const entityScore = clamp(
+      Math.round((totalRaw * 100) / TOTAL_WEIGHT),
+      0,
+      100
+    );
+
+    const entityTier = tierFromScore(entityScore);
+
+    /* ========================================================
+       OPTIONAL RENDERED PROBE (DIAGNOSTIC ONLY)
+       ======================================================== */
+
+    let aiObstruction = null;
+
+    if (includeRenderedProbe) {
+      try {
+        const probeResp = await axios.post(
+          `${CRAWL_WORKER_BASE}/probe-rendered`,
+          { url: normalized },
+          { timeout: 20000, httpsAgent }
+        );
+
+        const probe = probeResp.data;
+
+        aiObstruction = {
+          detected:
+            probe?.blocked === true ||
+            probe?.wordCount < Math.min(200, diagnostics.wordCount || 9999),
+          reason: probe?.reason || null,
+          staticWordCount: diagnostics.wordCount || 0,
+          renderedWordCount: probe?.wordCount || 0,
+          userAgent: probe?.userAgent || null
+        };
+      } catch {
+        aiObstruction = {
+          detected: true,
+          reason: "rendered-probe-failed"
+        };
       }
-
-      entityScore = clamp(
-        Math.round((totalRaw * 100) / TOTAL_WEIGHT),
-        0,
-        100
-      );
-
-      entityTier = tierFromScore(entityScore);
     }
 
     /* ========================================================
@@ -257,32 +234,29 @@ export default async function handler(req, res) {
       canonical,
       description,
 
-      eeiScoringStatus:
-        entityComprehensionMode === "heavy"
-          ? "scored-heavy"
-          : "unscored-lite",
+      eeiScoringStatus: "scored-static",
 
       entityScore,
-      entityStage: entityTier?.stage || null,
-      entityVerb: entityTier?.verb || null,
-      entityDescription: entityTier?.description || null,
-      entityFocus: entityTier?.coreFocus || null,
+      entityStage: entityTier.stage,
+      entityVerb: entityTier.verb,
+      entityDescription: entityTier.description,
+      entityFocus: entityTier.coreFocus,
 
       breakdown: results,
       entitySignals: entityAggregate.entitySignals,
       entitySummary: entityAggregate.entitySummary,
 
-      entityComprehensionMode,
+      aiObstruction,
       crawlHealth,
 
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
 
   } catch (err) {
     return res.status(500).json({
       success: false,
       error: "Internal server error",
-      details: err.message || String(err),
+      details: err.message || String(err)
     });
   }
 }
