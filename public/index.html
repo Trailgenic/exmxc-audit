@@ -188,10 +188,17 @@ runButton.onclick = async () => {
     eciCoverageEl.textContent =
       `${eci.signalCoverage.observed} observed · ${eci.signalCoverage.unknown} unknown`;
 
-    // Render signals (ALWAYS 13)
-    eci.claritySignals.forEach(sig => {
-      signalListEl.appendChild(renderSignal(sig));
-    });
+    // Render signals (ALWAYS 13 — defensive)
+const signals = Array.isArray(eci.claritySignals)
+  ? eci.claritySignals
+  : [];
+
+signalListEl.innerHTML = "";
+
+signals.forEach(sig => {
+  signalListEl.appendChild(renderSignal(sig));
+});
+
 
     // Crawl health (diagnostic only)
     const ch = data.eei?.crawlHealth || {};
