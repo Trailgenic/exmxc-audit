@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EEI Single URL Audit — Internal</title>
+  <title>ECI Diagnostic Console — Internal</title>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -35,10 +35,10 @@
   <div class="flex justify-between items-start">
     <div>
       <h1 class="text-3xl font-bold text-gray-900">
-        EEI Single URL Audit <span class="text-xs text-gray-500">INTERNAL</span>
+        ECI Diagnostic Console <span class="text-xs text-gray-500">INTERNAL</span>
       </h1>
       <p class="text-sm text-gray-600 mt-1">
-        exmxc.ai · Entity Engineering Index — full 13-signal diagnostic
+        exmxc.ai · Entity Engineering → Entity Clarity Outcome
       </p>
     </div>
     <div class="text-xs text-gray-500 text-right">
@@ -50,55 +50,58 @@
 
 <!-- INPUT -->
 <section class="bg-white border rounded-xl p-4 mb-6 shadow-sm">
-  <label class="text-xs text-gray-600">URL to audit</label>
+  <label class="text-xs text-gray-600">URL to diagnose</label>
   <div class="flex gap-2 mt-1">
     <input id="urlInput" class="flex-1 border rounded px-3 py-2 text-sm" placeholder="example.com" />
-    <button id="runButton" class="bg-black text-white px-4 py-2 rounded">Run Audit</button>
+    <button id="runButton" class="bg-black text-white px-4 py-2 rounded">Run Diagnostic</button>
   </div>
 </section>
 
-<!-- SCORE -->
-<section class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+<!-- ECI OUTCOME -->
+<section class="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8">
   <div class="flex justify-between items-start gap-6">
 
     <div>
       <div id="entityName" class="text-sm font-semibold text-gray-800"></div>
 
       <div class="flex items-center gap-2 mt-1">
-        <div id="scoreDisplay" class="text-3xl font-bold">EEI: -- / 100</div>
-        <span id="scoreBadge" class="badge bg-gray-200">Awaiting</span>
+        <div id="scoreDisplay" class="text-3xl font-bold">ECI: -- / 100</div>
+        <span id="postureBadge" class="badge bg-gray-200">Awaiting</span>
       </div>
 
       <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
         <div id="scoreBar" class="h-3 rounded-full"></div>
       </div>
 
-      <div class="mt-2">
-        <div id="entityStage" class="font-semibold"></div>
-        <div id="entityVerb" class="text-xs text-gray-700"></div>
-        <div id="entityFocus" class="text-xs text-gray-500"></div>
+      <div class="mt-3 text-sm text-gray-700">
+        <div id="eciInterpretation" class="font-semibold"></div>
+        <div id="eciOverview" class="text-xs text-gray-600 mt-1"></div>
       </div>
     </div>
 
-    <!-- CRAWL HEALTH -->
-    <div class="bg-white border rounded-lg p-3 w-60 text-xs">
+    <!-- AI ACCESS CONDITIONS -->
+    <div class="bg-white border rounded-lg p-3 w-64 text-xs">
       <div class="flex justify-between items-center mb-1">
-        <span class="font-semibold">Crawl Health</span>
-        <span id="crawlHealthScore" class="badge bg-gray-200">--</span>
+        <span class="font-semibold">AI Access Conditions</span>
+        <span id="accessBadge" class="badge bg-gray-200">—</span>
       </div>
-      <div id="crawlHealthCategory" class="text-xs mb-1">—</div>
-      <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
+      <div id="accessCategory" class="text-xs mb-1 text-gray-600">—</div>
+      <ul id="accessNotes" class="list-disc pl-4 space-y-0.5"></ul>
     </div>
 
   </div>
 </section>
 
-<!-- TIERS -->
+<!-- STRUCTURAL DISTRIBUTION -->
 <section class="mb-8">
-  <h2 class="text-sm font-semibold mb-2">Tier Summary</h2>
+  <h2 class="text-sm font-semibold mb-1">Structural Signal Distribution <span class="text-xs text-gray-500">(internal)</span></h2>
+  <p class="text-xs text-gray-500 mb-3">
+    How entity clarity is structurally composed. Not a public score.
+  </p>
+
   <div class="grid grid-cols-3 gap-3 text-xs">
     <div class="bg-white border rounded p-3">
-      <strong>Tier 1</strong>
+      <strong>Tier 1 — Comprehension</strong>
       <div id="tier1Score">--</div>
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier1Bar" class="h-2 rounded"></div>
@@ -106,7 +109,7 @@
       <div id="tier1Meta" class="text-[11px] text-gray-500 mt-1"></div>
     </div>
     <div class="bg-white border rounded p-3">
-      <strong>Tier 2</strong>
+      <strong>Tier 2 — Structure</strong>
       <div id="tier2Score">--</div>
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier2Bar" class="h-2 rounded"></div>
@@ -114,7 +117,7 @@
       <div id="tier2Meta" class="text-[11px] text-gray-500 mt-1"></div>
     </div>
     <div class="bg-white border rounded p-3">
-      <strong>Tier 3</strong>
+      <strong>Tier 3 — Surface</strong>
       <div id="tier3Score">--</div>
       <div class="h-2 bg-gray-200 rounded">
         <div id="tier3Bar" class="h-2 rounded"></div>
@@ -126,27 +129,27 @@
 
 <!-- 13 SIGNAL BREAKDOWN -->
 <section class="mb-10">
-  <h2 class="text-sm font-semibold mb-4">13 Signal Breakdown</h2>
+  <h2 class="text-sm font-semibold mb-4">13 Clarity Signals (Diagnostic)</h2>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
 
     <div class="bg-white border rounded-xl p-4">
-      <h3 class="font-semibold mb-2">Meta Signals</h3>
+      <h3 class="font-semibold mb-2">Meta & Identity</h3>
       <div id="metaSignals" class="space-y-4"></div>
     </div>
 
     <div class="bg-white border rounded-xl p-4">
-      <h3 class="font-semibold mb-2">Schema Signals</h3>
+      <h3 class="font-semibold mb-2">Schema & Structure</h3>
       <div id="schemaSignals" class="space-y-4"></div>
     </div>
 
     <div class="bg-white border rounded-xl p-4">
-      <h3 class="font-semibold mb-2">Lattice & Crawl Signals</h3>
+      <h3 class="font-semibold mb-2">Lattice & Authority</h3>
       <div id="latticeSignals" class="space-y-4"></div>
     </div>
 
     <div class="bg-white border rounded-xl p-4">
-      <h3 class="font-semibold mb-2">Content Signals</h3>
+      <h3 class="font-semibold mb-2">Content & Inference</h3>
       <div id="contentSignals" class="space-y-4"></div>
     </div>
 
@@ -155,27 +158,55 @@
 
 <!-- RAW JSON -->
 <section>
-  <h2 class="text-sm font-semibold mb-2">Raw JSON</h2>
+  <h2 class="text-sm font-semibold mb-2">Canonical Audit Output <span class="text-xs text-gray-500">(internal truth)</span></h2>
   <pre id="result" class="json-box">// Awaiting input…</pre>
 </section>
 
 <script>
+/* ----------------------------
+   HELPERS
+----------------------------- */
+function color(score) {
+  if (score >= 80) return "bg-green-500";
+  if (score >= 60) return "bg-yellow-400";
+  if (score >= 40) return "bg-orange-400";
+  return "bg-red-500";
+}
+
+/* ----------------------------
+   GROUPINGS
+----------------------------- */
+const GROUPS = {
+  meta: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
+  schema: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
+  lattice: ["Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
+  content: ["Inference Efficiency"]
+};
+
+const TIER_MAP = {
+  tier1: ["Inference Efficiency","Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
+  tier2: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
+  tier3: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"]
+};
+
+/* ----------------------------
+   DOM
+----------------------------- */
 const runButton = document.getElementById("runButton");
 const resultEl = document.getElementById("result");
 const timestampEl = document.getElementById("timestamp");
 
 const scoreDisplay = document.getElementById("scoreDisplay");
 const scoreBar = document.getElementById("scoreBar");
-const scoreBadge = document.getElementById("scoreBadge");
+const postureBadge = document.getElementById("postureBadge");
 
 const entityNameEl = document.getElementById("entityName");
-const entityStageEl = document.getElementById("entityStage");
-const entityVerbEl = document.getElementById("entityVerb");
-const entityFocusEl = document.getElementById("entityFocus");
+const eciInterpretationEl = document.getElementById("eciInterpretation");
+const eciOverviewEl = document.getElementById("eciOverview");
 
-const crawlHealthScoreEl = document.getElementById("crawlHealthScore");
-const crawlHealthCategoryEl = document.getElementById("crawlHealthCategory");
-const crawlHealthNotesEl = document.getElementById("crawlHealthNotes");
+const accessBadgeEl = document.getElementById("accessBadge");
+const accessCategoryEl = document.getElementById("accessCategory");
+const accessNotesEl = document.getElementById("accessNotes");
 
 const tier1ScoreEl = document.getElementById("tier1Score");
 const tier2ScoreEl = document.getElementById("tier2Score");
@@ -192,30 +223,16 @@ const schemaSignalsEl = document.getElementById("schemaSignals");
 const latticeSignalsEl = document.getElementById("latticeSignals");
 const contentSignalsEl = document.getElementById("contentSignals");
 
-function color(score) {
-  if (score >= 80) return "bg-green-500";
-  if (score >= 60) return "bg-yellow-400";
-  if (score >= 40) return "bg-orange-400";
-  return "bg-red-500";
-}
-
 /* ----------------------------
-   13 SIGNALS GROUPING
+   RENDERERS
 ----------------------------- */
-const GROUPS = {
-  meta: ["Title Precision","Meta Description Integrity","Canonical Clarity","Brand & Technical Consistency"],
-  schema: ["Schema Presence & Validity","Organization Schema","Breadcrumb Schema","Author/Person Schema"],
-  lattice: ["Internal Lattice Integrity","External Authority Signal","Social Entity Links","AI Crawl Fidelity"],
-  content: ["Inference Efficiency"]
-};
-
 function renderSignal(signal) {
   const pct = signal.max ? Math.round((signal.points / signal.max) * 100) : 0;
   const div = document.createElement("div");
   div.innerHTML = `
     <div class="flex justify-between text-xs mb-1">
-      <span class="font-medium text-gray-900">${signal.key}</span>
-      <span class="text-gray-700">${signal.points}/${signal.max}</span>
+      <span class="font-medium">${signal.key}</span>
+      <span>${signal.points}/${signal.max}</span>
     </div>
     <div class="h-2 bg-gray-200 rounded">
       <div class="h-2 rounded ${color(pct)}" style="width:${pct}%"></div>
@@ -225,55 +242,19 @@ function renderSignal(signal) {
   return div;
 }
 
-/* ----------------------------
-   TIERS (DERIVED FROM BREAKDOWN)
------------------------------ */
-const TIER_MAP = {
-  tier1: [
-    "Inference Efficiency",
-    "Internal Lattice Integrity",
-    "External Authority Signal",
-    "Social Entity Links",
-    "AI Crawl Fidelity",
-  ],
-  tier2: [
-    "Schema Presence & Validity",
-    "Organization Schema",
-    "Breadcrumb Schema",
-    "Author/Person Schema",
-  ],
-  tier3: [
-    "Title Precision",
-    "Meta Description Integrity",
-    "Canonical Clarity",
-    "Brand & Technical Consistency",
-  ],
-};
-
 function computeTier(breakdown, keys) {
-  let raw = 0;
-  let max = 0;
-
+  let raw = 0, max = 0;
   breakdown.forEach(sig => {
     if (keys.includes(sig.key)) {
       raw += sig.points || 0;
       max += sig.max || 0;
     }
   });
-
   const pct = max ? Math.round((raw / max) * 100) : 0;
   return { raw, max, pct };
 }
 
 function setTier(elScore, elBar, elMeta, tier) {
-  if (!tier || !tier.max) {
-    elScore.textContent = "--";
-    elBar.style.width = "0%";
-    elBar.className = "h-2 rounded bg-gray-300";
-    elMeta.textContent = "";
-    return;
-  }
-
   elScore.textContent = `${tier.pct}/100`;
   elBar.style.width = `${tier.pct}%`;
   elBar.className = `h-2 rounded ${color(tier.pct)}`;
@@ -281,183 +262,54 @@ function setTier(elScore, elBar, elMeta, tier) {
 }
 
 /* ----------------------------
-   CRAWL HEALTH (DERIVED FROM crawlHealth)
-   NOTE: If API later returns crawlHealth.score/category/notes, we prefer that.
+   RUN
 ----------------------------- */
-function deriveCrawlHealth(ch = {}, modeHint = "") {
-  // Prefer server-scored crawl health if present (future-proofing)
-  if (typeof ch.score === "number") {
-    return {
-      score: ch.score,
-      category: ch.category || ch.mode || modeHint || "unknown",
-      notes: Array.isArray(ch.notes) ? ch.notes : []
-    };
-  }
-
-  let score = 50;
-  const notes = [];
-  const mode = ch.mode || modeHint || "unknown";
-
-  if (mode === "lite") {
-    score = 40;
-    notes.push("Lite crawl only");
-  } else {
-    notes.push("Rendered crawl");
-  }
-
-  if (typeof ch.wordCount === "number") {
-    if (ch.wordCount > 800) {
-      score += 20;
-      notes.push("Sufficient content depth");
-    } else if (ch.wordCount > 300) {
-      score += 10;
-      notes.push("Moderate content depth");
-    } else {
-      notes.push("Shallow content depth");
-    }
-  }
-
-  if (typeof ch.internalLinkRatio === "number") {
-    if (ch.internalLinkRatio >= 0.9) {
-      score += 20;
-      notes.push("Strong internal lattice");
-    } else if (ch.internalLinkRatio > 0) {
-      score += 10;
-      notes.push("Some internal lattice");
-    } else {
-      notes.push("Weak internal lattice");
-    }
-  }
-
-  score = Math.max(0, Math.min(100, score));
-
-  return { score, category: mode, notes };
-}
-
-function setCrawlHealthUI(chComputed) {
-  const score = typeof chComputed.score === "number" ? chComputed.score : null;
-
-  crawlHealthScoreEl.textContent = score === null ? "--" : `${score}/100`;
-  crawlHealthScoreEl.className =
-    "badge " +
-    (score === null ? "bg-gray-200 text-gray-700" : `${color(score)} text-white`);
-
-  crawlHealthCategoryEl.textContent = chComputed.category
-    ? String(chComputed.category)
-    : "—";
-
-  crawlHealthNotesEl.innerHTML = "";
-  (chComputed.notes || []).forEach(n => {
-    const li = document.createElement("li");
-    li.textContent = n;
-    crawlHealthNotesEl.appendChild(li);
-  });
-}
-
-function resetUIForRun() {
-  // Clear 13 signals
-  metaSignalsEl.innerHTML = "";
-  schemaSignalsEl.innerHTML = "";
-  latticeSignalsEl.innerHTML = "";
-  contentSignalsEl.innerHTML = "";
-
-  // Reset tiers
-  setTier(tier1ScoreEl, tier1BarEl, tier1MetaEl, null);
-  setTier(tier2ScoreEl, tier2BarEl, tier2MetaEl, null);
-  setTier(tier3ScoreEl, tier3BarEl, tier3MetaEl, null);
-
-  // Reset crawl health
-  crawlHealthCategoryEl.textContent = "—";
-  crawlHealthNotesEl.innerHTML = "";
-  crawlHealthScoreEl.textContent = "--";
-  crawlHealthScoreEl.className = "badge bg-gray-200 text-gray-700";
-}
-
 runButton.onclick = async () => {
   const input = document.getElementById("urlInput").value.trim();
   if (!input) return;
 
-  resetUIForRun();
+  const url = input.startsWith("http") ? input : `https://${input}`;
   resultEl.textContent = "Loading...";
 
-  const url = input.startsWith("http") ? input : `https://${input}`;
+  const res = await fetch(
+    `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
+    { headers: { "x-exmxc-key": "exmxc-internal" } }
+  );
 
-  try {
-    const res = await fetch(
-      `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
-      { headers: { "x-exmxc-key": "exmxc-internal" } }
-    );
+  const data = await res.json();
+  resultEl.textContent = JSON.stringify(data, null, 2);
+  timestampEl.textContent = `Last run: ${new Date().toLocaleString()}`;
 
-    const data = await res.json();
-    resultEl.textContent = JSON.stringify(data, null, 2);
+  if (!data.success) return;
 
-    const now = new Date();
-    timestampEl.textContent = `Last run: ${now.toLocaleString()}`;
+  /* ECI */
+  const eci = data.eci;
+  scoreDisplay.textContent = `ECI: ${eci.eci.score} / 100`;
+  scoreBar.style.width = `${eci.eci.score}%`;
+  scoreBar.className = `h-3 rounded-full ${color(eci.eci.score)}`;
 
-    if (!data || !data.success) {
-      scoreDisplay.textContent = "EEI: -- / 100";
-      scoreBar.style.width = "0%";
-      scoreBar.className = "h-3 rounded-full bg-gray-300";
-      scoreBadge.textContent = "Error";
-      scoreBadge.className = "badge bg-red-100 text-red-700";
-      entityNameEl.textContent = "";
-      entityStageEl.textContent = "";
-      entityVerbEl.textContent = "";
-      entityFocusEl.textContent = "";
-      return;
-    }
+  postureBadge.textContent = eci.eci.strategicPosture;
+  entityNameEl.textContent = `Entity: ${eci.entity.name}`;
+  eciInterpretationEl.textContent = eci.eci.interpretation;
+  eciOverviewEl.textContent = eci.claritySummary.overview;
 
-    // Score + headline
-    const score = (typeof data.entityScore === "number") ? data.entityScore : 0;
+  /* Signals */
+  const breakdown = data.eei.breakdown;
+  breakdown.forEach(sig => {
+    if (GROUPS.meta.includes(sig.key)) metaSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.schema.includes(sig.key)) schemaSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.lattice.includes(sig.key)) latticeSignalsEl.appendChild(renderSignal(sig));
+    if (GROUPS.content.includes(sig.key)) contentSignalsEl.appendChild(renderSignal(sig));
+  });
 
-    scoreDisplay.textContent = `EEI: ${score} / 100`;
-    scoreBar.style.width = `${score}%`;
-    scoreBar.className = `h-3 rounded-full ${color(score)}`;
+  /* Tiers */
+  setTier(tier1ScoreEl, tier1BarEl, tier1MetaEl, computeTier(breakdown, TIER_MAP.tier1));
+  setTier(tier2ScoreEl, tier2BarEl, tier2MetaEl, computeTier(breakdown, TIER_MAP.tier2));
+  setTier(tier3ScoreEl, tier3BarEl, tier3MetaEl, computeTier(breakdown, TIER_MAP.tier3));
 
-    scoreBadge.textContent = data.entityStage || "—";
-    scoreBadge.className = "badge bg-gray-200";
-
-    // Entity naming / descriptors
-    entityNameEl.textContent = `Entity: ${data.entityName || data.hostname || ""}`;
-    entityStageEl.textContent = data.entityStage || "";
-    entityVerbEl.textContent = data.entityDescription || "";
-    entityFocusEl.textContent = data.entityFocus || "";
-
-    // 13-signal bars
-    const breakdown = Array.isArray(data.breakdown) ? data.breakdown : [];
-
-    breakdown.forEach(sig => {
-      if (!sig || !sig.key) return;
-      if (GROUPS.meta.includes(sig.key)) metaSignalsEl.appendChild(renderSignal(sig));
-      if (GROUPS.schema.includes(sig.key)) schemaSignalsEl.appendChild(renderSignal(sig));
-      if (GROUPS.lattice.includes(sig.key)) latticeSignalsEl.appendChild(renderSignal(sig));
-      if (GROUPS.content.includes(sig.key)) contentSignalsEl.appendChild(renderSignal(sig));
-    });
-
-    // Tier 1/2/3 derived from breakdown
-    const t1 = computeTier(breakdown, TIER_MAP.tier1);
-    const t2 = computeTier(breakdown, TIER_MAP.tier2);
-    const t3 = computeTier(breakdown, TIER_MAP.tier3);
-
-    setTier(tier1ScoreEl, tier1BarEl, tier1MetaEl, t1);
-    setTier(tier2ScoreEl, tier2BarEl, tier2MetaEl, t2);
-    setTier(tier3ScoreEl, tier3BarEl, tier3MetaEl, t3);
-
-    // Crawl health derived from crawlHealth + comprehension mode hint
-    const chComputed = deriveCrawlHealth(
-      data.crawlHealth || {},
-      data.entityComprehensionMode || ""
-    );
-    setCrawlHealthUI(chComputed);
-
-  } catch (err) {
-    resultEl.textContent = JSON.stringify({ success: false, error: err.message }, null, 2);
-    scoreDisplay.textContent = "EEI: -- / 100";
-    scoreBar.style.width = "0%";
-    scoreBar.className = "h-3 rounded-full bg-gray-300";
-    scoreBadge.textContent = "Error";
-    scoreBadge.className = "badge bg-red-100 text-red-700";
-  }
+  /* AI Access Conditions */
+  accessBadgeEl.textContent = eci.claritySummary.defensiveness;
+  accessCategoryEl.textContent = "Observed crawl posture";
 };
 </script>
 
