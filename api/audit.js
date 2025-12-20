@@ -1,187 +1,231 @@
-// /api/audit.js
-// ECI Audit Endpoint — v1.0 LOCKED
-// Structural truth. No inference. No silent drops.
+/**
+ * audit.js
+ * EEI → ECI scoring pipeline (FIXED)
+ * ----------------------------------
+ * - Crawl → Signal scoring → EEI breakdown → ECI interpretation
+ * - No silent failures
+ * - Deterministic scoring
+ */
 
-import { coreScan } from "./core-scan.js";
+export function runAudit(crawl) {
+  const eei = buildEEI(crawl);
+  const eci = buildECI(eei);
 
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
-
-const SIGNALS = [
-  "Title Precision",
-  "Meta Description Integrity",
-  "Canonical Clarity",
-  "Schema Presence & Validity",
-  "Organization Schema",
-  "Breadcrumb Schema",
-  "Author/Person Schema",
-  "Social Entity Links",
-  "AI Crawl Fidelity",
-  "Inference Efficiency",
-  "Internal Lattice Integrity",
-  "External Authority Signal",
-  "Brand & Technical Consistency",
-];
-
-const STATUS_SCORE = {
-  Strong: 100,
-  Moderate: 70,
-  Unknown: null
-};
-
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
-function normalizeUrl(input) {
-  try {
-    return new URL(input).href.replace(/\/$/, "");
-  } catch {
-    return null;
-  }
-}
-
-function classifyStatus(points, max) {
-  if (typeof points !== "number" || typeof max !== "number") return "Unknown";
-  const pct = (points / max) * 100;
-  if (pct >= 80) return "Strong";
-  if (pct >= 40) return "Moderate";
-  return "Unknown";
-}
-
-function buildEmptySignal(name) {
   return {
-    name,
-    status: "Unknown"
+    success: true,
+    eci,
+    eei
   };
 }
 
 /* ============================================================
-   ECI BUILDER (STRICT)
-   ============================================================ */
+ * EEI SCORING LAYER
+ * ============================================================ */
 
-function buildECI(breakdown = []) {
-  const signalMap = new Map();
+function buildEEI(crawl) {
+  const breakdown = [];
 
-  // Initialize all 13 signals as Unknown
-  SIGNALS.forEach(name => {
-    signalMap.set(name, buildEmptySignal(name));
-  });
-
-  // Overlay observed signals
-  breakdown.forEach(sig => {
-    if (!sig || !sig.key) return;
-    if (!signalMap.has(sig.key)) return;
-
-    signalMap.set(sig.key, {
-      name: sig.key,
-      status: classifyStatus(sig.points, sig.max)
+  // Helper
+  const add = (key, label, passed) => {
+    breakdown.push({
+      key,
+      label,
+      points: passed ? 1 : 0,
+      max: 1,
+      status: passed ? "Present" : "Missing"
     });
-  });
+  };
 
-  const signals = Array.from(signalMap.values());
+  /* -------- 1. Title Precision -------- */
+  add(
+    "title_precision",
+    "Title Precision",
+    Boolean(crawl.title && crawl.title.length >= 15)
+  );
 
-  // Coverage
-  const observed = signals.filter(s => s.status !== "Unknown").length;
-  const unknown = signals.length - observed;
+  /* -------- 2. Meta Description Integrity -------- */
+  add(
+    "meta_description",
+    "Meta Description Integrity",
+    Boolean(crawl.description && crawl.description.length >= 50)
+  );
 
-  // Score normalization (Unknowns excluded)
-  const scored = signals.filter(s => STATUS_SCORE[s.status] !== null);
-  const score =
-    scored.length === 0
-      ? 0
-      : Math.round(
-          scored.reduce((a, s) => a + STATUS_SCORE[s.status], 0) /
-          scored.length
-        );
+  /* -------- 3. Canonical Clarity -------- */
+  add(
+    "canonical",
+    "Canonical Clarity",
+    Boolean(crawl.canonicalHref && crawl.canonicalHref.startsWith("https://"))
+  );
 
-  let interpretation = "Low clarity";
-  let posture = "Unformed";
-  let range = "—";
+  /* -------- 4. Schema Presence -------- */
+  add(
+    "schema_presence",
+    "Schema Presence & Validity",
+    Array.isArray(crawl.schemaObjects) && crawl.schemaObjects.length > 0
+  );
 
-  if (score >= 80) {
-    interpretation = "Strategic trust";
-    posture = "Sovereign";
-    range = "80+";
-  } else if (score >= 60) {
-    interpretation = "Operational clarity";
-    posture = "Structured";
-    range = "60–79";
-  } else if (score >= 40) {
-    interpretation = "Partial clarity";
-    posture = "Emerging";
-    range = "40–59";
-  }
+  /* -------- 5. Organization Schema -------- */
+  add(
+    "org_schema",
+    "Organization Schema",
+    hasSchemaType(crawl.schemaObjects, "Organization")
+  );
+
+  /* -------- 6. Breadcrumb Schema -------- */
+  add(
+    "breadcrumb_schema",
+    "Breadcrumb Schema",
+    hasSchemaType(crawl.schemaObjects, "BreadcrumbList")
+  );
+
+  /* -------- 7. Author / Person Schema -------- */
+  add(
+    "person_schema",
+    "Author / Person Schema",
+    hasSchemaType(crawl.schemaObjects, "Person")
+  );
+
+  /* -------- 8. Social Entity Links -------- */
+  add(
+    "social_links",
+    "Social Entity Links",
+    hasSocialLinks(crawl.schemaObjects)
+  );
+
+  /* -------- 9. AI Crawl Fidelity -------- */
+  add(
+    "ai_crawl_fidelity",
+    "AI Crawl Fidelity",
+    crawl.status === 200
+  );
+
+  /* -------- 10. Inference Efficiency -------- */
+  add(
+    "inference_efficiency",
+    "Inference Efficiency",
+    crawl.wordCount && crawl.wordCount >= 500
+  );
+
+  /* -------- 11. Internal Lattice Integrity -------- */
+  add(
+    "internal_lattice",
+    "Internal Lattice Integrity",
+    Array.isArray(crawl.pageLinks) && crawl.pageLinks.length >= 10
+  );
+
+  /* -------- 12. External Authority Signal -------- */
+  add(
+    "external_authority",
+    "External Authority Signal",
+    hasExternalSameAs(crawl.schemaObjects)
+  );
+
+  /* -------- 13. Brand & Technical Consistency -------- */
+  add(
+    "brand_consistency",
+    "Brand & Technical Consistency",
+    Boolean(crawl.title && crawl.description)
+  );
 
   return {
-    score,
-    range,
-    interpretation,
-    strategicPosture: posture,
-    signalCoverage: {
-      observed,
-      unknown
+    url: crawl.url,
+    hostname: crawl.hostname,
+    breakdown,
+    crawlHealth: {
+      wordCount: crawl.wordCount || 0,
+      linkCount: crawl.linkCount || 0,
+      schemaCount: crawl.schemaObjects?.length || 0,
+      jsonLdErrorCount: crawl.jsonLdErrorCount || 0
     },
-    claritySignals: signals
+    timestamp: new Date().toISOString()
   };
 }
 
 /* ============================================================
-   API HANDLER
-   ============================================================ */
+ * ECI INTERPRETATION LAYER
+ * ============================================================ */
 
-export default async function handler(req, res) {
-  try {
-    const inputUrl = req.query.url;
-    const url = normalizeUrl(inputUrl);
+function buildECI(eei) {
+  const breakdown = eei.breakdown || [];
 
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid URL"
-      });
+  let observed = 0;
+  let totalPoints = 0;
+  let maxPoints = 0;
+
+  breakdown.forEach(sig => {
+    maxPoints += sig.max;
+    if (sig.status !== "Missing") {
+      observed += 1;
+      totalPoints += sig.points;
     }
+  });
 
-    // Core scan (STATIC ONLY)
-    const scan = await coreScan({
-      url,
-      surfaces: [url],
-      probeRendered: false
-    });
+  const score = maxPoints > 0
+    ? Math.round((totalPoints / maxPoints) * 100)
+    : 0;
 
-    const surface = scan.surfaces?.[0] || {};
-    const breakdown = surface.breakdown || [];
-
-    const eci = buildECI(breakdown);
-
-    return res.status(200).json({
-      success: true,
-
-      eci: {
-        entity: {
-          name: surface.entityName || surface.title || url,
-          url,
-          hostname: new URL(url).hostname,
-          vertical: null,
-          timestamp: new Date().toISOString()
-        },
-        eci
+  return {
+    entity: {
+      name: eei.hostname,
+      url: eei.url,
+      hostname: eei.hostname,
+      timestamp: eei.timestamp
+    },
+    eci: {
+      score,
+      range: scoreRange(score),
+      interpretation: interpretation(score),
+      strategicPosture: posture(score),
+      signalCoverage: {
+        observed,
+        unknown: 13 - observed
       },
+      claritySignals: breakdown.map(b => ({
+        name: b.label,
+        status: b.status
+      }))
+    }
+  };
+}
 
-      eei: {
-        url,
-        hostname: new URL(url).hostname,
-        breakdown,
-        crawlHealth: surface.diagnostics || {},
-        timestamp: new Date().toISOString()
-      }
-    });
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
 
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
+function hasSchemaType(objects = [], type) {
+  return objects.some(o => o["@type"] === type);
+}
+
+function hasSocialLinks(objects = []) {
+  return objects.some(o =>
+    Array.isArray(o.sameAs) && o.sameAs.length > 0
+  );
+}
+
+function hasExternalSameAs(objects = []) {
+  return objects.some(o =>
+    Array.isArray(o.sameAs) &&
+    o.sameAs.some(url => !url.includes("instagram.com") && !url.includes("threads.net"))
+  );
+}
+
+function scoreRange(score) {
+  if (score >= 80) return "80–100";
+  if (score >= 60) return "60–79";
+  if (score >= 40) return "40–59";
+  return "0–39";
+}
+
+function interpretation(score) {
+  if (score >= 80) return "High clarity";
+  if (score >= 60) return "Operational clarity";
+  if (score >= 40) return "Partial clarity";
+  return "Low clarity";
+}
+
+function posture(score) {
+  if (score >= 80) return "Defensible";
+  if (score >= 60) return "Structured";
+  if (score >= 40) return "Emerging";
+  return "Unformed";
 }
