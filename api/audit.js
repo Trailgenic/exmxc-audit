@@ -1,89 +1,129 @@
-// /api/audit.js — ECI + EEI Unified Audit (Fortress-Safe)
-// Static-first. No phantom imports. Raw JSON preserved.
+// /api/audit.js
+// ECI Audit Endpoint — v1.0 LOCKED
+// Structural truth. No inference. No silent drops.
 
 import { coreScan } from "./core-scan.js";
 
 /* ============================================================
-   ECI SCORING — STRATEGIC (INTENT-AWARE, NON-JUDGMENTAL)
+   CONSTANTS
    ============================================================ */
 
-function computeECI(scan) {
-  const surfaces = Array.isArray(scan.surfaces) ? scan.surfaces : [];
-  const primary = surfaces[0] || {};
-  const d = primary.diagnostics || {};
+const SIGNALS = [
+  "Title Precision",
+  "Meta Description Integrity",
+  "Canonical Clarity",
+  "Schema Presence & Validity",
+  "Organization Schema",
+  "Breadcrumb Schema",
+  "Author/Person Schema",
+  "Social Entity Links",
+  "AI Crawl Fidelity",
+  "Inference Efficiency",
+  "Internal Lattice Integrity",
+  "External Authority Signal",
+  "Brand & Technical Consistency",
+];
 
-  const schemaCount = d.schemaCount || 0;
-  const wordCount = d.wordCount || 0;
-  const linkCount = d.linkCount || 0;
+const STATUS_SCORE = {
+  Strong: 100,
+  Moderate: 70,
+  Unknown: null
+};
 
-  // ---- Score composition (intentionally conservative)
-  let score = 0;
+/* ============================================================
+   HELPERS
+   ============================================================ */
 
-  // Structural clarity
-  if (schemaCount >= 5) score += 35;
-  else score += schemaCount * 5;
+function normalizeUrl(input) {
+  try {
+    return new URL(input).href.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
 
-  // Narrative depth
-  if (wordCount >= 1200) score += 30;
-  else if (wordCount >= 600) score += 20;
-  else if (wordCount >= 300) score += 10;
+function classifyStatus(points, max) {
+  if (typeof points !== "number" || typeof max !== "number") return "Unknown";
+  const pct = (points / max) * 100;
+  if (pct >= 80) return "Strong";
+  if (pct >= 40) return "Moderate";
+  return "Unknown";
+}
 
-  // Lattice presence (not quality judgement)
-  if (linkCount >= 50) score += 20;
-  else if (linkCount >= 10) score += 10;
+function buildEmptySignal(name) {
+  return {
+    name,
+    status: "Unknown"
+  };
+}
 
-  score = Math.min(100, Math.round(score));
+/* ============================================================
+   ECI BUILDER (STRICT)
+   ============================================================ */
 
-  // ---- Strategic posture (IMPORTANT: not moralized)
+function buildECI(breakdown = []) {
+  const signalMap = new Map();
+
+  // Initialize all 13 signals as Unknown
+  SIGNALS.forEach(name => {
+    signalMap.set(name, buildEmptySignal(name));
+  });
+
+  // Overlay observed signals
+  breakdown.forEach(sig => {
+    if (!sig || !sig.key) return;
+    if (!signalMap.has(sig.key)) return;
+
+    signalMap.set(sig.key, {
+      name: sig.key,
+      status: classifyStatus(sig.points, sig.max)
+    });
+  });
+
+  const signals = Array.from(signalMap.values());
+
+  // Coverage
+  const observed = signals.filter(s => s.status !== "Unknown").length;
+  const unknown = signals.length - observed;
+
+  // Score normalization (Unknowns excluded)
+  const scored = signals.filter(s => STATUS_SCORE[s.status] !== null);
+  const score =
+    scored.length === 0
+      ? 0
+      : Math.round(
+          scored.reduce((a, s) => a + STATUS_SCORE[s.status], 0) /
+          scored.length
+        );
+
+  let interpretation = "Low clarity";
   let posture = "Unformed";
-  if (score >= 80) posture = "Sovereign";
-  else if (score >= 60) posture = "Structured";
-  else if (score >= 40) posture = "Selective";
-  else posture = "Defensive";
+  let range = "—";
+
+  if (score >= 80) {
+    interpretation = "Strategic trust";
+    posture = "Sovereign";
+    range = "80+";
+  } else if (score >= 60) {
+    interpretation = "Operational clarity";
+    posture = "Structured";
+    range = "60–79";
+  } else if (score >= 40) {
+    interpretation = "Partial clarity";
+    posture = "Emerging";
+    range = "40–59";
+  }
 
   return {
-    entity: {
-      name: primary.title || "Unknown Entity",
-      url: scan.url,
-      hostname: new URL(scan.url).hostname,
-      vertical: null,
-      timestamp: new Date().toISOString()
+    score,
+    range,
+    interpretation,
+    strategicPosture: posture,
+    signalCoverage: {
+      observed,
+      unknown
     },
-    eci: {
-      score,
-      range:
-        score >= 80 ? "80+" :
-        score >= 60 ? "60–79" :
-        score >= 40 ? "40–59" :
-        "<40",
-      interpretation:
-        score >= 80 ? "Strategic trust" :
-        score >= 60 ? "Operational clarity" :
-        score >= 40 ? "Selective legibility" :
-        "Intentional opacity",
-      confidenceLevel: "internal",
-      strategicPosture: posture
-    },
-    claritySummary: {
-      overview:
-        score >= 80
-          ? "Entity is consistently interpretable across AI systems."
-          : score >= 60
-          ? "Entity is legible but not fully reinforced."
-          : score >= 40
-          ? "Entity reveals partial structure while limiting exposure."
-          : "Entity limits machine interpretation by design.",
-      discoverability:
-        score >= 60 ? "High" : score >= 40 ? "Moderate" : "Low",
-      interpretability:
-        score >= 60 ? "High" : score >= 40 ? "Moderate" : "Low",
-      narrativeControl:
-        score >= 80 ? "High" : score >= 60 ? "Moderate" : "Low",
-      defensiveness:
-        score < 40 ? "High" : score < 60 ? "Moderate" : "Low"
-    },
-    disclaimer:
-      "ECI reflects AI-era entity clarity and strategic posture, not business quality, ethics, or performance."
+    claritySignals: signals
   };
 }
 
@@ -93,38 +133,55 @@ function computeECI(scan) {
 
 export default async function handler(req, res) {
   try {
-    const url = req.query?.url;
+    const inputUrl = req.query.url;
+    const url = normalizeUrl(inputUrl);
+
     if (!url) {
       return res.status(400).json({
         success: false,
-        error: "Missing ?url parameter"
+        error: "Invalid URL"
       });
     }
 
-    // ---- Core entity scan (STATIC ONLY)
+    // Core scan (STATIC ONLY)
     const scan = await coreScan({
       url,
       surfaces: [url],
       probeRendered: false
     });
 
-    // ---- Compute ECI
-    const eci = computeECI(scan);
+    const surface = scan.surfaces?.[0] || {};
+    const breakdown = surface.breakdown || [];
+
+    const eci = buildECI(breakdown);
 
     return res.status(200).json({
       success: true,
 
-      // 🔑 Strategic output (external + internal)
-      eci,
+      eci: {
+        entity: {
+          name: surface.entityName || surface.title || url,
+          url,
+          hostname: new URL(url).hostname,
+          vertical: null,
+          timestamp: new Date().toISOString()
+        },
+        eci
+      },
 
-      // 🔬 Raw scan preserved for internal dashboard debugging
-      raw: scan
+      eei: {
+        url,
+        hostname: new URL(url).hostname,
+        breakdown,
+        crawlHealth: surface.diagnostics || {},
+        timestamp: new Date().toISOString()
+      }
     });
 
   } catch (err) {
     return res.status(500).json({
       success: false,
-      error: err.message || "Audit failed"
+      error: err.message
     });
   }
 }
