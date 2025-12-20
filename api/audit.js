@@ -1,12 +1,9 @@
-// /api/audit.js — EEI v5.6
-// Static-first EEI audit
-// Scoring is ALWAYS based on static crawl
-// Rendered crawl is DIAGNOSTIC ONLY (AI obstruction detection)
+// /api/audit.js — EEI v6.0
+// Unified Audit Endpoint with Public ECI + Internal EEI
+// EEI = internal diagnostics
+// ECI = public-facing entity clarity intelligence
 
-import axios from "axios";
-import https from "https";
 import * as cheerio from "cheerio";
-
 import {
   scoreTitle,
   scoreMetaDescription,
@@ -21,28 +18,20 @@ import {
   scoreInternalLinks,
   scoreExternalLinks,
   scoreFaviconOg,
-  tierFromScore
+  tierFromScore,
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { discoverSurfaces } from "../lib/surface-discovery.js";
-import { aggregateSurfaces } from "../lib/surface-aggregator.js";
-
-/* ============================================================
-   CONFIG
-   ============================================================ */
-
-const CRAWL_WORKER_BASE =
-  "https://exmxc-crawl-worker-production.up.railway.app";
-
-const httpsAgent = new https.Agent({
-  keepAlive: false,
-  maxSockets: 1
-});
+import { crawlPage } from "./core-scan.js";
+import { buildEciPublicOutput } from "../shared/eci-mapper.js";
 
 /* ============================================================
    HELPERS
    ============================================================ */
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
 
 function normalizeUrl(input) {
   let url = (input || "").trim();
@@ -62,121 +51,94 @@ function hostnameOf(urlStr) {
   }
 }
 
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
 /* ============================================================
    MAIN HANDLER
    ============================================================ */
 
 export default async function handler(req, res) {
+  /* ---------- CORS ---------- */
   const origin = req.headers.origin || "*";
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
+    "Content-Type, Authorization, x-exmxc-key"
   );
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
+    /* ---------- Input ---------- */
     const input = req.query?.url;
-    const includeRenderedProbe = req.query?.probe === "true";
-
     if (!input) {
-      return res.status(400).json({ error: "Missing URL" });
+      return res.status(400).json({ success: false, error: "Missing URL" });
     }
 
     const normalized = normalizeUrl(input);
     if (!normalized) {
-      return res.status(400).json({ error: "Invalid URL format" });
+      return res.status(400).json({ success: false, error: "Invalid URL" });
     }
 
-    const host = hostnameOf(normalized);
+    const hostname = hostnameOf(normalized);
+    const mode = req.query?.mode === "static" ? "static" : "rendered";
+    const vertical = req.query?.vertical || null;
 
-    /* ========================================================
-       SURFACE DISCOVERY (STATIC)
-       ======================================================== */
+    /* ---------- Crawl ---------- */
+    const crawl = await crawlPage({
+      url: normalized,
+      mode,
+    });
 
-    const discovery = await discoverSurfaces(normalized);
-    const surfaceUrls = discovery.surfaces;
-
-    /* ========================================================
-       STATIC MULTI-SURFACE CRAWL (AUTHORITATIVE)
-       ======================================================== */
-
-    let crawlData;
-    try {
-      const crawlResp = await axios.post(
-        `${CRAWL_WORKER_BASE}/crawl`,
-        { url: normalized, surfaces: surfaceUrls },
-        { timeout: 45000, httpsAgent }
-      );
-
-      crawlData = crawlResp.data;
-
-      if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-        throw new Error("static-crawl-failed");
-      }
-    } catch {
-      return res.status(502).json({
+    if (crawl.error || !crawl.html) {
+      return res.status(200).json({
         success: false,
-        error: "Static crawl failed"
+        url: normalized,
+        hostname,
+        error: crawl.error || "Crawl failed",
+        crawlHealth: crawl.crawlHealth || null,
       });
     }
 
-    /* ========================================================
-       AGGREGATE ENTITY SIGNALS
-       ======================================================== */
-
-    const entityAggregate = aggregateSurfaces({
-      surfaces: crawlData.surfaces
-    });
-
-    const homepage = crawlData.surfaces[0] || {};
-
     const {
-      html = "",
-      title = "",
-      description = "",
-      canonicalHref: canonical = normalized,
-      schemaObjects = [],
+      html,
+      title: crawlTitle,
+      description: crawlDescription,
+      canonicalHref,
       pageLinks = [],
-      diagnostics = {},
-      crawlHealth = null
-    } = homepage;
+      schemaObjects = [],
+      crawlHealth,
+      aiConfidence,
+    } = crawl;
 
-    const $ = cheerio.load(html || "<html></html>");
+    const $ = cheerio.load(html);
 
-    const entityName =
-      schemaObjects.find(o => o["@type"] === "Organization")?.name ||
-      schemaObjects.find(o => o["@type"] === "Person")?.name ||
-      title.split(" | ")[0] ||
-      null;
+    /* ---------- Field Extraction ---------- */
+    const title = (crawlTitle || $("title").text() || "").trim();
+    const description =
+      crawlDescription ||
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") ||
+      "";
 
-    /* ========================================================
-       EEI SCORING (STATIC ONLY)
-       ======================================================== */
-
-    const results = [
+    /* ---------- EEI Signal Scoring (Internal) ---------- */
+    const breakdown = [
       scoreTitle($, { title }),
       scoreMetaDescription($, { description }),
-      scoreCanonical($, normalized, { canonicalHref: canonical }),
+      scoreCanonical($, normalized, { canonicalHref }),
       scoreSchemaPresence(schemaObjects),
       scoreOrgSchema(schemaObjects),
       scoreBreadcrumbSchema(schemaObjects),
       scoreAuthorPerson(schemaObjects, $),
       scoreSocialLinks(schemaObjects, pageLinks),
       scoreAICrawlSignals($),
-      scoreContentDepth($, { wordCount: diagnostics.wordCount }),
-      scoreInternalLinks(pageLinks, host),
-      scoreExternalLinks(pageLinks, host),
-      scoreFaviconOg($)
+      scoreContentDepth($, crawlHealth),
+      scoreInternalLinks(pageLinks, hostname),
+      scoreExternalLinks(pageLinks, hostname),
+      scoreFaviconOg($),
     ];
 
+    /* ---------- Aggregate EEI Score ---------- */
     let totalRaw = 0;
-    for (const sig of results) {
+    for (const sig of breakdown) {
       totalRaw += clamp(sig.points || 0, 0, sig.max);
     }
 
@@ -186,40 +148,26 @@ export default async function handler(req, res) {
       100
     );
 
-    const entityTier = tierFromScore(entityScore);
+    const eeiTier = tierFromScore(entityScore);
 
     /* ========================================================
-       OPTIONAL RENDERED PROBE (DIAGNOSTIC ONLY)
+       PUBLIC ECI OUTPUT (STRATEGIC)
        ======================================================== */
 
-    let aiObstruction = null;
-
-    if (includeRenderedProbe) {
-      try {
-        const probeResp = await axios.post(
-          `${CRAWL_WORKER_BASE}/probe-rendered`,
-          { url: normalized },
-          { timeout: 20000, httpsAgent }
-        );
-
-        const probe = probeResp.data;
-
-        aiObstruction = {
-          detected:
-            probe?.blocked === true ||
-            probe?.wordCount < Math.min(200, diagnostics.wordCount || 9999),
-          reason: probe?.reason || null,
-          staticWordCount: diagnostics.wordCount || 0,
-          renderedWordCount: probe?.wordCount || 0,
-          userAgent: probe?.userAgent || null
-        };
-      } catch {
-        aiObstruction = {
-          detected: true,
-          reason: "rendered-probe-failed"
-        };
-      }
-    }
+    const eciPublic = buildEciPublicOutput({
+      entity: {
+        name:
+          schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
+          null,
+        url: normalized,
+        hostname,
+      },
+      entityScore,
+      breakdown,
+      crawlHealth,
+      aiConfidence,
+      vertical,
+    });
 
     /* ========================================================
        RESPONSE
@@ -227,36 +175,30 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      url: normalized,
-      hostname: host,
-      entityName,
-      title,
-      canonical,
-      description,
 
-      eeiScoringStatus: "scored-static",
+      /* ---------- Public (Safe) ---------- */
+      eci: eciPublic,
 
-      entityScore,
-      entityStage: entityTier.stage,
-      entityVerb: entityTier.verb,
-      entityDescription: entityTier.description,
-      entityFocus: entityTier.coreFocus,
-
-      breakdown: results,
-      entitySignals: entityAggregate.entitySignals,
-      entitySummary: entityAggregate.entitySummary,
-
-      aiObstruction,
-      crawlHealth,
-
-      timestamp: new Date().toISOString()
+      /* ---------- Internal (Full) ---------- */
+      eei: {
+        url: normalized,
+        hostname,
+        entityScore,
+        entityStage: eeiTier.stage,
+        entityVerb: eeiTier.verb,
+        entityDescription: eeiTier.description,
+        entityFocus: eeiTier.coreFocus,
+        breakdown,
+        crawlHealth,
+        aiConfidence,
+        timestamp: new Date().toISOString(),
+      },
     });
-
   } catch (err) {
     return res.status(500).json({
       success: false,
       error: "Internal server error",
-      details: err.message || String(err)
+      details: err.message || String(err),
     });
   }
 }
