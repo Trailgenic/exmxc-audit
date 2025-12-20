@@ -1,54 +1,129 @@
-// /api/audit.js — EEI v6.0
-// Unified Audit Endpoint with Public ECI + Internal EEI
-// EEI = internal diagnostics
-// ECI = public-facing entity clarity intelligence
+// /api/audit.js
+// ECI (Entity Clarity Index) — Assembly + Interpretation Layer
+// EEI remains diagnostic truth. ECI expresses strategic meaning.
+// NO crawling logic here. NO scoring math here.
 
-import * as cheerio from "cheerio";
-import {
-  scoreTitle,
-  scoreMetaDescription,
-  scoreCanonical,
-  scoreSchemaPresence,
-  scoreOrgSchema,
-  scoreBreadcrumbSchema,
-  scoreAuthorPerson,
-  scoreSocialLinks,
-  scoreAICrawlSignals,
-  scoreContentDepth,
-  scoreInternalLinks,
-  scoreExternalLinks,
-  scoreFaviconOg,
-  tierFromScore,
-} from "../shared/scoring.js";
-
-import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { crawlPage } from "./core-scan.js";
-import { buildEciPublicOutput } from "../shared/eci-mapper.js";
+import { coreScan } from "./core-scan.js";
+import { runScoring } from "../shared/scoring-runner.js"; 
+// ^ assumed existing wrapper that produces EEI output
 
 /* ============================================================
-   HELPERS
+   POSTURE TAXONOMY (LOCKED)
    ============================================================ */
 
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
+const POSTURES = {
+  OPEN: "Open Signal Strategy",
+  OPTIMIZED: "Optimized Visibility Strategy",
+  DEFENSIVE: "Defensive Control Strategy",
+  OPAQUE: "Opaque / Minimal Exposure Strategy"
+};
+
+/* ============================================================
+   SCORE → RANGE / INTERPRETATION
+   ============================================================ */
+
+function scoreRange(score) {
+  if (score >= 80) return "80+";
+  if (score >= 70) return "70–79";
+  if (score >= 60) return "60–69";
+  if (score >= 50) return "50–59";
+  if (score >= 40) return "40–49";
+  return "0–39";
 }
 
-function normalizeUrl(input) {
-  let url = (input || "").trim();
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-  try {
-    return new URL(url).toString();
-  } catch {
-    return null;
+function scoreInterpretation(score) {
+  if (score >= 80) return "Strategic trust";
+  if (score >= 70) return "Strong foundation";
+  if (score >= 60) return "Developing structure";
+  if (score >= 50) return "Recognized but inconsistent";
+  if (score >= 40) return "Weak visibility";
+  return "Unclear";
+}
+
+/* ============================================================
+   DEFENSIVENESS + POSTURE INFERENCE
+   IMPORTANT: NOT SCORE-BASED
+   ============================================================ */
+
+function inferStrategicPosture({ eei, renderedDiagnostics }) {
+  const crawl = renderedDiagnostics || {};
+  const score = eei.entityScore;
+
+  const hasNoIndex =
+    typeof crawl.robots === "string" &&
+    crawl.robots.toLowerCase().includes("noindex");
+
+  const renderedBlocked = crawl.blocked === true;
+
+  // Explicit AI blocking or heavy JS obfuscation
+  if (hasNoIndex || renderedBlocked) {
+    if (score >= 70) return POSTURES.DEFENSIVE;
+    return POSTURES.OPAQUE;
+  }
+
+  // No blocking, strong clarity
+  if (score >= 75) return POSTURES.OPEN;
+
+  // Mid scores with no blocking
+  if (score >= 55) return POSTURES.OPTIMIZED;
+
+  return POSTURES.OPAQUE;
+}
+
+function defensivenessLevel(posture) {
+  switch (posture) {
+    case POSTURES.DEFENSIVE:
+      return "High";
+    case POSTURES.OPAQUE:
+      return "High";
+    case POSTURES.OPTIMIZED:
+      return "Moderate";
+    case POSTURES.OPEN:
+    default:
+      return "Low";
   }
 }
 
-function hostnameOf(urlStr) {
-  try {
-    return new URL(urlStr).hostname.replace(/^www\./i, "");
-  } catch {
-    return "";
-  }
+/* ============================================================
+   CLARITY SIGNAL NORMALIZATION (13 SIGNALS)
+   ============================================================ */
+
+function normalizeSignals(breakdown = []) {
+  return breakdown.map((sig, idx) => {
+    let status = "Absent";
+    const pct = sig.max ? sig.points / sig.max : 0;
+
+    if (pct >= 0.8) status = "Strong";
+    else if (pct >= 0.4) status = "Moderate";
+
+    return {
+      id: idx + 1,
+      name: sig.key,
+      status
+    };
+  });
+}
+
+/* ============================================================
+   CLARITY SUMMARY
+   ============================================================ */
+
+function buildClaritySummary(score, posture) {
+  return {
+    overview:
+      score >= 80
+        ? "This entity is clearly interpreted by AI systems and consistently reinforced across structural signals."
+        : score >= 60
+        ? "This entity is interpretable but structural clarity may degrade under stricter AI models."
+        : "This entity lacks sufficient clarity for reliable AI interpretation.",
+    discoverability: score >= 75 ? "High" : score >= 55 ? "Moderate" : "Low",
+    interpretability: score >= 75 ? "High" : score >= 55 ? "Moderate" : "Low",
+    narrativeControl:
+      posture === POSTURES.OPEN || posture === POSTURES.OPTIMIZED
+        ? "High"
+        : "Low",
+    defensiveness: defensivenessLevel(posture)
+  };
 }
 
 /* ============================================================
@@ -56,149 +131,75 @@ function hostnameOf(urlStr) {
    ============================================================ */
 
 export default async function handler(req, res) {
-  /* ---------- CORS ---------- */
-  const origin = req.headers.origin || "*";
-  res.setHeader("Access-Control-Allow-Origin", origin);
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-exmxc-key"
-  );
-  if (req.method === "OPTIONS") return res.status(200).end();
-
   try {
-    /* ---------- Input ---------- */
-    const input = req.query?.url;
-    if (!input) {
+    const url = req.query.url;
+    if (!url) {
       return res.status(400).json({ success: false, error: "Missing URL" });
     }
 
-    const normalized = normalizeUrl(input);
-    if (!normalized) {
-      return res.status(400).json({ success: false, error: "Invalid URL" });
-    }
-
-    const hostname = hostnameOf(normalized);
-    const mode = req.query?.mode === "static" ? "static" : "rendered";
-    const vertical = req.query?.vertical || null;
-
-    /* ---------- Crawl ---------- */
-    const crawl = await crawlPage({
-      url: normalized,
-      mode,
+    /* ----------------------------
+       1. Crawl (static authoritative)
+    ----------------------------- */
+    const scan = await coreScan({
+      url,
+      surfaces: [url],
+      probeRendered: true // diagnostic only
     });
 
-    if (crawl.error || !crawl.html) {
-      return res.status(200).json({
-        success: false,
-        url: normalized,
-        hostname,
-        error: crawl.error || "Crawl failed",
-        crawlHealth: crawl.crawlHealth || null,
-      });
-    }
+    /* ----------------------------
+       2. EEI Scoring (unchanged)
+    ----------------------------- */
+    const eei = await runScoring(scan);
 
-    const {
-      html,
-      title: crawlTitle,
-      description: crawlDescription,
-      canonicalHref,
-      pageLinks = [],
-      schemaObjects = [],
-      crawlHealth,
-      aiConfidence,
-    } = crawl;
+    /* ----------------------------
+       3. ECI Assembly
+    ----------------------------- */
+    const score = eei.entityScore;
+    const posture = inferStrategicPosture({
+      eei,
+      renderedDiagnostics: scan.renderedDiagnostics
+    });
 
-    const $ = cheerio.load(html);
-
-    /* ---------- Field Extraction ---------- */
-    const title = (crawlTitle || $("title").text() || "").trim();
-    const description =
-      crawlDescription ||
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "";
-
-    /* ---------- EEI Signal Scoring (Internal) ---------- */
-    const breakdown = [
-      scoreTitle($, { title }),
-      scoreMetaDescription($, { description }),
-      scoreCanonical($, normalized, { canonicalHref }),
-      scoreSchemaPresence(schemaObjects),
-      scoreOrgSchema(schemaObjects),
-      scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects, $),
-      scoreSocialLinks(schemaObjects, pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($, crawlHealth),
-      scoreInternalLinks(pageLinks, hostname),
-      scoreExternalLinks(pageLinks, hostname),
-      scoreFaviconOg($),
-    ];
-
-    /* ---------- Aggregate EEI Score ---------- */
-    let totalRaw = 0;
-    for (const sig of breakdown) {
-      totalRaw += clamp(sig.points || 0, 0, sig.max);
-    }
-
-    const entityScore = clamp(
-      Math.round((totalRaw * 100) / TOTAL_WEIGHT),
-      0,
-      100
-    );
-
-    const eeiTier = tierFromScore(entityScore);
-
-    /* ========================================================
-       PUBLIC ECI OUTPUT (STRATEGIC)
-       ======================================================== */
-
-    const eciPublic = buildEciPublicOutput({
+    const eci = {
       entity: {
-        name:
-          schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
-          null,
-        url: normalized,
-        hostname,
+        name: eei.entityName || eei.hostname,
+        url: eei.url,
+        hostname: eei.hostname,
+        vertical: null,
+        timestamp: new Date().toISOString()
       },
-      entityScore,
-      breakdown,
-      crawlHealth,
-      aiConfidence,
-      vertical,
-    });
 
-    /* ========================================================
-       RESPONSE
-       ======================================================== */
+      eci: {
+        score,
+        range: scoreRange(score),
+        interpretation: scoreInterpretation(score),
+        confidenceLevel: "unknown", // reserved for future model variance
+        strategicPosture: posture
+      },
 
-    return res.status(200).json({
+      claritySummary: buildClaritySummary(score, posture),
+
+      claritySignals: normalizeSignals(eei.breakdown),
+
+      disclaimer:
+        "ECI reflects AI-era entity clarity and interpretability, not business quality, ethics, or performance."
+    };
+
+    /* ----------------------------
+       4. Response
+    ----------------------------- */
+    return res.json({
       success: true,
-
-      /* ---------- Public (Safe) ---------- */
-      eci: eciPublic,
-
-      /* ---------- Internal (Full) ---------- */
-      eei: {
-        url: normalized,
-        hostname,
-        entityScore,
-        entityStage: eeiTier.stage,
-        entityVerb: eeiTier.verb,
-        entityDescription: eeiTier.description,
-        entityFocus: eeiTier.coreFocus,
-        breakdown,
-        crawlHealth,
-        aiConfidence,
-        timestamp: new Date().toISOString(),
-      },
+      eci,
+      eei, // FULL diagnostic truth (internal use)
+      timestamp: new Date().toISOString()
     });
+
   } catch (err) {
+    console.error("ECI audit error:", err);
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
-      details: err.message || String(err),
+      error: err.message || "ECI audit failed"
     });
   }
 }
