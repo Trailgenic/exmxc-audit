@@ -1,8 +1,9 @@
-// /api/audit.js — EEI v6.3 (LOCKED)
+// /api/audit.js — EEI v6.4 (LOCKED)
 // ECC = STATIC ONLY
-// Intent = RENDERED ONLY
+// Intent = RENDERED ONLY (observed, not scored)
 // POST + GET compatible
 // Vercel-safe, batch-safe
+// HARD TIMEOUT FIX APPLIED
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -53,6 +54,18 @@ function quadrant(ecc, intent) {
 }
 
 /* ===============================
+   HARD TIMEOUT WRAPPER (CRITICAL)
+================================ */
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("INTENT_TIMEOUT")), ms)
+    ),
+  ]);
+}
+
+/* ===============================
    JSON-LD PARSER
 ================================ */
 function parseJsonLd(raw) {
@@ -75,7 +88,7 @@ async function staticCrawl(url) {
     maxRedirects: 5,
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.3; +https://exmxc.ai)",
+        "Mozilla/5.0 (compatible; exmxc-static/6.4; +https://exmxc.ai)",
       Accept: "text/html",
     },
   });
@@ -115,7 +128,7 @@ async function staticCrawl(url) {
 ================================ */
 export default async function handler(req, res) {
   try {
-    // ---- INPUT NORMALIZATION (FIX) ----
+    // ---- INPUT NORMALIZATION ----
     let input =
       req.method === "POST"
         ? req.body?.url
@@ -172,10 +185,13 @@ export default async function handler(req, res) {
     const intentSignals = [];
 
     try {
-      const rendered = await axios.post(
-        `${RENDER_WORKER}/crawl`,
-        { url },
-        { timeout: 25000 }
+      const rendered = await withTimeout(
+        axios.post(
+          `${RENDER_WORKER}/crawl`,
+          { url },
+          { timeout: 25000 }
+        ),
+        12000 // HARD STOP — prevents infinite hangs
       );
 
       const renderedSchemas =
@@ -187,8 +203,13 @@ export default async function handler(req, res) {
           "Additional schema exposed via JS rendering"
         );
       }
-    } catch {
-      // Intent stays low if render fails
+    } catch (err) {
+      intent = "low";
+      intentSignals.push(
+        err.message === "INTENT_TIMEOUT"
+          ? "Rendered crawl blocked or timed out (bot protection)"
+          : "Rendered crawl failed"
+      );
     }
 
     /* -------- RESPONSE -------- */
