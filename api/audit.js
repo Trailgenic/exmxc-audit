@@ -1,7 +1,7 @@
-// /api/audit.js — EEI v6.1
-// STATIC = ECC
-// RENDERED (Railway) = Intent only
-// Vercel-safe (no cross-function imports)
+// /api/audit.js — EEI v6.2 (LOCKED)
+// ECC = STATIC ONLY
+// Intent = Rendered ONLY
+// Vercel-safe, batch-safe
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -46,9 +46,23 @@ function eccBand(score) {
 function quadrant(ecc, intent) {
   if (ecc === "high" && intent === "high") return "🚀 AI-First Leader";
   if (ecc === "high" && intent === "low") return "🏰 Sovereign / Defensive Power";
+  if (ecc === "medium" && intent === "high") return "🌱 Aspirational Challenger";
   if (ecc === "medium" && intent === "medium") return "⚖️ Cautious Optimizer";
-  if (ecc === "low" && intent === "high") return "🌱 Aspirational Challenger";
   return "Unclassified";
+}
+
+/* ===============================
+   JSON-LD PARSER (FIXED)
+================================ */
+function parseJsonLd(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed["@graph"]) return parsed["@graph"];
+    return [parsed];
+  } catch {
+    return [];
+  }
 }
 
 /* ===============================
@@ -60,7 +74,7 @@ async function staticCrawl(url) {
     maxRedirects: 5,
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.1; +https://exmxc.ai)",
+        "Mozilla/5.0 (compatible; exmxc-static/6.2; +https://exmxc.ai)",
       Accept: "text/html",
     },
   });
@@ -69,16 +83,9 @@ async function staticCrawl(url) {
   const $ = cheerio.load(html);
 
   const schemaObjects = $('script[type="application/ld+json"]')
-    .map((_, el) => {
-      try {
-        return JSON.parse($(el).text());
-      } catch {
-        return null;
-      }
-    })
+    .map((_, el) => parseJsonLd($(el).text()))
     .get()
-    .flat()
-    .filter(Boolean);
+    .flat();
 
   const pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
@@ -98,7 +105,7 @@ async function staticCrawl(url) {
       $('link[rel="canonical"]').attr("href") || url,
     schemaObjects,
     pageLinks,
-    wordCount: bodyText.split(" ").length,
+    wordCount: bodyText ? bodyText.split(" ").length : 0,
   };
 }
 
@@ -136,7 +143,9 @@ export default async function handler(req, res) {
     ];
 
     let raw = 0;
-    breakdown.forEach(b => raw += clamp(b.points || 0, 0, b.max));
+    breakdown.forEach(b => {
+      raw += clamp(b.points || 0, 0, b.max);
+    });
 
     const eccScore = clamp(
       Math.round((raw * 100) / TOTAL_WEIGHT),
@@ -146,7 +155,7 @@ export default async function handler(req, res) {
 
     const ecc = eccBand(eccScore);
 
-    /* -------- RENDERED (INTENT) -------- */
+    /* -------- RENDERED (INTENT ONLY) -------- */
     let intent = "low";
     const intentSignals = [];
 
@@ -165,7 +174,7 @@ export default async function handler(req, res) {
         intentSignals.push("Additional schema exposed via JS rendering");
       }
     } catch {
-      // Intent defaults to low
+      // Intent stays low on failure
     }
 
     /* -------- RESPONSE -------- */
