@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v5.5
-// Sovereign dual-crawler orchestration (lite → heavy)
-// AUTO mode now escalates to heavy for scoring
+// /api/audit.js — EEI v6.0
+// Capability (ECC) from STATIC only
+// Intent inferred from STATIC vs RENDERED delta
+// Quadrant derived — no ranking, no judgment
 
 import axios from "axios";
 import https from "https";
@@ -20,7 +21,6 @@ import {
   scoreInternalLinks,
   scoreExternalLinks,
   scoreFaviconOg,
-  tierFromScore,
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
@@ -28,7 +28,7 @@ import { discoverSurfaces } from "../lib/surface-discovery.js";
 import { aggregateSurfaces } from "../lib/surface-aggregator.js";
 
 /* ============================================================
-   NETWORK HARDENING
+   NETWORK
 ============================================================ */
 const httpsAgent = new https.Agent({
   keepAlive: false,
@@ -38,10 +38,11 @@ const httpsAgent = new https.Agent({
 /* ============================================================
    CONFIG
 ============================================================ */
-const CRAWL_WORKER_BASE =
-  "https://exmxc-crawl-worker-production.up.railway.app";
-const CRAWL_LITE_BASE =
+const CRAWL_STATIC_BASE =
   "https://exmxc-crawl-lite-production.up.railway.app";
+
+const CRAWL_RENDER_BASE =
+  "https://exmxc-crawl-worker-production.up.railway.app";
 
 /* ============================================================
    HELPERS
@@ -68,6 +69,78 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+function bandFromScore(score) {
+  if (score === null) return "unknown";
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  return "low";
+}
+
+function classifyQuadrant(eccBand, intentPosture) {
+  if (eccBand === "high" && intentPosture === "high")
+    return "🚀 AI-First Leader";
+  if (eccBand === "high" && intentPosture === "low")
+    return "🏰 Sovereign / Defensive Power";
+  if (eccBand === "medium" && intentPosture === "medium")
+    return "⚖️ Cautious Optimizer";
+  if (eccBand === "low" && intentPosture === "high")
+    return "🌱 Aspirational Challenger";
+  return "Unclassified";
+}
+
+/* ============================================================
+   INTENT DERIVATION (OBSERVED, NOT SCORED)
+============================================================ */
+function deriveIntent({ staticSurface, renderedSurface }) {
+  const signals = [];
+  let posture = "low";
+
+  if (!staticSurface) {
+    signals.push("No static surface available");
+    return { posture, signals, observedFrom: [] };
+  }
+
+  const staticWords = staticSurface.wordCount || 0;
+  const staticSchema = staticSurface.schemaCount || 0;
+
+  if (staticWords >= 300) {
+    signals.push("Static content legible");
+  }
+
+  if (staticSchema > 0) {
+    signals.push("Schema visible pre-render");
+  }
+
+  if (staticWords >= 300 && staticSchema > 0) {
+    posture = "high";
+  }
+
+  if (renderedSurface) {
+    const renderedWords = renderedSurface.wordCount || 0;
+    const renderedSchema = renderedSurface.schemaCount || 0;
+
+    if (renderedWords > staticWords) {
+      signals.push("Content depth increases after render");
+      posture = posture === "high" ? "medium" : posture;
+    }
+
+    if (renderedSchema > staticSchema) {
+      signals.push("Additional schema appears after render");
+      posture = posture === "high" ? "medium" : posture;
+    }
+  }
+
+  if (posture === "low") {
+    signals.push("Limited AI exposure by default");
+  }
+
+  return {
+    posture,
+    signals,
+    observedFrom: renderedSurface ? ["static", "rendered"] : ["static"],
+  };
+}
+
 /* ============================================================
    MAIN HANDLER
 ============================================================ */
@@ -87,188 +160,135 @@ export default async function handler(req, res) {
 
   try {
     const input = req.query?.url;
-    const mode = req.query?.mode || "auto"; // auto | lite | heavy
-
     if (!input) {
-      return res.status(400).json({ error: "Missing URL" });
+      return res.status(400).json({ success: false, error: "Missing URL" });
     }
 
     const normalized = normalizeUrl(input);
     if (!normalized) {
-      return res.status(400).json({ error: "Invalid URL format" });
+      return res.status(400).json({ success: false, error: "Invalid URL" });
     }
 
     const host = hostnameOf(normalized);
 
-    let crawlData = null;
-    let liteWasUsed = false;
-    let entityComprehensionMode = "heavy";
+    /* ========================================================
+       STATIC CRAWL (CAPABILITY)
+    ======================================================== */
+    let staticSurface = null;
+
+    try {
+      const staticResp = await axios.post(
+        `${CRAWL_STATIC_BASE}/crawl-lite`,
+        { url: normalized },
+        { timeout: 15000 }
+      );
+
+      staticSurface = staticResp.data;
+    } catch {}
 
     /* ========================================================
-       LITE PROBE (lite OR auto)
+       RENDERED CRAWL (INTENT ONLY)
     ======================================================== */
-    if (mode === "lite" || mode === "auto") {
-      try {
-        const liteResp = await axios.post(
-          `${CRAWL_LITE_BASE}/crawl-lite`,
-          { url: normalized },
-          { timeout: 15000 }
-        );
+    let renderedSurface = null;
 
-        const lite = liteResp.data;
-
-        crawlData = {
-          success: true,
-          surfaces: [
-            {
-              html: "",
-              title: lite.title,
-              description: lite.description,
-              canonicalHref: lite.canonical,
-              schemaObjects: lite.schemaObjects || [],
-              pageLinks: [],
-              crawlHealth: { mode: "lite" },
-            },
-          ],
-        };
-
-        liteWasUsed = true;
-        entityComprehensionMode = "lite";
-      } catch (err) {
-        if (mode === "lite") {
-          throw err;
-        }
-      }
-    }
-
-    /* ========================================================
-       HEAVY ESCALATION
-       - mode=heavy → always
-       - mode=auto → after lite probe
-    ======================================================== */
-    if (
-      !crawlData ||
-      mode === "heavy" ||
-      (mode === "auto" && liteWasUsed)
-    ) {
-      entityComprehensionMode = "heavy";
-
+    try {
       const discovery = await discoverSurfaces(normalized);
       const surfaceUrls = discovery.surfaces;
 
-      try {
-        const crawlResp = await axios.post(
-          `${CRAWL_WORKER_BASE}/crawl`,
-          { url: normalized, surfaces: surfaceUrls },
-          { timeout: 45000, httpsAgent }
-        );
+      const renderResp = await axios.post(
+        `${CRAWL_RENDER_BASE}/crawl`,
+        { url: normalized, surfaces: surfaceUrls },
+        { timeout: 45000, httpsAgent }
+      );
 
-        crawlData = crawlResp.data;
-
-        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
-          throw new Error("crawl-failed");
-        }
-      } catch {
-        return res.status(502).json({
-          success: false,
-          error: "Crawl worker failed",
-        });
+      if (renderResp.data?.success) {
+        renderedSurface = renderResp.data.surfaces?.[0] || null;
       }
-    }
+    } catch {}
 
     /* ========================================================
-       AGGREGATION
+       ECC SCORING — STATIC ONLY
     ======================================================== */
-    const entityAggregate = aggregateSurfaces({
-      surfaces: crawlData.surfaces,
-    });
+    let breakdown = [];
+    let eccScore = null;
 
-    const homepage = crawlData.surfaces[0] || {};
+    if (staticSurface) {
+      const $ = cheerio.load(staticSurface.html || "<html></html>");
+      const schemaObjects = staticSurface.schemaObjects || [];
+      const pageLinks = staticSurface.pageLinks || [];
 
-    const {
-      html = "",
-      title = "",
-      description = "",
-      canonicalHref: canonical = normalized,
-      schemaObjects = [],
-      pageLinks = [],
-      crawlHealth = null,
-    } = homepage;
-
-    const $ = cheerio.load(html || "<html></html>");
-
-    const entityName =
-      schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
-      schemaObjects.find((o) => o["@type"] === "Person")?.name ||
-      title.split(" | ")[0] ||
-      null;
-
-    /* ========================================================
-       EEI SCORING (HEAVY ONLY)
-    ======================================================== */
-    let results = [];
-    let entityScore = null;
-    let entityTier = null;
-
-    if (entityComprehensionMode === "heavy") {
-      results = [
-        scoreTitle($),
-        scoreMetaDescription($),
-        scoreCanonical($, normalized),
+      breakdown = [
+        scoreTitle($, staticSurface),
+        scoreMetaDescription($, staticSurface),
+        scoreCanonical($, normalized, staticSurface),
         scoreSchemaPresence(schemaObjects),
         scoreOrgSchema(schemaObjects),
         scoreBreadcrumbSchema(schemaObjects),
         scoreAuthorPerson(schemaObjects, $),
         scoreSocialLinks(schemaObjects, pageLinks),
         scoreAICrawlSignals($),
-        scoreContentDepth($),
+        scoreContentDepth($, staticSurface),
         scoreInternalLinks(pageLinks, host),
         scoreExternalLinks(pageLinks, host),
         scoreFaviconOg($),
       ];
 
       let totalRaw = 0;
-      for (const sig of results) {
+      for (const sig of breakdown) {
         totalRaw += clamp(sig.points || 0, 0, sig.max);
       }
 
-      entityScore = clamp(
+      eccScore = clamp(
         Math.round((totalRaw * 100) / TOTAL_WEIGHT),
         0,
         100
       );
+    }
 
-      entityTier = tierFromScore(entityScore);
+    const eccBand = bandFromScore(eccScore);
+
+    /* ========================================================
+       INTENT + QUADRANT
+    ======================================================== */
+    const intent = deriveIntent({
+      staticSurface,
+      renderedSurface,
+    });
+
+    const quadrant = classifyQuadrant(eccBand, intent.posture);
+
+    /* ========================================================
+       AGGREGATES (OPTIONAL, SAFE)
+    ======================================================== */
+    let entityAggregate = null;
+    if (renderedSurface?.surfaces) {
+      entityAggregate = aggregateSurfaces({
+        surfaces: renderedSurface.surfaces,
+      });
     }
 
     /* ========================================================
-       RESPONSE
+       RESPONSE (STABLE CONTRACT)
     ======================================================== */
     return res.status(200).json({
       success: true,
       url: normalized,
       hostname: host,
-      entityName,
-      title,
-      canonical,
-      description,
 
-      eeiScoringStatus:
-        entityComprehensionMode === "heavy"
-          ? "scored-heavy"
-          : "unscored-lite",
+      ecc: {
+        score: eccScore,
+        band: eccBand,
+        max: 100,
+      },
 
-      entityScore,
-      entityStage: entityTier?.stage || null,
-      entityVerb: entityTier?.verb || null,
-      entityDescription: entityTier?.description || null,
-      entityFocus: entityTier?.coreFocus || null,
+      intent,
+      quadrant,
 
-      breakdown: results,
-      entitySignals: entityAggregate.entitySignals,
-      entitySummary: entityAggregate.entitySummary,
-      entityComprehensionMode,
-      crawlHealth,
+      breakdown: breakdown || [],
+
+      entitySignals: entityAggregate?.entitySignals || null,
+      entitySummary: entityAggregate?.entitySummary || null,
+
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
