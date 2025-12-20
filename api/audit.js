@@ -1,77 +1,281 @@
-export default async function handler(req, res) {
-  try {
-    const url =
-      typeof req.query.url === "string" && req.query.url.length
-        ? req.query.url
-        : null;
+// /api/audit.js — EEI v5.5
+// Sovereign dual-crawler orchestration (lite → heavy)
+// AUTO mode now escalates to heavy for scoring
 
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing ?url parameter"
-      });
+import axios from "axios";
+import https from "https";
+import * as cheerio from "cheerio";
+
+import {
+  scoreTitle,
+  scoreMetaDescription,
+  scoreCanonical,
+  scoreSchemaPresence,
+  scoreOrgSchema,
+  scoreBreadcrumbSchema,
+  scoreAuthorPerson,
+  scoreSocialLinks,
+  scoreAICrawlSignals,
+  scoreContentDepth,
+  scoreInternalLinks,
+  scoreExternalLinks,
+  scoreFaviconOg,
+  tierFromScore,
+} from "../shared/scoring.js";
+
+import { TOTAL_WEIGHT } from "../shared/weights.js";
+import { discoverSurfaces } from "../lib/surface-discovery.js";
+import { aggregateSurfaces } from "../lib/surface-aggregator.js";
+
+/* ============================================================
+   NETWORK HARDENING
+============================================================ */
+const httpsAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 1,
+});
+
+/* ============================================================
+   CONFIG
+============================================================ */
+const CRAWL_WORKER_BASE =
+  "https://exmxc-crawl-worker-production.up.railway.app";
+const CRAWL_LITE_BASE =
+  "https://exmxc-crawl-lite-production.up.railway.app";
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function normalizeUrl(input) {
+  let url = (input || "").trim();
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  try {
+    return new URL(url).toString();
+  } catch {
+    return null;
+  }
+}
+
+function hostnameOf(urlStr) {
+  try {
+    return new URL(urlStr).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+/* ============================================================
+   MAIN HANDLER
+============================================================ */
+export default async function handler(req, res) {
+  const origin = req.headers.origin || "*";
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  try {
+    const input = req.query?.url;
+    const mode = req.query?.mode || "auto"; // auto | lite | heavy
+
+    if (!input) {
+      return res.status(400).json({ error: "Missing URL" });
     }
 
-    // Minimal, static, known-good payload
-    // This is ONLY to validate execution + UX
-    const response = {
-      success: true,
-      eci: {
-        entity: {
-          name: "Placeholder Entity",
-          url,
-          hostname: new URL(url).hostname,
-          vertical: null,
-          timestamp: new Date().toISOString()
-        },
-        eci: {
-          score: 75,
-          range: "60–79",
-          interpretation: "Operational clarity",
-          strategicPosture: "Structured",
-          signalCoverage: {
-            observed: 13,
-            unknown: 0
-          }
-        },
-        claritySignals: [
-          "Title Precision",
-          "Meta Description Integrity",
-          "Canonical Clarity",
-          "Schema Presence & Validity",
-          "Organization Schema",
-          "Breadcrumb Schema",
-          "Author/Person Schema",
-          "Social Entity Links",
-          "AI Crawl Fidelity",
-          "Inference Efficiency",
-          "Internal Lattice Integrity",
-          "External Authority Signal",
-          "Brand & Technical Consistency"
-        ].map(name => ({
-          name,
-          status: "Strong"
-        }))
-      },
-      eei: {
-        url,
-        hostname: new URL(url).hostname,
-        breakdown: [],
-        crawlHealth: {
-          wordCount: 0,
-          linkCount: 0,
-          schemaCount: 0,
-          jsonLdErrorCount: 0
-        },
-        timestamp: new Date().toISOString()
-      }
-    };
+    const normalized = normalizeUrl(input);
+    if (!normalized) {
+      return res.status(400).json({ error: "Invalid URL format" });
+    }
 
-    return res.status(200).json(response);
+    const host = hostnameOf(normalized);
+
+    let crawlData = null;
+    let liteWasUsed = false;
+    let entityComprehensionMode = "heavy";
+
+    /* ========================================================
+       LITE PROBE (lite OR auto)
+    ======================================================== */
+    if (mode === "lite" || mode === "auto") {
+      try {
+        const liteResp = await axios.post(
+          `${CRAWL_LITE_BASE}/crawl-lite`,
+          { url: normalized },
+          { timeout: 15000 }
+        );
+
+        const lite = liteResp.data;
+
+        crawlData = {
+          success: true,
+          surfaces: [
+            {
+              html: "",
+              title: lite.title,
+              description: lite.description,
+              canonicalHref: lite.canonical,
+              schemaObjects: lite.schemaObjects || [],
+              pageLinks: [],
+              crawlHealth: { mode: "lite" },
+            },
+          ],
+        };
+
+        liteWasUsed = true;
+        entityComprehensionMode = "lite";
+      } catch (err) {
+        if (mode === "lite") {
+          throw err;
+        }
+      }
+    }
+
+    /* ========================================================
+       HEAVY ESCALATION
+       - mode=heavy → always
+       - mode=auto → after lite probe
+    ======================================================== */
+    if (
+      !crawlData ||
+      mode === "heavy" ||
+      (mode === "auto" && liteWasUsed)
+    ) {
+      entityComprehensionMode = "heavy";
+
+      const discovery = await discoverSurfaces(normalized);
+      const surfaceUrls = discovery.surfaces;
+
+      try {
+        const crawlResp = await axios.post(
+          `${CRAWL_WORKER_BASE}/crawl`,
+          { url: normalized, surfaces: surfaceUrls },
+          { timeout: 45000, httpsAgent }
+        );
+
+        crawlData = crawlResp.data;
+
+        if (!crawlData?.success || !Array.isArray(crawlData.surfaces)) {
+          throw new Error("crawl-failed");
+        }
+      } catch {
+        return res.status(502).json({
+          success: false,
+          error: "Crawl worker failed",
+        });
+      }
+    }
+
+    /* ========================================================
+       AGGREGATION
+    ======================================================== */
+    const entityAggregate = aggregateSurfaces({
+      surfaces: crawlData.surfaces,
+    });
+
+    const homepage = crawlData.surfaces[0] || {};
+
+    const {
+      html = "",
+      title = "",
+      description = "",
+      canonicalHref: canonical = normalized,
+      schemaObjects = [],
+      pageLinks = [],
+      crawlHealth = null,
+    } = homepage;
+
+    const $ = cheerio.load(html || "<html></html>");
+
+    const entityName =
+      schemaObjects.find((o) => o["@type"] === "Organization")?.name ||
+      schemaObjects.find((o) => o["@type"] === "Person")?.name ||
+      title.split(" | ")[0] ||
+      null;
+
+    /* ========================================================
+       EEI SCORING (HEAVY ONLY)
+    ======================================================== */
+    let results = [];
+    let entityScore = null;
+    let entityTier = null;
+
+    if (entityComprehensionMode === "heavy") {
+      results = [
+        scoreTitle($),
+        scoreMetaDescription($),
+        scoreCanonical($, normalized),
+        scoreSchemaPresence(schemaObjects),
+        scoreOrgSchema(schemaObjects),
+        scoreBreadcrumbSchema(schemaObjects),
+        scoreAuthorPerson(schemaObjects, $),
+        scoreSocialLinks(schemaObjects, pageLinks),
+        scoreAICrawlSignals($),
+        scoreContentDepth($),
+        scoreInternalLinks(pageLinks, host),
+        scoreExternalLinks(pageLinks, host),
+        scoreFaviconOg($),
+      ];
+
+      let totalRaw = 0;
+      for (const sig of results) {
+        totalRaw += clamp(sig.points || 0, 0, sig.max);
+      }
+
+      entityScore = clamp(
+        Math.round((totalRaw * 100) / TOTAL_WEIGHT),
+        0,
+        100
+      );
+
+      entityTier = tierFromScore(entityScore);
+    }
+
+    /* ========================================================
+       RESPONSE
+    ======================================================== */
+    return res.status(200).json({
+      success: true,
+      url: normalized,
+      hostname: host,
+      entityName,
+      title,
+      canonical,
+      description,
+
+      eeiScoringStatus:
+        entityComprehensionMode === "heavy"
+          ? "scored-heavy"
+          : "unscored-lite",
+
+      entityScore,
+      entityStage: entityTier?.stage || null,
+      entityVerb: entityTier?.verb || null,
+      entityDescription: entityTier?.description || null,
+      entityFocus: entityTier?.coreFocus || null,
+
+      breakdown: results,
+      entitySignals: entityAggregate.entitySignals,
+      entitySummary: entityAggregate.entitySummary,
+      entityComprehensionMode,
+      crawlHealth,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     return res.status(500).json({
       success: false,
-      error: err.message || "Internal error"
+      error: "Internal server error",
+      details: err.message || String(err),
     });
   }
 }
