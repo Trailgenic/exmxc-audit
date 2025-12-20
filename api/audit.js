@@ -1,6 +1,7 @@
-// /api/audit.js — EEI v6.2 (LOCKED)
+// /api/audit.js — EEI v6.3 (LOCKED)
 // ECC = STATIC ONLY
-// Intent = Rendered ONLY
+// Intent = RENDERED ONLY
+// POST + GET compatible
 // Vercel-safe, batch-safe
 
 import axios from "axios";
@@ -52,7 +53,7 @@ function quadrant(ecc, intent) {
 }
 
 /* ===============================
-   JSON-LD PARSER (FIXED)
+   JSON-LD PARSER
 ================================ */
 function parseJsonLd(raw) {
   try {
@@ -74,7 +75,7 @@ async function staticCrawl(url) {
     maxRedirects: 5,
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.2; +https://exmxc.ai)",
+        "Mozilla/5.0 (compatible; exmxc-static/6.3; +https://exmxc.ai)",
       Accept: "text/html",
     },
   });
@@ -114,12 +115,23 @@ async function staticCrawl(url) {
 ================================ */
 export default async function handler(req, res) {
   try {
-    const input = req.query?.url;
-    if (!input) {
-      return res.status(400).json({ success: false, error: "Missing URL" });
+    // ---- INPUT NORMALIZATION (FIX) ----
+    let input =
+      req.method === "POST"
+        ? req.body?.url
+        : req.query?.url;
+
+    if (!input || typeof input !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "Missing URL",
+      });
     }
 
-    const url = input.startsWith("http") ? input : `https://${input}`;
+    const url = input.startsWith("http")
+      ? input
+      : `https://${input}`;
+
     const host = new URL(url).hostname.replace(/^www\./, "");
 
     /* -------- STATIC (ECC) -------- */
@@ -143,9 +155,9 @@ export default async function handler(req, res) {
     ];
 
     let raw = 0;
-    breakdown.forEach(b => {
+    for (const b of breakdown) {
       raw += clamp(b.points || 0, 0, b.max);
-    });
+    }
 
     const eccScore = clamp(
       Math.round((raw * 100) / TOTAL_WEIGHT),
@@ -171,10 +183,12 @@ export default async function handler(req, res) {
 
       if (renderedSchemas.length > staticData.schemaObjects.length) {
         intent = "high";
-        intentSignals.push("Additional schema exposed via JS rendering");
+        intentSignals.push(
+          "Additional schema exposed via JS rendering"
+        );
       }
     } catch {
-      // Intent stays low on failure
+      // Intent stays low if render fails
     }
 
     /* -------- RESPONSE -------- */
