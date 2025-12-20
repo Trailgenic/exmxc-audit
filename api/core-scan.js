@@ -1,4 +1,4 @@
-// /api/core-scan.js — EEI Core Scan v3.0
+// /api/core-scan.js — EEI Core Scan v3.1
 // Static-first entity crawl
 // Rendered crawl is DIAGNOSTIC ONLY (AI obstruction detection)
 // No scoring. No ontology. No guessing.
@@ -15,7 +15,7 @@ export const CRAWL_CONFIG = {
   MAX_REDIRECTS: 5,
 
   STATIC_UA:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-static/3.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-static/3.1 Safari/537.36",
 
   AI_UAS: [
     "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
@@ -103,6 +103,7 @@ export async function staticCrawl(url) {
 
   return {
     mode: "static",
+    status: resp.status,
     url: finalUrl,
 
     html,
@@ -155,14 +156,16 @@ export async function renderedProbe(url) {
     const robots =
       $('meta[name="robots"]').attr("content") || "";
 
+    const title = await page.title();
+
     return {
       mode: "rendered",
       url,
       wordCount,
       robots,
       blocked:
-        /noindex|nofollow|captcha|attention required/i.test(
-          page.title() + robots
+        /noindex|nofollow|captcha|attention required|access denied/i.test(
+          title + robots
         )
     };
   } finally {
@@ -171,7 +174,42 @@ export async function renderedProbe(url) {
 }
 
 /* ============================================================
-   MULTI-SURFACE ENTITY SCAN
+   SINGLE-PAGE CRAWL (audit.js COMPATIBLE)
+   ============================================================ */
+
+export async function crawlPage({
+  url,
+  mode = "static",
+  probeRendered = true
+}) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) throw new Error("Invalid URL");
+
+  // Always run authoritative static crawl
+  const staticResult = await staticCrawl(normalized);
+
+  let renderedDiagnostics = null;
+
+  if (probeRendered) {
+    try {
+      renderedDiagnostics = await renderedProbe(normalized);
+    } catch {
+      renderedDiagnostics = {
+        blocked: true,
+        reason: "rendered-probe-failed"
+      };
+    }
+  }
+
+  return {
+    ...staticResult,
+    mode: "static",
+    renderedDiagnostics
+  };
+}
+
+/* ============================================================
+   MULTI-SURFACE ENTITY SCAN (BATCH / REPORTS)
    ============================================================ */
 
 export async function coreScan({
@@ -191,7 +229,7 @@ export async function coreScan({
     try {
       const staticResult = await staticCrawl(surfaceUrl);
       results.push({
-        surface,
+        surface: surfaceUrl,
         ...staticResult
       });
     } catch {
