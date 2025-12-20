@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ECI Diagnostic Console — Internal</title>
+  <title>EEI Single URL Audit — Internal</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
   <style>
     body {
       background-color: #f9fafb;
@@ -16,206 +15,330 @@
       color: #e2e8f0;
       padding: 1rem;
       border-radius: 0.75rem;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       white-space: pre-wrap;
       overflow-x: auto;
     }
     .badge {
       font-size: 0.7rem;
-      padding: 0.2rem 0.6rem;
+      padding: 0.15rem 0.5rem;
       border-radius: 999px;
-      font-weight: 600;
     }
   </style>
 </head>
 
 <body class="max-w-6xl mx-auto py-10 px-5">
 
-<!-- HEADER -->
-<header class="mb-8">
-  <div class="flex justify-between items-start">
-    <div>
-      <h1 class="text-3xl font-bold text-gray-900">
-        ECI Diagnostic Console <span class="text-xs text-gray-500">INTERNAL</span>
-      </h1>
-      <p class="text-sm text-gray-600 mt-1">
-        exmxc.ai · Entity Clarity Index — structural truth view
-      </p>
-    </div>
-    <div class="text-xs text-gray-500 text-right">
-      <div>Powered by <strong>exmxc.ai</strong></div>
-      <div id="timestamp"></div>
-    </div>
-  </div>
-</header>
-
-<!-- INPUT -->
-<section class="bg-white border rounded-xl p-4 mb-6 shadow-sm">
-  <label class="text-xs text-gray-600">URL to audit</label>
-  <div class="flex gap-2 mt-1">
-    <input id="urlInput" class="flex-1 border rounded px-3 py-2 text-sm" placeholder="example.com" />
-    <button id="runButton" class="bg-black text-white px-4 py-2 rounded">Run Audit</button>
-  </div>
-</section>
-
-<!-- ECI OVERVIEW -->
-<section class="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8">
-  <div class="flex justify-between items-start gap-6">
-
-    <div>
-      <div id="entityName" class="text-sm font-semibold text-gray-800"></div>
-
-      <div class="flex items-center gap-3 mt-1">
-        <div id="eciScore" class="text-3xl font-bold">ECI: —</div>
-        <span id="eciRange" class="badge bg-indigo-100 text-indigo-800">—</span>
+  <!-- HEADER -->
+  <header class="mb-8">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">
+          EEI Single URL Audit
+          <span class="text-xs text-gray-500">INTERNAL</span>
+        </h1>
+        <p class="text-sm text-gray-600 mt-1">
+          exmxc.ai · Entity Engineering Index — full 13-signal diagnostic
+        </p>
       </div>
-
-      <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
-        <div id="eciBar" class="h-3 rounded-full"></div>
+      <div class="text-xs text-gray-500 text-right">
+        <div>Powered by <strong>exmxc.ai</strong></div>
+        <div id="timestamp"></div>
       </div>
+    </div>
+  </header>
 
-      <div class="mt-3 text-sm space-y-1">
-        <div><strong>Interpretation:</strong> <span id="eciInterpretation"></span></div>
-        <div><strong>Strategic Posture:</strong> <span id="eciPosture"></span></div>
-        <div class="text-xs text-gray-600">
-          Signal Coverage: <span id="eciCoverage"></span>
+  <!-- INPUT -->
+  <section class="bg-white border rounded-xl p-4 mb-6 shadow-sm">
+    <label class="text-xs text-gray-600">URL to audit</label>
+    <div class="flex gap-2 mt-1">
+      <input id="urlInput" class="flex-1 border rounded px-3 py-2 text-sm" placeholder="example.com" />
+      <button id="runButton" class="bg-black text-white px-4 py-2 rounded">
+        Run Audit
+      </button>
+    </div>
+  </section>
+
+  <!-- SCORE -->
+  <section class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+    <div class="flex justify-between items-start gap-6">
+
+      <div>
+        <div id="entityName" class="text-sm font-semibold text-gray-800"></div>
+
+        <div class="flex items-center gap-2 mt-1">
+          <div id="scoreDisplay" class="text-3xl font-bold">EEI: -- / 100</div>
+          <span id="scoreBadge" class="badge bg-gray-200">Awaiting</span>
+        </div>
+
+        <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
+          <div id="scoreBar" class="h-3 rounded-full"></div>
+        </div>
+
+        <div class="mt-2">
+          <div id="entityStage" class="font-semibold"></div>
+          <div id="entityVerb" class="text-xs text-gray-700"></div>
+          <div id="entityFocus" class="text-xs text-gray-500"></div>
         </div>
       </div>
-    </div>
 
-    <!-- CRAWL HEALTH (DIAGNOSTIC ONLY) -->
-    <div class="bg-white border rounded-lg p-3 w-64 text-xs">
-      <div class="flex justify-between items-center mb-1">
-        <span class="font-semibold">Crawl Health</span>
-        <span id="crawlHealthScore" class="badge bg-gray-200">—</span>
+      <!-- CRAWL HEALTH -->
+      <div class="bg-white border rounded-lg p-3 w-60 text-xs">
+        <div class="flex justify-between items-center mb-1">
+          <span class="font-semibold">Crawl Health</span>
+          <span id="crawlHealthScore" class="badge bg-gray-200">--</span>
+        </div>
+        <div id="crawlHealthCategory" class="text-xs mb-1">—</div>
+        <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
       </div>
-      <div id="crawlHealthCategory" class="text-xs mb-1">—</div>
-      <ul id="crawlHealthNotes" class="list-disc pl-4 space-y-0.5"></ul>
+
     </div>
+  </section>
 
-  </div>
-</section>
+  <!-- TIERS -->
+  <section class="mb-8">
+    <h2 class="text-sm font-semibold mb-2">Tier Summary</h2>
 
-<!-- SIGNALS -->
-<section class="mb-10">
-  <h2 class="text-sm font-semibold mb-4">Entity Clarity Signals (13)</h2>
+    <div class="grid grid-cols-3 gap-3 text-xs">
 
-  <div class="bg-white border rounded-xl p-4">
-    <div id="signalList" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"></div>
-  </div>
-</section>
+      <div class="bg-white border rounded p-3">
+        <strong>Tier 1</strong>
+        <div id="tier1Score">--</div>
+        <div class="h-2 bg-gray-200 rounded">
+          <div id="tier1Bar" class="h-2 rounded"></div>
+        </div>
+        <div id="tier1Meta" class="text-[11px] text-gray-500 mt-1"></div>
+      </div>
 
-<!-- RAW JSON -->
-<section>
-  <h2 class="text-sm font-semibold mb-2">Raw JSON (Diagnostic)</h2>
-  <pre id="result" class="json-box">// Awaiting input…</pre>
-</section>
+      <div class="bg-white border rounded p-3">
+        <strong>Tier 2</strong>
+        <div id="tier2Score">--</div>
+        <div class="h-2 bg-gray-200 rounded">
+          <div id="tier2Bar" class="h-2 rounded"></div>
+        </div>
+        <div id="tier2Meta" class="text-[11px] text-gray-500 mt-1"></div>
+      </div>
 
-<script>
-const runButton = document.getElementById("runButton");
-const resultEl = document.getElementById("result");
-const timestampEl = document.getElementById("timestamp");
+      <div class="bg-white border rounded p-3">
+        <strong>Tier 3</strong>
+        <div id="tier3Score">--</div>
+        <div class="h-2 bg-gray-200 rounded">
+          <div id="tier3Bar" class="h-2 rounded"></div>
+        </div>
+        <div id="tier3Meta" class="text-[11px] text-gray-500 mt-1"></div>
+      </div>
 
-const entityNameEl = document.getElementById("entityName");
-const eciScoreEl = document.getElementById("eciScore");
-const eciBarEl = document.getElementById("eciBar");
-const eciRangeEl = document.getElementById("eciRange");
-const eciInterpretationEl = document.getElementById("eciInterpretation");
-const eciPostureEl = document.getElementById("eciPosture");
-const eciCoverageEl = document.getElementById("eciCoverage");
-
-const crawlHealthScoreEl = document.getElementById("crawlHealthScore");
-const crawlHealthCategoryEl = document.getElementById("crawlHealthCategory");
-const crawlHealthNotesEl = document.getElementById("crawlHealthNotes");
-
-const signalListEl = document.getElementById("signalList");
-
-function color(score) {
-  if (score >= 80) return "bg-green-500";
-  if (score >= 60) return "bg-yellow-400";
-  if (score >= 40) return "bg-orange-400";
-  return "bg-red-500";
-}
-
-function renderSignal(signal) {
-  const statusColor =
-    signal.status === "Strong"
-      ? "bg-green-100 text-green-800"
-      : signal.status === "Moderate"
-      ? "bg-yellow-100 text-yellow-800"
-      : "bg-gray-200 text-gray-700";
-
-  const div = document.createElement("div");
-  div.className = "border rounded p-3";
-  div.innerHTML = `
-    <div class="flex justify-between items-center">
-      <span class="font-medium">${signal.name}</span>
-      <span class="badge ${statusColor}">${signal.status}</span>
     </div>
-  `;
-  return div;
-}
+  </section>
 
-runButton.onclick = async () => {
-  const input = document.getElementById("urlInput").value.trim();
-  if (!input) return;
+  <!-- 13 SIGNAL BREAKDOWN -->
+  <section class="mb-10">
+    <h2 class="text-sm font-semibold mb-4">13 Signal Breakdown</h2>
 
-  resultEl.textContent = "Loading…";
-  signalListEl.innerHTML = "";
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
 
-  const url = input.startsWith("http") ? input : `https://${input}`;
+      <div class="bg-white border rounded-xl p-4">
+        <h3 class="font-semibold mb-2">Meta Signals</h3>
+        <div id="metaSignals" class="space-y-4"></div>
+      </div>
 
-  try {
-    const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`, {
-      headers: { "x-exmxc-key": "exmxc-internal" }
-    });
+      <div class="bg-white border rounded-xl p-4">
+        <h3 class="font-semibold mb-2">Schema Signals</h3>
+        <div id="schemaSignals" class="space-y-4"></div>
+      </div>
 
-    const data = await res.json();
-    resultEl.textContent = JSON.stringify(data, null, 2);
-    timestampEl.textContent = `Last run: ${new Date().toLocaleString()}`;
+      <div class="bg-white border rounded-xl p-4">
+        <h3 class="font-semibold mb-2">Lattice & Crawl Signals</h3>
+        <div id="latticeSignals" class="space-y-4"></div>
+      </div>
 
-    if (!data.success) return;
+      <div class="bg-white border rounded-xl p-4">
+        <h3 class="font-semibold mb-2">Content Signals</h3>
+        <div id="contentSignals" class="space-y-4"></div>
+      </div>
 
-    const eci = data.eci.eci;
+    </div>
+  </section>
 
-    entityNameEl.textContent = `Entity: ${data.eci.entity.name}`;
-    eciScoreEl.textContent = `ECI: ${eci.score} / 100`;
-    eciBarEl.style.width = `${eci.score}%`;
-    eciBarEl.className = `h-3 rounded-full ${color(eci.score)}`;
-    eciRangeEl.textContent = eci.range;
-    eciInterpretationEl.textContent = eci.interpretation;
-    eciPostureEl.textContent = eci.strategicPosture;
-    eciCoverageEl.textContent =
-      `${eci.signalCoverage.observed} observed · ${eci.signalCoverage.unknown} unknown`;
+  <!-- RAW JSON -->
+  <section>
+    <h2 class="text-sm font-semibold mb-2">Raw JSON</h2>
+    <pre id="result" class="json-box">// Awaiting input…</pre>
+  </section>
 
-    // Render signals (ALWAYS 13 — defensive)
-const signals = Array.isArray(eci.claritySignals)
-  ? eci.claritySignals
-  : [];
+  <!-- SCRIPT -->
+  <script>
+    const runButton = document.getElementById("runButton");
+    const resultEl = document.getElementById("result");
+    const timestampEl = document.getElementById("timestamp");
 
-signalListEl.innerHTML = "";
+    const scoreDisplay = document.getElementById("scoreDisplay");
+    const scoreBar = document.getElementById("scoreBar");
+    const scoreBadge = document.getElementById("scoreBadge");
 
-signals.forEach(sig => {
-  signalListEl.appendChild(renderSignal(sig));
-});
+    const entityNameEl = document.getElementById("entityName");
+    const entityStageEl = document.getElementById("entityStage");
+    const entityVerbEl = document.getElementById("entityVerb");
+    const entityFocusEl = document.getElementById("entityFocus");
 
+    const crawlHealthScoreEl = document.getElementById("crawlHealthScore");
+    const crawlHealthCategoryEl = document.getElementById("crawlHealthCategory");
+    const crawlHealthNotesEl = document.getElementById("crawlHealthNotes");
 
-    // Crawl health (diagnostic only)
-    const ch = data.eei?.crawlHealth || {};
-    crawlHealthScoreEl.textContent = ch.score ? `${ch.score}/100` : "—";
-    crawlHealthCategoryEl.textContent = ch.category || "—";
-    crawlHealthNotesEl.innerHTML = "";
-    (ch.notes || []).forEach(n => {
-      const li = document.createElement("li");
-      li.textContent = n;
-      crawlHealthNotesEl.appendChild(li);
-    });
+    const tier1ScoreEl = document.getElementById("tier1Score");
+    const tier2ScoreEl = document.getElementById("tier2Score");
+    const tier3ScoreEl = document.getElementById("tier3Score");
 
-  } catch (err) {
-    resultEl.textContent = JSON.stringify({ success: false, error: err.message }, null, 2);
-  }
-};
-</script>
+    const tier1BarEl = document.getElementById("tier1Bar");
+    const tier2BarEl = document.getElementById("tier2Bar");
+    const tier3BarEl = document.getElementById("tier3Bar");
+
+    const tier1MetaEl = document.getElementById("tier1Meta");
+    const tier2MetaEl = document.getElementById("tier2Meta");
+    const tier3MetaEl = document.getElementById("tier3Meta");
+
+    const metaSignalsEl = document.getElementById("metaSignals");
+    const schemaSignalsEl = document.getElementById("schemaSignals");
+    const latticeSignalsEl = document.getElementById("latticeSignals");
+    const contentSignalsEl = document.getElementById("contentSignals");
+
+    function color(score) {
+      if (score >= 80) return "bg-green-500";
+      if (score >= 60) return "bg-yellow-400";
+      if (score >= 40) return "bg-orange-400";
+      return "bg-red-500";
+    }
+
+    /* ---------------------------- 13 SIGNALS GROUPING ----------------------------- */
+    const GROUPS = {
+      meta: [
+        "Title Precision",
+        "Meta Description Integrity",
+        "Canonical Clarity",
+        "Brand & Technical Consistency"
+      ],
+      schema: [
+        "Schema Presence & Validity",
+        "Organization Schema",
+        "Breadcrumb Schema",
+        "Author/Person Schema"
+      ],
+      lattice: [
+        "Internal Lattice Integrity",
+        "External Authority Signal",
+        "Social Entity Links",
+        "AI Crawl Fidelity"
+      ],
+      content: [
+        "Inference Efficiency"
+      ]
+    };
+
+    function renderSignal(signal) {
+      const pct = signal.max
+        ? Math.round((signal.points / signal.max) * 100)
+        : 0;
+
+      const div = document.createElement("div");
+      div.innerHTML = `
+        <div class="flex justify-between text-xs mb-1">
+          <span class="font-medium text-gray-900">${signal.key}</span>
+          <span class="text-gray-700">${signal.points}/${signal.max}</span>
+        </div>
+        <div class="h-2 bg-gray-200 rounded">
+          <div class="h-2 rounded ${color(pct)}" style="width:${pct}%"></div>
+        </div>
+        <div class="text-[11px] text-gray-500">${signal.notes || ""}</div>
+      `;
+      return div;
+    }
+
+    /* ---------------------------- TIERS ----------------------------- */
+    const TIER_MAP = {
+      tier1: [
+        "Inference Efficiency",
+        "Internal Lattice Integrity",
+        "External Authority Signal",
+        "Social Entity Links",
+        "AI Crawl Fidelity"
+      ],
+      tier2: [
+        "Schema Presence & Validity",
+        "Organization Schema",
+        "Breadcrumb Schema",
+        "Author/Person Schema"
+      ],
+      tier3: [
+        "Title Precision",
+        "Meta Description Integrity",
+        "Canonical Clarity",
+        "Brand & Technical Consistency"
+      ]
+    };
+
+    function computeTier(breakdown, keys) {
+      let raw = 0;
+      let max = 0;
+
+      breakdown.forEach(sig => {
+        if (keys.includes(sig.key)) {
+          raw += sig.points || 0;
+          max += sig.max || 0;
+        }
+      });
+
+      const pct = max ? Math.round((raw / max) * 100) : 0;
+      return { raw, max, pct };
+    }
+
+    function setTier(elScore, elBar, elMeta, tier) {
+      if (!tier || !tier.max) {
+        elScore.textContent = "--";
+        elBar.style.width = "0%";
+        elBar.className = "h-2 rounded bg-gray-300";
+        elMeta.textContent = "";
+        return;
+      }
+
+      elScore.textContent = `${tier.pct}/100`;
+      elBar.style.width = `${tier.pct}%`;
+      elBar.className = `h-2 rounded ${color(tier.pct)}`;
+      elMeta.textContent = `Raw ${tier.raw} / ${tier.max}`;
+    }
+
+    /* ---------------------------- RUN AUDIT ----------------------------- */
+    runButton.onclick = async () => {
+      const input = document.getElementById("urlInput").value.trim();
+      if (!input) return;
+
+      resultEl.textContent = "Loading…";
+
+      const url = input.startsWith("http")
+        ? input
+        : `https://${input}`;
+
+      try {
+        const res = await fetch(
+          `https://exmxc-audit.vercel.app/api/audit?url=${encodeURIComponent(url)}`,
+          {
+            headers: { "x-exmxc-key": "exmxc-internal" }
+          }
+        );
+
+        const data = await res.json();
+        resultEl.textContent = JSON.stringify(data, null, 2);
+
+        timestampEl.textContent = `Last run: ${new Date().toLocaleString()}`;
+
+      } catch (err) {
+        resultEl.textContent = JSON.stringify(
+          { success: false, error: err.message },
+          null,
+          2
+        );
+      }
+    };
+  </script>
 
 </body>
 </html>
