@@ -67,20 +67,23 @@
 
       <div class="flex items-center gap-3 mt-1">
         <div id="eciScore" class="text-3xl font-bold">ECI: —</div>
-        <span id="eciBadge" class="badge bg-gray-200">—</span>
+        <span id="eciRange" class="badge bg-indigo-100 text-indigo-800">—</span>
       </div>
 
       <div class="w-full h-3 bg-gray-200 rounded-full mt-3">
         <div id="eciBar" class="h-3 rounded-full"></div>
       </div>
 
-      <div class="mt-3 text-sm">
+      <div class="mt-3 text-sm space-y-1">
         <div><strong>Interpretation:</strong> <span id="eciInterpretation"></span></div>
         <div><strong>Strategic Posture:</strong> <span id="eciPosture"></span></div>
+        <div class="text-xs text-gray-600">
+          Signal Coverage: <span id="eciCoverage"></span>
+        </div>
       </div>
     </div>
 
-    <!-- CRAWL HEALTH -->
+    <!-- CRAWL HEALTH (DIAGNOSTIC ONLY) -->
     <div class="bg-white border rounded-lg p-3 w-64 text-xs">
       <div class="flex justify-between items-center mb-1">
         <span class="font-semibold">Crawl Health</span>
@@ -93,7 +96,7 @@
   </div>
 </section>
 
-<!-- 13 SIGNALS (SINGLE SOURCE OF TRUTH) -->
+<!-- SIGNALS -->
 <section class="mb-10">
   <h2 class="text-sm font-semibold mb-4">Entity Clarity Signals (13)</h2>
 
@@ -116,9 +119,10 @@ const timestampEl = document.getElementById("timestamp");
 const entityNameEl = document.getElementById("entityName");
 const eciScoreEl = document.getElementById("eciScore");
 const eciBarEl = document.getElementById("eciBar");
-const eciBadgeEl = document.getElementById("eciBadge");
+const eciRangeEl = document.getElementById("eciRange");
 const eciInterpretationEl = document.getElementById("eciInterpretation");
 const eciPostureEl = document.getElementById("eciPosture");
+const eciCoverageEl = document.getElementById("eciCoverage");
 
 const crawlHealthScoreEl = document.getElementById("crawlHealthScore");
 const crawlHealthCategoryEl = document.getElementById("crawlHealthCategory");
@@ -134,16 +138,19 @@ function color(score) {
 }
 
 function renderSignal(signal) {
+  const statusColor =
+    signal.status === "Strong"
+      ? "bg-green-100 text-green-800"
+      : signal.status === "Moderate"
+      ? "bg-yellow-100 text-yellow-800"
+      : "bg-gray-200 text-gray-700";
+
   const div = document.createElement("div");
   div.className = "border rounded p-3";
   div.innerHTML = `
     <div class="flex justify-between items-center">
       <span class="font-medium">${signal.name}</span>
-      <span class="badge ${
-        signal.status === "Strong" ? "bg-green-100 text-green-800" :
-        signal.status === "Moderate" ? "bg-yellow-100 text-yellow-800" :
-        "bg-gray-200 text-gray-700"
-      }">${signal.status}</span>
+      <span class="badge ${statusColor}">${signal.status}</span>
     </div>
   `;
   return div;
@@ -159,10 +166,9 @@ runButton.onclick = async () => {
   const url = input.startsWith("http") ? input : `https://${input}`;
 
   try {
-    const res = await fetch(
-      `/api/audit?url=${encodeURIComponent(url)}`,
-      { headers: { "x-exmxc-key": "exmxc-internal" } }
-    );
+    const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`, {
+      headers: { "x-exmxc-key": "exmxc-internal" }
+    });
 
     const data = await res.json();
     resultEl.textContent = JSON.stringify(data, null, 2);
@@ -170,33 +176,24 @@ runButton.onclick = async () => {
 
     if (!data.success) return;
 
-    const eci = data.eci;
+    const eci = data.eci.eci;
 
-    entityNameEl.textContent = `Entity: ${eci.entity.name}`;
-    eciScoreEl.textContent = `ECI: ${eci.eci.score} / 100`;
-    eciBarEl.style.width = `${eci.eci.score}%`;
-    eciBarEl.className = `h-3 rounded-full ${color(eci.eci.score)}`;
+    entityNameEl.textContent = `Entity: ${data.eci.entity.name}`;
+    eciScoreEl.textContent = `ECI: ${eci.score} / 100`;
+    eciBarEl.style.width = `${eci.score}%`;
+    eciBarEl.className = `h-3 rounded-full ${color(eci.score)}`;
+    eciRangeEl.textContent = eci.range;
+    eciInterpretationEl.textContent = eci.interpretation;
+    eciPostureEl.textContent = eci.strategicPosture;
+    eciCoverageEl.textContent =
+      `${eci.signalCoverage.observed} observed · ${eci.signalCoverage.unknown} unknown`;
 
-    eciBadgeEl.textContent = eci.eci.range;
-    eciBadgeEl.className = "badge bg-indigo-100 text-indigo-800";
+    // Render signals (ALWAYS 13)
+    eci.claritySignals.forEach(sig => {
+      signalListEl.appendChild(renderSignal(sig));
+    });
 
-    eciInterpretationEl.textContent = eci.eci.interpretation;
-    eciPostureEl.textContent = eci.eci.strategicPosture;
-
-    // Signals (defensive)
-if (Array.isArray(eci.claritySignals)) {
-  eci.claritySignals.forEach(sig => {
-    signalListEl.appendChild(renderSignal(sig));
-  });
-} else {
-  const div = document.createElement("div");
-  div.className = "text-xs text-gray-500";
-  div.textContent = "Clarity signals unavailable for this crawl.";
-  signalListEl.appendChild(div);
-}
-
-
-    // Crawl Health (diagnostic only)
+    // Crawl health (diagnostic only)
     const ch = data.eei?.crawlHealth || {};
     crawlHealthScoreEl.textContent = ch.score ? `${ch.score}/100` : "—";
     crawlHealthCategoryEl.textContent = ch.category || "—";
