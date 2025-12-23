@@ -14,6 +14,7 @@
   --muted:#9aa4c7;
   --accent:#4f7cff;
   --active:#1f3b8a;
+  --warn:#d97706;
 }
 
 * { box-sizing:border-box; }
@@ -85,8 +86,9 @@ button {
 .quad {
   border:1px dashed var(--border);
   border-radius:12px;
-  padding:30px 16px 16px;
+  padding:36px 16px 16px;
   font-size:14px;
+  position:relative;
 }
 
 .quad.active {
@@ -94,8 +96,32 @@ button {
   background:rgba(79,124,255,0.08);
 }
 
+.quad.inferred {
+  border-style:solid;
+  border-color:var(--warn);
+  background:rgba(217,119,6,0.08);
+}
+
 .quad strong { display:block; margin-bottom:6px; }
 
+.state-badge {
+  position:absolute;
+  top:10px;
+  right:10px;
+  font-size:11px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:#020617;
+  border:1px solid var(--border);
+  color:var(--muted);
+}
+
+.state-badge.warn {
+  border-color:var(--warn);
+  color:#fbbf24;
+}
+
+/* CENTER SCORE */
 .center-score {
   position:absolute;
   top:47%;
@@ -155,18 +181,22 @@ pre {
       <!-- QUADRANT -->
       <div class="panel">
         <div class="quadrant">
+
           <div id="q-ai" class="quad">
             <strong>🚀 AI-First Leader</strong>
             High Capability · High Intent
           </div>
+
           <div id="q-sovereign" class="quad">
             <strong>🏰 Sovereign / Defensive Power</strong>
             High Capability · Low Intent
           </div>
+
           <div id="q-aspire" class="quad">
             <strong>🌱 Aspirational Challenger</strong>
             Medium Capability · High Intent
           </div>
+
           <div id="q-cautious" class="quad">
             <strong>⚖️ Cautious Optimizer</strong>
             Medium Capability · Medium Intent
@@ -176,6 +206,7 @@ pre {
             <span id="score">–</span>
             <small>Capability</small>
           </div>
+
         </div>
       </div>
 
@@ -192,18 +223,18 @@ pre {
       <ul id="signals"></ul>
     </div>
 
-   <!-- EVIDENCE -->
-<details class="panel">
-  <summary>View Evidence</summary>
-  <pre id="evidence"></pre>
-</details>
+    <!-- EVIDENCE -->
+    <details class="panel">
+      <summary>View Evidence</summary>
+      <pre id="evidence"></pre>
+    </details>
 
-<!-- RAW JSON -->
-<details class="panel">
-  <summary>Raw JSON (Internal)</summary>
-  <pre id="raw"></pre>
-</details>
-</div>
+    <!-- RAW JSON -->
+    <details class="panel">
+      <summary>Raw JSON (Internal)</summary>
+      <pre id="raw"></pre>
+    </details>
+  </div>
 </div>
 
 <script>
@@ -211,116 +242,111 @@ const runBtn = document.getElementById("runBtn");
 const results = document.getElementById("results");
 
 function clearActive() {
-  document.querySelectorAll(".quad").forEach(q =>
-    q.classList.remove("active")
-  );
+  document.querySelectorAll(".quad").forEach(q=>{
+    q.classList.remove("active","inferred");
+    const b=q.querySelector(".state-badge");
+    if(b) b.remove();
+  });
 }
 
-/* -----------------------------
-   SCORE-ONLY EVIDENCE FORMATTER
------------------------------- */
-function renderEvidence(breakdown = []) {
-  return breakdown.map(b => {
-    const key = b?.key || "Unknown";
-    const pts = Number.isFinite(b?.points) ? b.points : 0;
-    const max = Number.isFinite(b?.max) ? b.max : 0;
-    const notes = (b?.notes || "").trim();
-    return `${key} — ${pts}/${max}${notes ? ` — ${notes}` : ""}`;
-  }).join("\n");
+function badge(label, warn=false){
+  const d=document.createElement("div");
+  d.className="state-badge"+(warn?" warn":"");
+  d.textContent=label;
+  return d;
 }
 
-/* -----------------------------
-   HARD UI TIMEOUT FETCH (CRITICAL)
------------------------------- */
-function fetchWithTimeout(url, options = {}, timeoutMs = 9000) {
+function renderEvidence(breakdown=[]){
+  return breakdown.map(b =>
+    `${b.key} — ${b.points}/${b.max}${b.notes?` — ${b.notes}`:""}`
+  ).join("\n");
+}
+
+function fetchWithTimeout(url,ms=9000){
   return Promise.race([
-    fetch(url, options),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("UI_TIMEOUT")), timeoutMs)
-    )
+    fetch(url),
+    new Promise((_,r)=>setTimeout(()=>r(new Error("TIMEOUT")),ms))
   ]);
 }
 
-runBtn.onclick = async () => {
-  const url = document.getElementById("urlInput").value.trim();
-  if (!url) return;
+runBtn.onclick=async()=>{
+  const url=document.getElementById("urlInput").value.trim();
+  if(!url) return;
 
-  runBtn.disabled = true;
-  runBtn.textContent = "Running…";
-  results.style.display = "none";
+  runBtn.disabled=true;
+  runBtn.textContent="Running…";
+  results.style.display="none";
 
   let data;
-
-  try {
-    const res = await fetchWithTimeout(
-      `/api/audit?url=${encodeURIComponent(url)}`,
-      {},
-      9000
-    );
-
-    if (!res || !res.ok) {
-      throw new Error("FETCH_FAILED");
-    }
-
-    data = await res.json();
-
-  } catch (err) {
-    // HARD FAIL-FAST — NEVER HANG UI
-    alert("Audit blocked or timed out.\nClassified as LOW intent.");
+  try{
+    const res=await fetchWithTimeout(`/api/audit?url=${encodeURIComponent(url)}`);
+    data=await res.json();
+  }catch{
+    alert("Audit blocked or timed out.");
+    runBtn.disabled=false;
+    runBtn.textContent="Run Audit";
     return;
-
-  } finally {
-    // GUARANTEED UI RESET
-    runBtn.disabled = false;
-    runBtn.textContent = "Run Audit";
   }
 
-  /* -----------------------------
-     RENDER RESULTS
-  ------------------------------ */
-  document.getElementById("score").textContent = data.ecc.score;
+  runBtn.disabled=false;
+  runBtn.textContent="Run Audit";
 
+  document.getElementById("score").textContent=data.ecc.score;
   clearActive();
-  if (data.quadrant.includes("AI-First"))
-    document.getElementById("q-ai").classList.add("active");
-  else if (data.quadrant.includes("Sovereign"))
-    document.getElementById("q-sovereign").classList.add("active");
-  else if (data.quadrant.includes("Aspirational"))
-    document.getElementById("q-aspire").classList.add("active");
-  else
-    document.getElementById("q-cautious").classList.add("active");
 
-  document.getElementById("signals").innerHTML =
-    (data.intent.signals || [])
-      .map(s => `<li>${s}</li>`)
-      .join("");
+  let quad;
+  if(data.quadrant.includes("AI-First")) quad="q-ai";
+  else if(data.quadrant.includes("Sovereign")) quad="q-sovereign";
+  else if(data.quadrant.includes("Aspirational")) quad="q-aspire";
+  else quad="q-cautious";
 
-  // ✅ View Evidence = SCORE ONLY
-  document.getElementById("evidence").textContent =
-    renderEvidence(data.breakdown || []);
+  const el=document.getElementById(quad);
+  el.classList.add("active");
 
-  // ✅ Raw JSON = FULL PAYLOAD
-  document.getElementById("raw").textContent =
-    JSON.stringify(data, null, 2);
+  if(data.state?.label==="suppressed"){
+    el.classList.add("inferred");
+    el.appendChild(badge("🔒 Suppressed (Inferred)",true));
+  }else{
+    el.appendChild(badge("👁 Observable (Measured)"));
+  }
 
-  document.getElementById("strategyBox").innerHTML = `
-    <strong>Pros</strong>
-    <ul>
-      <li>Structural authority and control</li>
-      <li>Resilient to platform volatility</li>
-    </ul>
-    <strong>Cons</strong>
-    <ul>
-      <li>AI-native challengers can flank</li>
-      <li>Discovery leverage underutilized</li>
-    </ul>
-    <em>
-      Capability: ${data.ecc.band.toUpperCase()}
-      · Intent: ${data.intent.posture.toUpperCase()}
-    </em>
-  `;
+  document.getElementById("signals").innerHTML=
+    (data.intent.signals||[]).map(s=>`<li>${s}</li>`).join("");
 
-  results.style.display = "block";
+  document.getElementById("evidence").textContent=
+    renderEvidence(data.breakdown||[]);
+
+  document.getElementById("raw").textContent=
+    JSON.stringify(data,null,2);
+
+  document.getElementById("strategyBox").innerHTML = data.state?.label==="suppressed"
+    ? `
+      <strong>Pros</strong>
+      <ul>
+        <li>Maintains narrative and access control</li>
+        <li>Limits competitive signal leakage</li>
+      </ul>
+      <strong>Cons</strong>
+      <ul>
+        <li>Forfeits passive AI discovery</li>
+        <li>Relies on sustained brand dominance</li>
+      </ul>
+      <em>High latent capability with intentional AI opacity.</em>
+    `
+    : `
+      <strong>Pros</strong>
+      <ul>
+        <li>Compounds AI discovery advantage</li>
+        <li>High inference efficiency</li>
+      </ul>
+      <strong>Cons</strong>
+      <ul>
+        <li>Requires continuous structural upkeep</li>
+      </ul>
+      <em>Capability: ${data.ecc.band.toUpperCase()} · Intent: ${data.intent.posture.toUpperCase()}</em>
+    `;
+
+  results.style.display="block";
 };
 </script>
 </body>
