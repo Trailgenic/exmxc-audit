@@ -255,21 +255,29 @@ if (botDefenseHits.length > 0) {
   );
 }
 
-// ---- RENDERED CONFIRMATION (NON-AUTHORITATIVE) ----
+/* ---- RENDERED CONFIRMATION (FAIL-FAST, NON-BLOCKING) ---- */
+const RENDER_TIMEOUT_MS = 8000;
+
 try {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RENDER_TIMEOUT_MS);
+
   const rendered = await axios.post(
     `${RENDER_WORKER}/crawl`,
     { url },
-    { timeout: 12000 } // HARD FAIL FAST
+    {
+      timeout: RENDER_TIMEOUT_MS,
+      signal: controller.signal
+    }
   );
 
-  const renderedText = JSON.stringify(rendered.data || {}).toLowerCase();
+  clearTimeout(timer);
 
+  const renderedText = JSON.stringify(rendered.data || {}).toLowerCase();
   const renderedHits = AI_KEYWORDS.filter(k =>
     renderedText.includes(k)
   );
 
-  // Rendered signals can CONFIRM intent, but never override bot defense
   if (
     renderedHits.length &&
     intent !== "high" &&
@@ -281,9 +289,10 @@ try {
     );
   }
 
-} catch {
-  intentSignals.push("Rendered crawl skipped or blocked");
+} catch (err) {
+  intentSignals.push("Rendered crawl blocked / timed out");
 }
+
 
 
     /* -------- RESPONSE -------- */
