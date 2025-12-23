@@ -1,9 +1,9 @@
-// /api/audit.js — EEI v6.5 (LOCKED)
-// ECC = STATIC ONLY
+// /api/audit.js — EEI v6.6 (LOCKED)
+// ECC = STATIC ONLY (FAIL-FAST)
 // Intent = OBSERVED (STATIC + RENDERED, NOT SCORED)
 // POST + GET compatible
 // Vercel-safe, batch-safe
-// HARD FAIL-FAST RENDER
+// HARD FAIL-FAST STATIC + RENDER
 // RAW DEBUG RESTORED (?debug=1)
 
 import axios from "axios";
@@ -33,6 +33,7 @@ import { TOTAL_WEIGHT } from "../shared/weights.js";
 const RENDER_WORKER =
   "https://exmxc-crawl-worker-production.up.railway.app";
 
+const STATIC_TIMEOUT_MS = 7000;
 const RENDER_TIMEOUT_MS = 8000;
 
 /* ===============================
@@ -71,47 +72,78 @@ function parseJsonLd(raw) {
 }
 
 /* ===============================
-   STATIC CRAWL (ECC SOURCE)
+   STATIC CRAWL (FAIL-FAST)
 ================================ */
 async function staticCrawl(url) {
-  const resp = await axios.get(url, {
-    timeout: 20000,
-    maxRedirects: 5,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.5; +https://exmxc.ai)",
-      Accept: "text/html"
-    }
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    STATIC_TIMEOUT_MS
+  );
 
-  const html = resp.data || "";
-  const $ = cheerio.load(html);
+  try {
+    const resp = await axios.get(url, {
+      timeout: STATIC_TIMEOUT_MS,
+      maxRedirects: 5,
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; exmxc-static/6.6; +https://exmxc.ai)",
+        Accept: "text/html"
+      }
+    });
 
-  const schemaObjects = $('script[type="application/ld+json"]')
-    .map((_, el) => parseJsonLd($(el).text()))
-    .get()
-    .flat();
+    clearTimeout(timer);
 
-  const pageLinks = $("a[href]")
-    .map((_, el) => $(el).attr("href"))
-    .get()
-    .filter(Boolean);
+    const html = resp.data || "";
+    const $ = cheerio.load(html);
 
-  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+    const schemaObjects = $('script[type="application/ld+json"]')
+      .map((_, el) => parseJsonLd($(el).text()))
+      .get()
+      .flat();
 
-  return {
-    html,
-    title: $("title").first().text().trim(),
-    description:
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "",
-    canonicalHref:
-      $('link[rel="canonical"]').attr("href") || url,
-    schemaObjects,
-    pageLinks,
-    wordCount: bodyText ? bodyText.split(" ").length : 0
-  };
+    const pageLinks = $("a[href]")
+      .map((_, el) => $(el).attr("href"))
+      .get()
+      .filter(Boolean);
+
+    const bodyText = $("body")
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return {
+      ok: true,
+      html,
+      title: $("title").first().text().trim(),
+      description:
+        $('meta[name="description"]').attr("content") ||
+        $('meta[property="og:description"]').attr("content") ||
+        "",
+      canonicalHref:
+        $('link[rel="canonical"]').attr("href") || url,
+      schemaObjects,
+      pageLinks,
+      wordCount: bodyText ? bodyText.split(" ").length : 0
+    };
+
+  } catch {
+    clearTimeout(timer);
+
+    // ---- DEGRADED STATIC FALLBACK ----
+    return {
+      ok: false,
+      html: "",
+      title: "",
+      description: "",
+      canonicalHref: url,
+      schemaObjects: [],
+      pageLinks: [],
+      wordCount: 0,
+      error: "STATIC_CRAWL_BLOCKED"
+    };
+  }
 }
 
 /* ===============================
@@ -144,36 +176,43 @@ export default async function handler(req, res) {
 
     /* -------- STATIC (ECC) -------- */
     const staticData = await staticCrawl(url);
-    const $ = cheerio.load(staticData.html);
 
-    const breakdown = [
-      scoreTitle($, staticData),
-      scoreMetaDescription($, staticData),
-      scoreCanonical($, url, staticData),
-      scoreSchemaPresence(staticData.schemaObjects),
-      scoreOrgSchema(staticData.schemaObjects),
-      scoreBreadcrumbSchema(staticData.schemaObjects),
-      scoreAuthorPerson(staticData.schemaObjects, $),
-      scoreSocialLinks(staticData.schemaObjects, staticData.pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($, staticData),
-      scoreInternalLinks(staticData.pageLinks, host),
-      scoreExternalLinks(staticData.pageLinks, host),
-      scoreFaviconOg($)
-    ];
+    let breakdown = [];
+    let eccScore = 0;
+    let ecc = "low";
 
-    let raw = 0;
-    for (const b of breakdown) {
-      raw += clamp(b.points || 0, 0, b.max);
+    if (staticData.ok) {
+      const $ = cheerio.load(staticData.html);
+
+      breakdown = [
+        scoreTitle($, staticData),
+        scoreMetaDescription($, staticData),
+        scoreCanonical($, url, staticData),
+        scoreSchemaPresence(staticData.schemaObjects),
+        scoreOrgSchema(staticData.schemaObjects),
+        scoreBreadcrumbSchema(staticData.schemaObjects),
+        scoreAuthorPerson(staticData.schemaObjects, $),
+        scoreSocialLinks(staticData.schemaObjects, staticData.pageLinks),
+        scoreAICrawlSignals($),
+        scoreContentDepth($, staticData),
+        scoreInternalLinks(staticData.pageLinks, host),
+        scoreExternalLinks(staticData.pageLinks, host),
+        scoreFaviconOg($)
+      ];
+
+      let raw = 0;
+      for (const b of breakdown) {
+        raw += clamp(b.points || 0, 0, b.max);
+      }
+
+      eccScore = clamp(
+        Math.round((raw * 100) / TOTAL_WEIGHT),
+        0,
+        100
+      );
+
+      ecc = eccBand(eccScore);
     }
-
-    const eccScore = clamp(
-      Math.round((raw * 100) / TOTAL_WEIGHT),
-      0,
-      100
-    );
-
-    const ecc = eccBand(eccScore);
 
     /* ===============================
        INTENT DETECTION (OBSERVED)
@@ -237,10 +276,12 @@ export default async function handler(req, res) {
       staticText.includes(s)
     );
 
-    if (botDefenseHits.length > 0) {
+    if (botDefenseHits.length > 0 || !staticData.ok) {
       intent = "low";
       intentSignals.push(
-        `Bot-defense detected: ${botDefenseHits.join(", ")}`
+        botDefenseHits.length
+          ? `Bot-defense detected: ${botDefenseHits.join(", ")}`
+          : "Static crawl blocked / timed out"
       );
     }
 
@@ -273,7 +314,8 @@ export default async function handler(req, res) {
       if (
         renderedHits.length &&
         intent !== "high" &&
-        botDefenseHits.length === 0
+        botDefenseHits.length === 0 &&
+        staticData.ok
       ) {
         intent = "high";
         intentSignals.push(
@@ -308,13 +350,7 @@ export default async function handler(req, res) {
 
       ...(debug && {
         raw: {
-          static: {
-            title: staticData.title,
-            description: staticData.description,
-            canonical: staticData.canonicalHref,
-            wordCount: staticData.wordCount,
-            schemaCount: staticData.schemaObjects.length
-          },
+          staticOk: staticData.ok,
           intentSignals,
           botDefenseHits
         }
