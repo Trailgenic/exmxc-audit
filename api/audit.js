@@ -180,11 +180,11 @@ export default async function handler(req, res) {
 
     const ecc = eccBand(eccScore);
 
-   /* -------- INTENT DETECTION (STATIC + RENDERED) -------- */
+  /* -------- INTENT DETECTION (STATIC + RENDERED) -------- */
 let intent = "low";
 const intentSignals = [];
 
-// ---- STATIC INTENT SIGNALS (PRIMARY) ----
+// ---- STATIC TEXT AGGREGATE ----
 const staticText = (
   staticData.title +
   " " +
@@ -193,6 +193,7 @@ const staticText = (
   staticData.html
 ).toLowerCase();
 
+// ---- AI LANGUAGE SIGNALS (STATIC) ----
 const AI_KEYWORDS = [
   "ai",
   "artificial intelligence",
@@ -219,17 +220,42 @@ if (staticHits.length >= 2) {
   );
 }
 
-// ---- AI CRAWL SIGNALS ----
+// ---- EXPLICIT AI CRAWL / INTERFACE SIGNALS ----
 if (
-  staticData.html.includes("llms.txt") ||
-  staticData.html.includes("ai-assist") ||
-  staticData.html.includes("ai-powered")
+  staticText.includes("llms.txt") ||
+  staticText.includes("ai-assist") ||
+  staticText.includes("ai-powered") ||
+  staticText.includes("ai search") ||
+  staticText.includes("ai-first")
 ) {
   intent = "high";
   intentSignals.push("Explicit AI crawl / assist signaling detected");
 }
 
-// ---- RENDERED CONFIRMATION (NON-BLOCKING) ----
+// ---- BOT DEFENSE DETECTION (INTENT SUPPRESSION) ----
+const BOT_DEFENSE_SIGNALS = [
+  "akamai",
+  "perimeterx",
+  "datadome",
+  "cloudflare",
+  "bot management",
+  "access denied",
+  "verify you are human",
+  "captcha"
+];
+
+const botDefenseHits = BOT_DEFENSE_SIGNALS.filter(s =>
+  staticText.includes(s)
+);
+
+if (botDefenseHits.length > 0) {
+  intent = "low";
+  intentSignals.push(
+    `Bot-defense detected: ${botDefenseHits.join(", ")}`
+  );
+}
+
+// ---- RENDERED CONFIRMATION (NON-AUTHORITATIVE) ----
 try {
   const rendered = await axios.post(
     `${RENDER_WORKER}/crawl`,
@@ -243,7 +269,12 @@ try {
     renderedText.includes(k)
   );
 
-  if (renderedHits.length && intent !== "high") {
+  // Rendered signals can CONFIRM intent, but never override bot defense
+  if (
+    renderedHits.length &&
+    intent !== "high" &&
+    botDefenseHits.length === 0
+  ) {
     intent = "high";
     intentSignals.push(
       `AI posture confirmed via render: ${renderedHits.join(", ")}`
