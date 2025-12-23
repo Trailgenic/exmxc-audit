@@ -1,9 +1,10 @@
-// /api/audit.js — EEI v6.4 (LOCKED)
+// /api/audit.js — EEI v6.5 (LOCKED)
 // ECC = STATIC ONLY
-// Intent = RENDERED ONLY (observed, not scored)
+// Intent = OBSERVED (STATIC + RENDERED, NOT SCORED)
 // POST + GET compatible
 // Vercel-safe, batch-safe
-// HARD TIMEOUT FIX APPLIED
+// HARD FAIL-FAST RENDER
+// RAW DEBUG RESTORED (?debug=1)
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -21,7 +22,7 @@ import {
   scoreContentDepth,
   scoreInternalLinks,
   scoreExternalLinks,
-  scoreFaviconOg,
+  scoreFaviconOg
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
@@ -31,6 +32,8 @@ import { TOTAL_WEIGHT } from "../shared/weights.js";
 ================================ */
 const RENDER_WORKER =
   "https://exmxc-crawl-worker-production.up.railway.app";
+
+const RENDER_TIMEOUT_MS = 8000;
 
 /* ===============================
    HELPERS
@@ -51,18 +54,6 @@ function quadrant(ecc, intent) {
   if (ecc === "medium" && intent === "high") return "🌱 Aspirational Challenger";
   if (ecc === "medium" && intent === "medium") return "⚖️ Cautious Optimizer";
   return "Unclassified";
-}
-
-/* ===============================
-   HARD TIMEOUT WRAPPER (CRITICAL)
-================================ */
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("INTENT_TIMEOUT")), ms)
-    ),
-  ]);
 }
 
 /* ===============================
@@ -88,9 +79,9 @@ async function staticCrawl(url) {
     maxRedirects: 5,
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.4; +https://exmxc.ai)",
-      Accept: "text/html",
-    },
+        "Mozilla/5.0 (compatible; exmxc-static/6.5; +https://exmxc.ai)",
+      Accept: "text/html"
+    }
   });
 
   const html = resp.data || "";
@@ -119,7 +110,7 @@ async function staticCrawl(url) {
       $('link[rel="canonical"]').attr("href") || url,
     schemaObjects,
     pageLinks,
-    wordCount: bodyText ? bodyText.split(" ").length : 0,
+    wordCount: bodyText ? bodyText.split(" ").length : 0
   };
 }
 
@@ -128,8 +119,8 @@ async function staticCrawl(url) {
 ================================ */
 export default async function handler(req, res) {
   try {
-    // ---- INPUT NORMALIZATION ----
-    let input =
+    /* ---- INPUT ---- */
+    const input =
       req.method === "POST"
         ? req.body?.url
         : req.query?.url;
@@ -137,9 +128,13 @@ export default async function handler(req, res) {
     if (!input || typeof input !== "string") {
       return res.status(400).json({
         success: false,
-        error: "Missing URL",
+        error: "Missing URL"
       });
     }
+
+    const debug =
+      req.query?.debug === "1" ||
+      req.headers["x-eei-debug"] === "true";
 
     const url = input.startsWith("http")
       ? input
@@ -164,7 +159,7 @@ export default async function handler(req, res) {
       scoreContentDepth($, staticData),
       scoreInternalLinks(staticData.pageLinks, host),
       scoreExternalLinks(staticData.pageLinks, host),
-      scoreFaviconOg($),
+      scoreFaviconOg($)
     ];
 
     let raw = 0;
@@ -180,120 +175,115 @@ export default async function handler(req, res) {
 
     const ecc = eccBand(eccScore);
 
-  /* -------- INTENT DETECTION (STATIC + RENDERED) -------- */
-let intent = "low";
-const intentSignals = [];
+    /* ===============================
+       INTENT DETECTION (OBSERVED)
+    ================================ */
+    let intent = "low";
+    const intentSignals = [];
 
-// ---- STATIC TEXT AGGREGATE ----
-const staticText = (
-  staticData.title +
-  " " +
-  staticData.description +
-  " " +
-  staticData.html
-).toLowerCase();
+    const staticText = (
+      staticData.title +
+      " " +
+      staticData.description +
+      " " +
+      staticData.html
+    ).toLowerCase();
 
-// ---- AI LANGUAGE SIGNALS (STATIC) ----
-const AI_KEYWORDS = [
-  "ai",
-  "artificial intelligence",
-  "llm",
-  "large language model",
-  "model",
-  "agent",
-  "assistant",
-  "copilot",
-  "autonomous",
-  "machine learning",
-  "neural",
-  "reflective ai"
-];
+    const AI_KEYWORDS = [
+      "ai",
+      "artificial intelligence",
+      "llm",
+      "large language model",
+      "agent",
+      "assistant",
+      "copilot",
+      "autonomous",
+      "ai search",
+      "ai-first",
+      "reflective ai"
+    ];
 
-const staticHits = AI_KEYWORDS.filter(k =>
-  staticText.includes(k)
-);
-
-if (staticHits.length >= 2) {
-  intent = "high";
-  intentSignals.push(
-    `AI-forward language detected (static): ${staticHits.join(", ")}`
-  );
-}
-
-// ---- EXPLICIT AI CRAWL / INTERFACE SIGNALS ----
-if (
-  staticText.includes("llms.txt") ||
-  staticText.includes("ai-assist") ||
-  staticText.includes("ai-powered") ||
-  staticText.includes("ai search") ||
-  staticText.includes("ai-first")
-) {
-  intent = "high";
-  intentSignals.push("Explicit AI crawl / assist signaling detected");
-}
-
-// ---- BOT DEFENSE DETECTION (INTENT SUPPRESSION) ----
-const BOT_DEFENSE_SIGNALS = [
-  "akamai",
-  "perimeterx",
-  "datadome",
-  "cloudflare",
-  "bot management",
-  "access denied",
-  "verify you are human",
-  "captcha"
-];
-
-const botDefenseHits = BOT_DEFENSE_SIGNALS.filter(s =>
-  staticText.includes(s)
-);
-
-if (botDefenseHits.length > 0) {
-  intent = "low";
-  intentSignals.push(
-    `Bot-defense detected: ${botDefenseHits.join(", ")}`
-  );
-}
-
-/* ---- RENDERED CONFIRMATION (FAIL-FAST, NON-BLOCKING) ---- */
-const RENDER_TIMEOUT_MS = 8000;
-
-try {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RENDER_TIMEOUT_MS);
-
-  const rendered = await axios.post(
-    `${RENDER_WORKER}/crawl`,
-    { url },
-    {
-      timeout: RENDER_TIMEOUT_MS,
-      signal: controller.signal
-    }
-  );
-
-  clearTimeout(timer);
-
-  const renderedText = JSON.stringify(rendered.data || {}).toLowerCase();
-  const renderedHits = AI_KEYWORDS.filter(k =>
-    renderedText.includes(k)
-  );
-
-  if (
-    renderedHits.length &&
-    intent !== "high" &&
-    botDefenseHits.length === 0
-  ) {
-    intent = "high";
-    intentSignals.push(
-      `AI posture confirmed via render: ${renderedHits.join(", ")}`
+    const staticHits = AI_KEYWORDS.filter(k =>
+      staticText.includes(k)
     );
-  }
 
-} catch (err) {
-  intentSignals.push("Rendered crawl blocked / timed out");
-}
+    if (staticHits.length >= 2) {
+      intent = "high";
+      intentSignals.push(
+        `AI-forward language detected (static): ${staticHits.join(", ")}`
+      );
+    }
 
+    if (
+      staticText.includes("llms.txt") ||
+      staticText.includes("ai-powered") ||
+      staticText.includes("ai assist")
+    ) {
+      intent = "high";
+      intentSignals.push("Explicit AI crawl / assist signaling detected");
+    }
 
+    const BOT_DEFENSE_SIGNALS = [
+      "akamai",
+      "perimeterx",
+      "datadome",
+      "cloudflare",
+      "captcha",
+      "verify you are human",
+      "access denied"
+    ];
+
+    const botDefenseHits = BOT_DEFENSE_SIGNALS.filter(s =>
+      staticText.includes(s)
+    );
+
+    if (botDefenseHits.length > 0) {
+      intent = "low";
+      intentSignals.push(
+        `Bot-defense detected: ${botDefenseHits.join(", ")}`
+      );
+    }
+
+    /* ---- RENDERED CONFIRMATION (FAIL FAST) ---- */
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(),
+        RENDER_TIMEOUT_MS
+      );
+
+      const rendered = await axios.post(
+        `${RENDER_WORKER}/crawl`,
+        { url },
+        {
+          timeout: RENDER_TIMEOUT_MS,
+          signal: controller.signal
+        }
+      );
+
+      clearTimeout(timer);
+
+      const renderedText =
+        JSON.stringify(rendered.data || {}).toLowerCase();
+
+      const renderedHits = AI_KEYWORDS.filter(k =>
+        renderedText.includes(k)
+      );
+
+      if (
+        renderedHits.length &&
+        intent !== "high" &&
+        botDefenseHits.length === 0
+      ) {
+        intent = "high";
+        intentSignals.push(
+          `AI posture confirmed via render: ${renderedHits.join(", ")}`
+        );
+      }
+
+    } catch {
+      intentSignals.push("Rendered crawl blocked / timed out");
+    }
 
     /* -------- RESPONSE -------- */
     return res.status(200).json({
@@ -304,24 +294,39 @@ try {
       ecc: {
         score: eccScore,
         band: ecc,
-        max: 100,
+        max: 100
       },
 
       intent: {
         posture: intent,
         signals: intentSignals,
-        observedFrom: ["static", "rendered"],
+        observedFrom: ["static", "rendered"]
       },
 
       quadrant: quadrant(ecc, intent),
       breakdown,
-      timestamp: new Date().toISOString(),
+
+      ...(debug && {
+        raw: {
+          static: {
+            title: staticData.title,
+            description: staticData.description,
+            canonical: staticData.canonicalHref,
+            wordCount: staticData.wordCount,
+            schemaCount: staticData.schemaObjects.length
+          },
+          intentSignals,
+          botDefenseHits
+        }
+      }),
+
+      timestamp: new Date().toISOString()
     });
 
   } catch (err) {
     return res.status(500).json({
       success: false,
-      error: err.message || "Internal error",
+      error: err.message || "Internal error"
     });
   }
 }
