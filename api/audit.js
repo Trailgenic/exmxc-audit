@@ -180,37 +180,80 @@ export default async function handler(req, res) {
 
     const ecc = eccBand(eccScore);
 
-    /* -------- RENDERED (INTENT ONLY) -------- */
-    let intent = "low";
-    const intentSignals = [];
+   /* -------- INTENT DETECTION (STATIC + RENDERED) -------- */
+let intent = "low";
+const intentSignals = [];
 
-    try {
-      const rendered = await withTimeout(
-        axios.post(
-          `${RENDER_WORKER}/crawl`,
-          { url },
-          { timeout: 25000 }
-        ),
-        12000 // HARD STOP — prevents infinite hangs
-      );
+// ---- STATIC INTENT SIGNALS (PRIMARY) ----
+const staticText = (
+  staticData.title +
+  " " +
+  staticData.description +
+  " " +
+  staticData.html
+).toLowerCase();
 
-      const renderedSchemas =
-        rendered.data?.surfaces?.[0]?.schemaObjects || [];
+const AI_KEYWORDS = [
+  "ai",
+  "artificial intelligence",
+  "llm",
+  "large language model",
+  "model",
+  "agent",
+  "assistant",
+  "copilot",
+  "autonomous",
+  "machine learning",
+  "neural",
+  "reflective ai"
+];
 
-      if (renderedSchemas.length > staticData.schemaObjects.length) {
-        intent = "high";
-        intentSignals.push(
-          "Additional schema exposed via JS rendering"
-        );
-      }
-    } catch (err) {
-      intent = "low";
-      intentSignals.push(
-        err.message === "INTENT_TIMEOUT"
-          ? "Rendered crawl blocked or timed out (bot protection)"
-          : "Rendered crawl failed"
-      );
-    }
+const staticHits = AI_KEYWORDS.filter(k =>
+  staticText.includes(k)
+);
+
+if (staticHits.length >= 2) {
+  intent = "high";
+  intentSignals.push(
+    `AI-forward language detected (static): ${staticHits.join(", ")}`
+  );
+}
+
+// ---- AI CRAWL SIGNALS ----
+if (
+  staticData.html.includes("llms.txt") ||
+  staticData.html.includes("ai-assist") ||
+  staticData.html.includes("ai-powered")
+) {
+  intent = "high";
+  intentSignals.push("Explicit AI crawl / assist signaling detected");
+}
+
+// ---- RENDERED CONFIRMATION (NON-BLOCKING) ----
+try {
+  const rendered = await axios.post(
+    `${RENDER_WORKER}/crawl`,
+    { url },
+    { timeout: 12000 } // HARD FAIL FAST
+  );
+
+  const renderedText = JSON.stringify(rendered.data || {}).toLowerCase();
+
+  const renderedHits = AI_KEYWORDS.filter(k =>
+    renderedText.includes(k)
+  );
+
+  if (renderedHits.length && intent !== "high") {
+    intent = "high";
+    intentSignals.push(
+      `AI posture confirmed via render: ${renderedHits.join(", ")}`
+    );
+  }
+
+} catch {
+  intentSignals.push("Rendered crawl skipped or blocked");
+}
+
 
     /* -------- RESPONSE -------- */
     return res.status(200).json({
