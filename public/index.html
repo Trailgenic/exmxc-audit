@@ -192,18 +192,18 @@ pre {
       <ul id="signals"></ul>
     </div>
 
-    <!-- EVIDENCE -->
-    <details class="panel">
-      <summary>View Evidence</summary>
-      <pre id="evidence"></pre>
-    </details>
+   <!-- EVIDENCE -->
+<details class="panel">
+  <summary>View Evidence</summary>
+  <pre id="evidence"></pre>
+</details>
 
-    <!-- RAW JSON -->
-    <details class="panel">
-      <summary>Raw JSON (Internal)</summary>
-      <pre id="raw"></pre>
-    </details>
-  </div>
+<!-- RAW JSON -->
+<details class="panel">
+  <summary>Raw JSON (Internal)</summary>
+  <pre id="raw"></pre>
+</details>
+</div>
 </div>
 
 <script>
@@ -211,52 +211,97 @@ const runBtn = document.getElementById("runBtn");
 const results = document.getElementById("results");
 
 function clearActive() {
-  document.querySelectorAll(".quad").forEach(q=>q.classList.remove("active"));
+  document.querySelectorAll(".quad").forEach(q =>
+    q.classList.remove("active")
+  );
+}
+
+/* -----------------------------
+   SCORE-ONLY EVIDENCE FORMATTER
+------------------------------ */
+function renderEvidence(breakdown = []) {
+  return breakdown.map(b => {
+    const key = b?.key || "Unknown";
+    const pts = Number.isFinite(b?.points) ? b.points : 0;
+    const max = Number.isFinite(b?.max) ? b.max : 0;
+    const notes = (b?.notes || "").trim();
+    return `${key} — ${pts}/${max}${notes ? ` — ${notes}` : ""}`;
+  }).join("\n");
+}
+
+/* -----------------------------
+   HARD UI TIMEOUT FETCH (CRITICAL)
+------------------------------ */
+function fetchWithTimeout(url, options = {}, timeoutMs = 9000) {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("UI_TIMEOUT")), timeoutMs)
+    )
+  ]);
 }
 
 runBtn.onclick = async () => {
   const url = document.getElementById("urlInput").value.trim();
-  if(!url) return;
+  if (!url) return;
 
   runBtn.disabled = true;
   runBtn.textContent = "Running…";
   results.style.display = "none";
 
-  const controller = new AbortController();
-  const UI_TIMEOUT = 9000;
-  const timer = setTimeout(()=>controller.abort(), UI_TIMEOUT);
-
   let data;
+
   try {
-    const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`, {
-      signal: controller.signal
-    });
+    const res = await fetchWithTimeout(
+      `/api/audit?url=${encodeURIComponent(url)}`,
+      {},
+      9000
+    );
+
+    if (!res || !res.ok) {
+      throw new Error("FETCH_FAILED");
+    }
+
     data = await res.json();
-  } catch {
-    clearTimeout(timer);
-    alert("Audit blocked or timed out. Classified as LOW intent.");
+
+  } catch (err) {
+    // HARD FAIL-FAST — NEVER HANG UI
+    alert("Audit blocked or timed out.\nClassified as LOW intent.");
+    return;
+
+  } finally {
+    // GUARANTEED UI RESET
     runBtn.disabled = false;
     runBtn.textContent = "Run Audit";
-    return;
   }
-  clearTimeout(timer);
 
+  /* -----------------------------
+     RENDER RESULTS
+  ------------------------------ */
   document.getElementById("score").textContent = data.ecc.score;
 
   clearActive();
-  if(data.quadrant.includes("AI-First")) document.getElementById("q-ai").classList.add("active");
-  else if(data.quadrant.includes("Sovereign")) document.getElementById("q-sovereign").classList.add("active");
-  else if(data.quadrant.includes("Aspirational")) document.getElementById("q-aspire").classList.add("active");
-  else document.getElementById("q-cautious").classList.add("active");
+  if (data.quadrant.includes("AI-First"))
+    document.getElementById("q-ai").classList.add("active");
+  else if (data.quadrant.includes("Sovereign"))
+    document.getElementById("q-sovereign").classList.add("active");
+  else if (data.quadrant.includes("Aspirational"))
+    document.getElementById("q-aspire").classList.add("active");
+  else
+    document.getElementById("q-cautious").classList.add("active");
 
   document.getElementById("signals").innerHTML =
-    data.intent.signals.map(s=>`<li>${s}</li>`).join("");
+    (data.intent.signals || [])
+      .map(s => `<li>${s}</li>`)
+      .join("");
 
+  // ✅ View Evidence = SCORE ONLY
   document.getElementById("evidence").textContent =
-    JSON.stringify(data.breakdown,null,2);
+    renderEvidence(data.breakdown || []);
 
+  // ✅ Raw JSON = FULL PAYLOAD
   document.getElementById("raw").textContent =
-    JSON.stringify(data,null,2);
+    JSON.stringify(data, null, 2);
 
   document.getElementById("strategyBox").innerHTML = `
     <strong>Pros</strong>
@@ -269,12 +314,13 @@ runBtn.onclick = async () => {
       <li>AI-native challengers can flank</li>
       <li>Discovery leverage underutilized</li>
     </ul>
-    <em>Capability: ${data.ecc.band.toUpperCase()} · Intent: ${data.intent.posture.toUpperCase()}</em>
+    <em>
+      Capability: ${data.ecc.band.toUpperCase()}
+      · Intent: ${data.intent.posture.toUpperCase()}
+    </em>
   `;
 
-  results.style.display="block";
-  runBtn.disabled=false;
-  runBtn.textContent="Run Audit";
+  results.style.display = "block";
 };
 </script>
 </body>
