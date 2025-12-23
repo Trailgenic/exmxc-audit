@@ -2,192 +2,367 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>exmxc.ai — Entity Engineering Index</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Tailwind CDN (no build step) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>EEI Internal Audit — exmxc.ai</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <style>
+    :root {
+      --bg: #070b14;
+      --panel: #0d1424;
+      --border: #1f2a44;
+      --text: #e6ebf5;
+      --muted: #9aa4bf;
+
+      --green: #11c37a;
+      --yellow: #f2a900;
+      --red: #e5395f;
+      --blue: #4f7cff;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      background: #020617;
-      color: #e5e7eb;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0b1224, var(--bg));
+      color: var(--text);
     }
-    .card {
-      background: #020617;
-      border: 1px solid #1e293b;
-      border-radius: 0.75rem;
+
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
     }
-    .muted {
-      color: #94a3b8;
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 16px;
+      font-weight: 600;
     }
+
+    /* INPUT */
+    .input-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    input {
+      flex: 1;
+      padding: 14px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    button {
+      padding: 14px 22px;
+      border-radius: 8px;
+      border: none;
+      background: var(--blue);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    /* LAYOUT */
+    .top {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      margin-bottom: 28px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, #0f1833, var(--panel));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+
+    /* QUADRANT */
+    .quadrant {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 10px;
+      position: relative;
+      height: 360px;
+    }
+
+    .quad {
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .quad.active {
+      border-color: var(--blue);
+      color: var(--text);
+      background: rgba(79,124,255,0.08);
+    }
+
+    .quad-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .center-score {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle at top, #14204a, #0b1224);
+      border: 2px solid var(--blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .score {
+      font-size: 34px;
+      font-weight: 700;
+    }
+
+    .score-label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* STRATEGY */
+    .strategy h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+    }
+
+    .pros, .cons {
+      margin-bottom: 14px;
+    }
+
+    ul {
+      padding-left: 18px;
+      margin: 6px 0;
+    }
+
+    li {
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    /* LOWER */
+    .lower {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    details {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      background: var(--panel);
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    pre {
+      margin-top: 14px;
+      background: #050914;
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+      font-size: 12px;
+      color: #cfd6ff;
+    }
+
+    .muted { color: var(--muted); }
   </style>
 </head>
 
-<body class="min-h-screen">
+<body>
+<div class="container">
 
-  <!-- Header -->
-  <header class="border-b border-slate-800 p-6">
-    <h1 class="text-xl font-semibold tracking-tight">Entity Engineering Index</h1>
-    <p class="muted text-sm">AI-search capability & intent diagnostics</p>
-  </header>
+  <h1>EEI Internal Audit</h1>
 
-  <!-- Input -->
-  <section class="p-6 max-w-5xl mx-auto">
-    <div class="flex gap-3">
-      <input
-        id="urlInput"
-        placeholder="https://example.com"
-        class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
-      />
-      <button
-        id="runBtn"
-        class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm font-medium"
-      >
-        Run Audit
-      </button>
+  <div class="input-row">
+    <input id="urlInput" placeholder="example.com" />
+    <button id="runBtn">Run Audit</button>
+  </div>
+
+  <div id="result" style="display:none">
+
+    <div class="top">
+
+      <!-- QUADRANT -->
+      <div class="panel">
+        <div class="quadrant" id="quadrant">
+          <div class="quad" data-q="AI-First Leader">
+            <div class="quad-title">🚀 AI-First Leader</div>
+            High Capability · High Intent
+          </div>
+          <div class="quad" data-q="Sovereign / Defensive Power">
+            <div class="quad-title">🏰 Sovereign / Defensive Power</div>
+            High Capability · Low Intent
+          </div>
+          <div class="quad" data-q="Aspirational Challenger">
+            <div class="quad-title">🌱 Aspirational Challenger</div>
+            Medium Capability · High Intent
+          </div>
+          <div class="quad" data-q="Cautious Optimizer">
+            <div class="quad-title">⚖️ Cautious Optimizer</div>
+            Medium Capability · Medium Intent
+          </div>
+
+          <div class="center-score">
+            <div class="score" id="score">—</div>
+            <div class="score-label">Capability</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STRATEGY -->
+      <div class="panel strategy">
+        <h3>Strategy — Pros / Cons</h3>
+
+        <div class="pros">
+          <strong>Pros</strong>
+          <ul id="pros"></ul>
+        </div>
+
+        <div class="cons">
+          <strong>Cons</strong>
+          <ul id="cons"></ul>
+        </div>
+
+        <div class="muted" id="posture"></div>
+      </div>
+
     </div>
-  </section>
 
-  <!-- Results -->
-  <main id="results" class="hidden max-w-5xl mx-auto p-6 space-y-6">
+    <div class="lower">
 
-    <!-- HERO -->
-    <section class="card p-6 grid md:grid-cols-3 gap-6">
-      <div class="md:col-span-2">
-        <h2 id="entityName" class="text-2xl font-semibold"></h2>
-        <p id="quadrant" class="text-lg mt-2"></p>
-        <p id="interpretation" class="muted mt-3 text-sm"></p>
+      <div class="panel">
+        <strong>AI Intent Signals (Observed)</strong>
+        <ul id="intentSignals" class="muted"></ul>
       </div>
 
-      <div class="flex flex-col gap-3">
-        <span id="capabilityChip" class="px-3 py-1 rounded-full text-sm w-fit"></span>
-        <span id="intentChip" class="px-3 py-1 rounded-full text-sm w-fit"></span>
-        <span id="observedChip" class="px-3 py-1 rounded-full text-sm w-fit"></span>
-      </div>
-    </section>
-
-    <!-- CAPABILITY -->
-    <section class="card p-6">
-      <h3 class="font-medium">Entity Capability (Static Crawl)</h3>
-      <p class="muted text-sm mb-4">
-        Structural clarity derived exclusively from static crawl.
-      </p>
-
-      <div class="w-full bg-slate-800 rounded h-4 overflow-hidden">
-        <div id="capabilityBar" class="h-4"></div>
-      </div>
-
-      <p id="capabilityScore" class="mt-2 text-sm muted"></p>
-    </section>
-
-    <!-- INTENT -->
-    <section class="card p-6">
-      <h3 class="font-medium">AI Intent Signals (Observed)</h3>
-      <p class="muted text-sm mb-4">
-        Detected via rendered crawl. Not scored.
-      </p>
-
-      <ul id="intentSignals" class="list-disc list-inside space-y-1 muted text-sm"></ul>
-    </section>
-
-    <!-- EVIDENCE -->
-    <section class="card p-6">
       <details>
-        <summary class="cursor-pointer font-medium">View Evidence</summary>
-        <div id="breakdown" class="mt-4 space-y-2 text-sm"></div>
+        <summary>View Evidence</summary>
+        <pre id="breakdown"></pre>
       </details>
-    </section>
 
-  </main>
+      <details>
+        <summary>Raw JSON (Internal)</summary>
+        <pre id="raw"></pre>
+      </details>
 
-  <script>
-    const runBtn = document.getElementById("runBtn");
-    const urlInput = document.getElementById("urlInput");
-    const results = document.getElementById("results");
+    </div>
 
-    runBtn.onclick = async () => {
-      const url = urlInput.value.trim();
-      if (!url) return;
+  </div>
 
-      runBtn.textContent = "Running...";
-      runBtn.disabled = true;
+</div>
 
-      const res = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
-      });
+<script>
+const STRATEGY = {
+  "🚀 AI-First Leader": {
+    pros: [
+      "Compounds authority in AI-native discovery",
+      "Sets default framing for category",
+      "Hard to displace once entrenched"
+    ],
+    cons: [
+      "Higher scrutiny and expectations",
+      "Execution mistakes are amplified"
+    ]
+  },
+  "🏰 Sovereign / Defensive Power": {
+    pros: [
+      "Strong structural control and brand gravity",
+      "Resilient to short-term platform shifts"
+    ],
+    cons: [
+      "AI-native competitors can flank",
+      "Leaves discovery upside unclaimed"
+    ]
+  },
+  "🌱 Aspirational Challenger": {
+    pros: [
+      "Momentum and narrative tailwinds",
+      "Can outlearn incumbents"
+    ],
+    cons: [
+      "Structural weaknesses still visible",
+      "Easy to outrun but hard to defend"
+    ]
+  },
+  "⚖️ Cautious Optimizer": {
+    pros: [
+      "Balanced risk posture",
+      "Incremental gains without exposure"
+    ],
+    cons: [
+      "Rarely defines the category",
+      "Vulnerable to decisive moves by others"
+    ]
+  }
+};
 
-      const data = await res.json();
-      render(data);
+const runBtn = document.getElementById("runBtn");
+const input = document.getElementById("urlInput");
 
-      runBtn.textContent = "Run Audit";
-      runBtn.disabled = false;
-    };
+runBtn.onclick = async () => {
+  runBtn.disabled = true;
+  runBtn.textContent = "Running…";
 
-    function render(data) {
-      results.classList.remove("hidden");
+  const url = input.value.trim();
+  const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+  const data = await res.json();
 
-      document.getElementById("entityName").textContent = data.hostname;
-      document.getElementById("quadrant").textContent = data.quadrant;
+  document.getElementById("result").style.display = "block";
+  document.getElementById("score").textContent = data.ecc.score;
 
-      document.getElementById("interpretation").textContent =
-        `${data.ecc.band.toUpperCase()} capability · ${data.intent.posture.toUpperCase()} intent`;
+  document.querySelectorAll(".quad").forEach(q => q.classList.remove("active"));
+  document.querySelector(`[data-q="${data.quadrant.replace("🚀 ","").replace("🏰 ","").replace("🌱 ","").replace("⚖️ ","")}"]`)?.classList.add("active");
 
-      // Chips
-      chip("capabilityChip", `Capability: ${data.ecc.band}`, data.ecc.band);
-      chip("intentChip", `Intent: ${data.intent.posture}`, data.intent.posture);
-      chip("observedChip", `Observed: ${data.intent.observedFrom.join(", ")}`, "neutral");
+  const strat = STRATEGY[data.quadrant] || { pros: [], cons: [] };
+  document.getElementById("pros").innerHTML = strat.pros.map(p => `<li>${p}</li>`).join("");
+  document.getElementById("cons").innerHTML = strat.cons.map(c => `<li>${c}</li>`).join("");
 
-      // Capability bar
-      const bar = document.getElementById("capabilityBar");
-      bar.style.width = `${data.ecc.score}%`;
-      bar.className = `h-4 ${bandColor(data.ecc.band)}`;
+  document.getElementById("posture").textContent =
+    `Capability: ${data.ecc.band.toUpperCase()} · Intent: ${data.intent.posture.toUpperCase()}`;
 
-      document.getElementById("capabilityScore").textContent =
-        `${data.ecc.score} / 100`;
+  document.getElementById("intentSignals").innerHTML =
+    data.intent.signals.length
+      ? data.intent.signals.map(s => `<li>${s}</li>`).join("")
+      : "<li>No explicit AI-forward signals observed.</li>";
 
-      // Intent signals
-      const intentList = document.getElementById("intentSignals");
-      intentList.innerHTML = "";
-      if (data.intent.signals.length === 0) {
-        intentList.innerHTML = "<li>No explicit AI-forward behavior detected.</li>";
-      } else {
-        data.intent.signals.forEach(s => {
-          const li = document.createElement("li");
-          li.textContent = s;
-          intentList.appendChild(li);
-        });
-      }
+  document.getElementById("breakdown").textContent =
+    JSON.stringify(data.breakdown, null, 2);
 
-      // Breakdown
-      const breakdown = document.getElementById("breakdown");
-      breakdown.innerHTML = "";
-      data.breakdown.forEach(b => {
-        const row = document.createElement("div");
-        row.className = "flex justify-between border-b border-slate-800 py-1";
-        row.innerHTML = `
-          <span>${b.key}</span>
-          <span class="muted">${b.points}/${b.max}</span>
-        `;
-        breakdown.appendChild(row);
-      });
-    }
+  document.getElementById("raw").textContent =
+    JSON.stringify(data, null, 2);
 
-    function chip(id, text, band) {
-      const el = document.getElementById(id);
-      el.textContent = text;
-      el.className = `px-3 py-1 rounded-full text-sm ${bandColor(band)}`;
-    }
-
-    function bandColor(band) {
-      if (band === "high") return "bg-emerald-600";
-      if (band === "medium") return "bg-amber-600";
-      if (band === "low") return "bg-rose-600";
-      return "bg-slate-600";
-    }
-  </script>
+  runBtn.disabled = false;
+  runBtn.textContent = "Run Audit";
+};
+</script>
 </body>
 </html>
