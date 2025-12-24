@@ -1,9 +1,8 @@
-// /api/audit.js — EEI v6.6 (STATE-AWARE)
+// /api/audit.js — EEI v6.6 (STATE-AWARE, CORS-SAFE)
 // ECC = STATIC ONLY
 // Intent = OBSERVED (STATIC + RENDERED, NOT SCORED)
 // State = VISIBILITY CONTEXT (observed | suppressed | opaque)
-// POST + GET compatible
-// Vercel-safe, batch-safe
+// GET + POST compatible
 // HARD FAIL-FAST STATIC + RENDER
 // RAW DEBUG RESTORED (?debug=1)
 
@@ -120,6 +119,18 @@ async function staticCrawl(url) {
    HANDLER
 ================================ */
 export default async function handler(req, res) {
+
+  /* ===============================
+     CORS — REQUIRED FOR EXTERNAL UX
+  ================================ */
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   try {
     /* ---- INPUT ---- */
     const input =
@@ -258,7 +269,7 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       RENDERED CONFIRMATION (FAIL FAST)
+       RENDERED CONFIRMATION
     ================================ */
     let renderedBlocked = false;
 
@@ -272,10 +283,7 @@ export default async function handler(req, res) {
       const rendered = await axios.post(
         `${RENDER_WORKER}/crawl`,
         { url },
-        {
-          timeout: RENDER_TIMEOUT_MS,
-          signal: controller.signal
-        }
+        { timeout: RENDER_TIMEOUT_MS, signal: controller.signal }
       );
 
       clearTimeout(timer);
@@ -304,7 +312,7 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       STATE RESOLVER (NEW)
+       STATE RESOLVER
     ================================ */
     let state = {
       label: "observed",
