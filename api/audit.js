@@ -246,25 +246,41 @@ export default async function handler(req,res){
     }
 
     /* ---- CRAWL CONTEXT STATE (NOT STRATEGY) ---- */
-    let state={
-      label:"observed",
-      reason:"Entity successfully crawled and interpreted",
-      confidence:"high"
-    };
 
-    if(staticBlocked || botDefenseHits.length>0){
-      state={
-        label:"suppressed",
-        reason:"Crawler access restricted or intentionally gated",
-        confidence:"high"
-      };
-    } else if(renderedBlocked && intent==="low"){
-      state={
-        label:"opaque",
-        reason:"Limited visibility; posture could not be confidently inferred",
-        confidence:"medium"
-      };
-    }
+let state = {
+  label: "observed",
+  reason: "Entity successfully crawled and interpreted",
+  confidence: "high"
+};
+
+/**
+ * We only treat bot-defense as suppression when it prevents
+ * meaningful content from being retrieved.
+ * Presence of Cloudflare/Akamai/CAPTCHA alone ≠ suppression.
+ */
+
+const looksLikeRealContent =
+  (staticData.wordCount || 0) > 150 ||
+  (staticData.schemaObjects || []).length > 2;
+
+const hardSuppression =
+  staticBlocked ||
+  (!looksLikeRealContent && botDefenseHits.length > 0);
+
+if (hardSuppression) {
+  state = {
+    label: "suppressed",
+    reason: "Crawler access restricted or intentionally gated",
+    confidence: "high"
+  };
+}
+else if (renderedBlocked && intent === "low") {
+  state = {
+    label: "opaque",
+    reason: "Limited visibility; posture could not be confidently inferred",
+    confidence: "medium"
+  };
+}
 
     /* ---- STRATEGY TAXONOMY (BUSINESS LENS) ---- */
     const aiStrategy = deriveStrategy({
