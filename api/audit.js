@@ -1,10 +1,9 @@
-// /api/audit.js — EEI v6.6 (STATE-AWARE, CORS-SAFE)
+// /api/audit.js — EEI v6.7 (Strategy Taxonomy Enabled)
 // ECC = STATIC ONLY
-// Intent = OBSERVED (STATIC + RENDERED, NOT SCORED)
-// State = VISIBILITY CONTEXT (observed | suppressed | opaque)
-// GET + POST compatible
-// HARD FAIL-FAST STATIC + RENDER
-// RAW DEBUG RESTORED (?debug=1)
+// Intent = OBSERVED POSTURE (static + rendered)
+// State = Crawl Context (not business strategy)
+// aiStrategy = Business Strategy Lens (canonical)
+// -----------------------------------------------
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -39,49 +38,87 @@ const RENDER_TIMEOUT_MS = 8000;
 /* ===============================
    HELPERS
 ================================ */
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
-function eccBand(score) {
-  if (score >= 70) return "high";
-  if (score >= 40) return "medium";
+function eccBand(score){
+  if(score >= 70) return "high";
+  if(score >= 40) return "medium";
   return "low";
 }
 
-function quadrant(ecc, intent) {
-  if (ecc === "high" && intent === "high") return "🚀 AI-First Leader";
-  if (ecc === "high" && intent === "low") return "🏰 Sovereign / Defensive Power";
-  if (ecc === "medium" && intent === "high") return "🌱 Aspirational Challenger";
-  if (ecc === "medium" && intent === "medium") return "⚖️ Cautious Optimizer";
+function quadrant(cap, intent){
+  if(cap==="high" && intent==="high") return "AI-First Leader";
+  if(cap==="high" && intent==="low") return "Sovereign / Defensive Power";
+  if(cap==="medium" && intent==="high") return "Aspirational Challenger";
+  if(cap==="medium" && intent==="medium") return "Cautious Optimizer";
   return "Unclassified";
+}
+
+/* === Strategy Mapping ========================= */
+
+function deriveStrategy({ eccBand, intent, state }) {
+
+  // Capability comes from ECC quality
+  const capability =
+    eccBand === "high" ? "high" :
+    eccBand === "medium" ? "medium" : "low";
+
+  // Business Posture (not crawl mechanics)
+  let posture = "Guarded Participation";
+  let rationale = "";
+
+  if (intent === "high") {
+    posture = "AI-Forward";
+    rationale = "Publicly signals AI adoption and discovery alignment.";
+  }
+
+  // Explicitly defensive environments
+  if (state.label === "suppressed") {
+    posture = "Closed / Defensive";
+    rationale =
+      "Prioritizes access control and minimizes AI-mediated discovery.";
+  }
+
+  if (state.label === "opaque" && intent === "low") {
+    posture = "Closed / Defensive";
+    rationale =
+      "Low-signal environment with intentionally limited crawl exposure.";
+  }
+
+  // Final quadrant classification
+  const quad = quadrant(capability, intent);
+
+  return {
+    posture,
+    quadrant: quad,
+    capability,
+    intent,
+    rationale
+  };
 }
 
 /* ===============================
    JSON-LD PARSER
 ================================ */
-function parseJsonLd(raw) {
-  try {
+function parseJsonLd(raw){
+  try{
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed["@graph"]) return parsed["@graph"];
+    if(Array.isArray(parsed)) return parsed;
+    if(parsed["@graph"]) return parsed["@graph"];
     return [parsed];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 /* ===============================
    STATIC CRAWL (ECC SOURCE)
 ================================ */
-async function staticCrawl(url) {
-  const resp = await axios.get(url, {
+async function staticCrawl(url){
+  const resp = await axios.get(url,{
     timeout: STATIC_TIMEOUT_MS,
     maxRedirects: 5,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-static/6.6; +https://exmxc.ai)",
-      Accept: "text/html"
+    headers:{
+      "User-Agent":"Mozilla/5.0 (compatible; exmxc-static/6.7; +https://exmxc.ai)",
+      Accept:"text/html"
     }
   });
 
@@ -89,26 +126,23 @@ async function staticCrawl(url) {
   const $ = cheerio.load(html);
 
   const schemaObjects = $('script[type="application/ld+json"]')
-    .map((_, el) => parseJsonLd($(el).text()))
+    .map((_,el)=>parseJsonLd($(el).text()))
     .get()
     .flat();
 
   const pageLinks = $("a[href]")
-    .map((_, el) => $(el).attr("href"))
+    .map((_,el)=>$(el).attr("href"))
     .get()
     .filter(Boolean);
 
-  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+  const bodyText = $("body").text().replace(/\s+/g," ").trim();
 
   return {
     html,
-    title: $("title").first().text().trim(),
-    description:
-      $('meta[name="description"]').attr("content") ||
-      $('meta[property="og:description"]').attr("content") ||
-      "",
-    canonicalHref:
-      $('link[rel="canonical"]').attr("href") || url,
+    title:$("title").first().text().trim(),
+    description:$('meta[name="description"]').attr("content") ||
+                 $('meta[property="og:description"]').attr("content") || "",
+    canonicalHref:$('link[rel="canonical"]').attr("href") || url,
     schemaObjects,
     pageLinks,
     wordCount: bodyText ? bodyText.split(" ").length : 0
@@ -118,262 +152,153 @@ async function staticCrawl(url) {
 /* ===============================
    HANDLER
 ================================ */
-export default async function handler(req, res) {
+export default async function handler(req,res){
 
-  /* ===============================
-     CORS — REQUIRED FOR EXTERNAL UX
-  ================================ */
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Origin","*");
+  res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+  if(req.method==="OPTIONS") return res.status(200).end();
 
-  try {
-    /* ---- INPUT ---- */
-    const input =
-      req.method === "POST"
-        ? req.body?.url
-        : req.query?.url;
-
-    if (!input || typeof input !== "string") {
-      return res.status(400).json({
-        success: false,
-        error: "Missing URL"
-      });
+  try{
+    const input = req.method==="POST" ? req.body?.url : req.query?.url;
+    if(!input || typeof input!=="string"){
+      return res.status(400).json({ success:false, error:"Missing URL" });
     }
 
-    const debug =
-      req.query?.debug === "1" ||
-      req.headers["x-eei-debug"] === "true";
+    const debug = req.query?.debug==="1" || req.headers["x-eei-debug"]==="true";
 
-    const url = input.startsWith("http")
-      ? input
-      : `https://${input}`;
+    const url = input.startsWith("http") ? input : `https://${input}`;
+    const host = new URL(url).hostname.replace(/^www\./,"");
 
-    const host = new URL(url).hostname.replace(/^www\./, "");
+    /* ---- STATIC CRAWL ---- */
+    let staticData, staticBlocked=false;
 
-    /* ===============================
-       STATIC CRAWL (FAIL FAST)
-    ================================ */
-    let staticData;
-    let staticBlocked = false;
-
-    try {
-      staticData = await staticCrawl(url);
-    } catch {
-      staticBlocked = true;
-      staticData = {
-        html: "",
-        title: "",
-        description: "",
-        canonicalHref: url,
-        schemaObjects: [],
-        pageLinks: [],
-        wordCount: 0
-      };
+    try{ staticData = await staticCrawl(url); }
+    catch{
+      staticBlocked=true;
+      staticData={ html:"", title:"", description:"", canonicalHref:url,
+        schemaObjects:[], pageLinks:[], wordCount:0 };
     }
 
     const $ = cheerio.load(staticData.html || "");
 
-    /* ===============================
-       ECC SCORING (STATIC ONLY)
-    ================================ */
+    /* ---- ECC ---- */
     const breakdown = [
-      scoreTitle($, staticData),
-      scoreMetaDescription($, staticData),
-      scoreCanonical($, url, staticData),
+      scoreTitle($,staticData),
+      scoreMetaDescription($,staticData),
+      scoreCanonical($,url,staticData),
       scoreSchemaPresence(staticData.schemaObjects),
       scoreOrgSchema(staticData.schemaObjects),
       scoreBreadcrumbSchema(staticData.schemaObjects),
-      scoreAuthorPerson(staticData.schemaObjects, $),
-      scoreSocialLinks(staticData.schemaObjects, staticData.pageLinks),
+      scoreAuthorPerson(staticData.schemaObjects,$),
+      scoreSocialLinks(staticData.schemaObjects,staticData.pageLinks),
       scoreAICrawlSignals($),
-      scoreContentDepth($, staticData),
-      scoreInternalLinks(staticData.pageLinks, host),
-      scoreExternalLinks(staticData.pageLinks, host),
+      scoreContentDepth($,staticData),
+      scoreInternalLinks(staticData.pageLinks,host),
+      scoreExternalLinks(staticData.pageLinks,host),
       scoreFaviconOg($)
     ];
 
-    let raw = 0;
-    for (const b of breakdown) {
-      raw += clamp(b.points || 0, 0, b.max);
-    }
+    let raw=0;
+    for(const b of breakdown) raw+=clamp(b.points||0,0,b.max);
 
-    const eccScore = staticBlocked
-      ? 0
-      : clamp(Math.round((raw * 100) / TOTAL_WEIGHT), 0, 100);
+    const eccScore = staticBlocked ? 0 :
+      clamp(Math.round((raw*100)/TOTAL_WEIGHT),0,100);
 
     const ecc = eccBand(eccScore);
 
-    /* ===============================
-       INTENT DETECTION (OBSERVED)
-    ================================ */
-    let intent = "low";
-    const intentSignals = [];
+    /* ---- INTENT POSTURE ---- */
+    let intent="low";
+    const intentSignals=[];
 
-    const staticText = (
-      staticData.title +
-      " " +
-      staticData.description +
-      " " +
-      staticData.html
-    ).toLowerCase();
+    const staticText=(staticData.title+" "+staticData.description+" "+staticData.html).toLowerCase();
 
-    const AI_KEYWORDS = [
-      "ai",
-      "artificial intelligence",
-      "llm",
-      "large language model",
-      "agent",
-      "assistant",
-      "copilot",
-      "autonomous",
-      "ai search",
-      "ai-first",
-      "reflective ai"
-    ];
+    const AI_KEYWORDS=["ai","artificial intelligence","llm","agent","assistant","copilot","ai search","ai-first","reflective ai"];
 
-    const staticHits = AI_KEYWORDS.filter(k =>
-      staticText.includes(k)
-    );
-
-    if (staticHits.length >= 2) {
-      intent = "high";
-      intentSignals.push(
-        `AI-forward language detected (static): ${staticHits.join(", ")}`
-      );
+    const staticHits=AI_KEYWORDS.filter(k=>staticText.includes(k));
+    if(staticHits.length>=2){
+      intent="high";
+      intentSignals.push(`AI-forward language detected (static): ${staticHits.join(", ")}`);
     }
 
-    const BOT_DEFENSE_SIGNALS = [
-      "akamai",
-      "perimeterx",
-      "datadome",
-      "cloudflare",
-      "captcha",
-      "verify you are human",
-      "access denied"
-    ];
-
-    const botDefenseHits = BOT_DEFENSE_SIGNALS.filter(s =>
-      staticText.includes(s)
-    );
-
-    if (botDefenseHits.length > 0) {
-      intent = "low";
-      intentSignals.push(
-        `Bot-defense detected: ${botDefenseHits.join(", ")}`
-      );
+    const BOT_DEFENSE=["akamai","perimeterx","datadome","cloudflare","captcha","access denied","verify you are human"];
+    const botDefenseHits=BOT_DEFENSE.filter(s=>staticText.includes(s));
+    if(botDefenseHits.length>0){
+      intent="low";
+      intentSignals.push(`Bot-defense detected: ${botDefenseHits.join(", ")}`);
     }
 
-    /* ===============================
-       RENDERED CONFIRMATION
-    ================================ */
-    let renderedBlocked = false;
+    /* ---- RENDERED CONFIRMATION ---- */
+    let renderedBlocked=false;
+    try{
+      const rendered = await axios.post(`${RENDER_WORKER}/crawl`,{url},{timeout:RENDER_TIMEOUT_MS});
+      const renderedText=JSON.stringify(rendered.data||{}).toLowerCase();
+      const renderedHits=AI_KEYWORDS.filter(k=>renderedText.includes(k));
 
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(
-        () => controller.abort(),
-        RENDER_TIMEOUT_MS
-      );
-
-      const rendered = await axios.post(
-        `${RENDER_WORKER}/crawl`,
-        { url },
-        { timeout: RENDER_TIMEOUT_MS, signal: controller.signal }
-      );
-
-      clearTimeout(timer);
-
-      const renderedText =
-        JSON.stringify(rendered.data || {}).toLowerCase();
-
-      const renderedHits = AI_KEYWORDS.filter(k =>
-        renderedText.includes(k)
-      );
-
-      if (
-        renderedHits.length &&
-        intent !== "high" &&
-        botDefenseHits.length === 0
-      ) {
-        intent = "high";
-        intentSignals.push(
-          `AI posture confirmed via render: ${renderedHits.join(", ")}`
-        );
+      if(renderedHits.length && intent!=="high" && botDefenseHits.length===0){
+        intent="high";
+        intentSignals.push(`AI posture confirmed via render: ${renderedHits.join(", ")}`);
       }
-
-    } catch {
-      renderedBlocked = true;
+    } catch{
+      renderedBlocked=true;
       intentSignals.push("Rendered crawl blocked / timed out");
     }
 
-    /* ===============================
-       STATE RESOLVER
-    ================================ */
-    let state = {
-      label: "observed",
-      reason: "Entity successfully crawled and interpreted",
-      confidence: "high"
+    /* ---- CRAWL CONTEXT STATE (NOT STRATEGY) ---- */
+    let state={
+      label:"observed",
+      reason:"Entity successfully crawled and interpreted",
+      confidence:"high"
     };
 
-    if (staticBlocked || botDefenseHits.length > 0) {
-      state = {
-        label: "suppressed",
-        reason: "Entity intentionally blocks or suppresses crawler visibility",
-        confidence: "high"
+    if(staticBlocked || botDefenseHits.length>0){
+      state={
+        label:"suppressed",
+        reason:"Crawler access restricted or intentionally gated",
+        confidence:"high"
       };
-    } else if (renderedBlocked && intent === "low") {
-      state = {
-        label: "opaque",
-        reason: "Limited visibility; intent cannot be confidently inferred",
-        confidence: "medium"
+    } else if(renderedBlocked && intent==="low"){
+      state={
+        label:"opaque",
+        reason:"Limited visibility; posture could not be confidently inferred",
+        confidence:"medium"
       };
     }
 
-    /* ===============================
-       RESPONSE
-    ================================ */
+    /* ---- STRATEGY TAXONOMY (BUSINESS LENS) ---- */
+    const aiStrategy = deriveStrategy({
+      eccBand:ecc,
+      intent,
+      state
+    });
+
+    /* ---- RESPONSE ---- */
     return res.status(200).json({
-      success: true,
+
+      success:true,
       url,
-      hostname: host,
+      hostname:host,
 
-      ecc: {
-        score: eccScore,
-        band: ecc,
-        max: 100
-      },
+      ecc:{ score:eccScore, band:ecc, max:100 },
 
-      intent: {
-        posture: intent,
-        signals: intentSignals,
-        observedFrom: ["static", "rendered"]
+      intent:{
+        posture:intent,
+        signals:intentSignals,
+        observedFrom:["static","rendered"]
       },
 
       state,
-      quadrant: quadrant(ecc, intent),
+      aiStrategy,          // << 🎯 canonical strategy signal
+      quadrant: aiStrategy.quadrant,
       breakdown,
 
-      ...(debug && {
-        raw: {
-          staticBlocked,
-          renderedBlocked,
-          botDefenseHits,
-          intentSignals
-        }
-      }),
+      ...(debug && { raw:{ staticBlocked, renderedBlocked, botDefenseHits, intentSignals } }),
 
-      timestamp: new Date().toISOString()
+      timestamp:new Date().toISOString()
     });
 
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: err.message || "Internal error"
-    });
+  } catch(err){
+    return res.status(500).json({ success:false, error:err.message || "Internal error" });
   }
 }
