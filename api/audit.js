@@ -1,10 +1,16 @@
-// /api/audit.js — EEI v6.7 (Strategy Taxonomy — Stable Edition)
-// --------------------------------------------------------------
-// ECC = STATIC ONLY
-// Intent = Observed AI Posture (static + rendered)
-// State = Crawl Context Signal (NOT business strategy)
-// aiStrategy = Strategic Interpretation Layer
-// --------------------------------------------------------------
+// /api/audit.js — EEI v7.0 (Exposure-First Posture Model)
+// -------------------------------------------------------
+// ECC = STATIC ONLY (capability)
+// STATE = Exposure / Crawl Friction (mechanical truth)
+// INTENT = Observed exposure posture (derived from state)
+// STRATEGY = Business lens layered on capability × posture
+//
+// Core ladder:
+// observed  → entity exposes discovery surface
+// opaque    → defensive friction but still retrievable
+// suppressed → discovery meaningfully limited
+// blocked   → AI discovery explicitly denied
+// -------------------------------------------------------
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -27,9 +33,6 @@ import {
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 
-/* ===============================
-   CONFIG
-================================ */
 const RENDER_WORKER =
   "https://exmxc-crawl-worker-production.up.railway.app";
 
@@ -37,10 +40,9 @@ const STATIC_TIMEOUT_MS = 6000;
 const RENDER_TIMEOUT_MS = 8000;
 
 /* ===============================
-   HELPERS
+   Helpers
 ================================ */
-
-function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
 
 function eccBand(score){
   if(score >= 70) return "high";
@@ -48,43 +50,44 @@ function eccBand(score){
   return "low";
 }
 
-function quadrant(cap, intent){
-  if(cap==="high" && intent==="high") return "AI-First Leader";
-  if(cap==="high" && intent==="low")  return "Sovereign / Defensive Power";
-  if(cap==="medium" && intent==="high") return "Aspirational Challenger";
-  if(cap==="medium" && intent==="medium") return "Cautious Optimizer";
+function quadrant(capability,intent){
+  if(capability==="high" && intent==="high") return "AI-First Leader";
+  if(capability==="high" && intent==="low")  return "Sovereign / Defensive Power";
+  if(capability==="medium" && intent==="high") return "Aspirational Challenger";
+  if(capability==="medium" && intent==="medium") return "Cautious Optimizer";
   return "Unclassified";
 }
 
-/* ---- Strategy Mapping ---- */
-
-function deriveStrategy({ eccBand, intent, state }) {
+/* === Strategy Mapping (Business Lens) ================= */
+function deriveStrategy({ eccBand:intCap, intent }){
 
   const capability =
-    eccBand === "high" ? "high" :
-    eccBand === "medium" ? "medium" : "low";
+    intCap==="high" ? "high" :
+    intCap==="medium" ? "medium" : "low";
 
   let posture = "Guarded Participation";
-  let rationale = "Participates in AI ecosystems with measured exposure.";
+  let rationale = "";
 
-  if (intent === "high") {
+  if(intent==="high"){
     posture = "AI-Forward";
-    rationale = "Signals AI alignment and discovery visibility.";
+    rationale = "Actively exposes discovery surface with minimal friction.";
   }
-
-  if (state.label === "suppressed") {
-    posture = "Closed / Defensive";
-    rationale = "Intentionally limits AI-mediated discovery and crawling.";
+  else if(intent==="medium"){
+    posture = "Selective Exposure";
+    rationale = "Participates in AI discovery with controlled surface friction.";
   }
-
-  if (state.label === "opaque" && intent === "low") {
+  else if(intent==="low"){
     posture = "Closed / Defensive";
-    rationale = "Low visibility posture with constrained crawl surface.";
+    rationale = "Structured presence but intentionally limits discovery exposure.";
+  }
+  else if(intent==="blocked"){
+    posture = "Hard Exclusion";
+    rationale = "Explicitly prevents AI-mediated discovery.";
   }
 
   return {
     posture,
-    quadrant: quadrant(capability, intent),
+    quadrant: quadrant(capability,intent==="blocked"?"low":intent),
     capability,
     intent,
     rationale
@@ -92,7 +95,7 @@ function deriveStrategy({ eccBand, intent, state }) {
 }
 
 /* ===============================
-   JSON-LD PARSER
+   JSON-LD Parser
 ================================ */
 function parseJsonLd(raw){
   try{
@@ -104,14 +107,14 @@ function parseJsonLd(raw){
 }
 
 /* ===============================
-   STATIC CRAWL (ECC SOURCE)
+   Static Crawl (ECC Source)
 ================================ */
 async function staticCrawl(url){
   const resp = await axios.get(url,{
     timeout: STATIC_TIMEOUT_MS,
     maxRedirects: 5,
     headers:{
-      "User-Agent":"Mozilla/5.0 (compatible; exmxc-static/6.7; +https://exmxc.ai)",
+      "User-Agent":"Mozilla/5.0 (compatible; exmxc-eei/7.0)",
       Accept:"text/html"
     }
   });
@@ -144,13 +147,14 @@ async function staticCrawl(url){
 }
 
 /* ===============================
-   HANDLER
+   Handler
 ================================ */
 export default async function handler(req,res){
 
   res.setHeader("Access-Control-Allow-Origin","*");
   res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Headers","Content-Type");
+
   if(req.method==="OPTIONS") return res.status(200).end();
 
   try{
@@ -159,24 +163,30 @@ export default async function handler(req,res){
       return res.status(400).json({ success:false, error:"Missing URL" });
     }
 
-    const debug = req.query?.debug==="1" || req.headers["x-eei-debug"]==="true";
-
     const url = input.startsWith("http") ? input : `https://${input}`;
     const host = new URL(url).hostname.replace(/^www\./,"");
 
     /* ---- STATIC CRAWL ---- */
     let staticData, staticBlocked=false;
+    let botDefenseHits=[];
 
-    try{ staticData = await staticCrawl(url); }
-    catch{
+    try{
+      staticData = await staticCrawl(url);
+    } catch {
       staticBlocked=true;
-      staticData={ html:"", title:"", description:"", canonicalHref:url,
-        schemaObjects:[], pageLinks:[], wordCount:0 };
+      staticData={ html:"",title:"",description:"",canonicalHref:url,
+        schemaObjects:[],pageLinks:[],wordCount:0 };
     }
 
     const $ = cheerio.load(staticData.html || "");
 
-    /* ---- ECC ---- */
+    // Detect visible bot-defense hints (soft friction)
+    const htmlLower = (staticData.html||"").toLowerCase();
+    if(htmlLower.includes("cloudflare")) botDefenseHits.push("cloudflare");
+    if(htmlLower.includes("akamai")) botDefenseHits.push("akamai");
+    if(htmlLower.includes("captcha")) botDefenseHits.push("captcha");
+
+    /* ---- ECC (Capability) ---- */
     const breakdown = [
       scoreTitle($,staticData),
       scoreMetaDescription($,staticData),
@@ -201,123 +211,80 @@ export default async function handler(req,res){
 
     const ecc = eccBand(eccScore);
 
-    /* ---- AI Intent Detection ---- */
-
-    const intentSignals = [];
-
-    const AI_KEYWORDS = [
-      "ai","artificial intelligence","llm","agent","assistant",
-      "autonomous","ai-first","ai search","copilot","model"
-    ];
-
-    const staticText =
-      (staticData.title + staticData.description + staticData.html)
-      .toLowerCase();
-
-    const staticHits = AI_KEYWORDS.filter(k=>staticText.includes(k));
-
-    // defaults
-    let intent = "medium";
-
-    const botDefenseHits = [
-      "akamai","datadome","perimeterx","cloudflare","captcha",
-      "access denied","verify you are human"
-    ].filter(s=>staticText.includes(s));
-
-    const looksLikeRealContent =
-      (staticData.wordCount || 0) > 150 ||
-      (staticData.schemaObjects || []).length > 2;
-
-    if(staticHits.length >= 2){
-      intent = "high";
-      intentSignals.push(`AI-forward language detected: ${staticHits.join(", ")}`);
-    }
-
-    /* ---- RENDERED CONFIRMATION ---- */
-
+    /* ---- RENDER CHECK (Exposure Confirmation) ---- */
     let renderedBlocked=false;
-
     try{
-      const rendered = await axios.post(
-        `${RENDER_WORKER}/crawl`,
-        {url},
-        {timeout:RENDER_TIMEOUT_MS}
-      );
-
-      const renderedText = JSON.stringify(rendered.data||{}).toLowerCase();
-      const renderedHits = AI_KEYWORDS.filter(k=>renderedText.includes(k));
-
-      if(renderedHits.length && intent!=="high" && botDefenseHits.length===0){
-        intent="high";
-        intentSignals.push(
-          `AI posture confirmed via render: ${renderedHits.join(", ")}`
-        );
-      }
-
-    } catch{
+      await axios.post(`${RENDER_WORKER}/crawl`,{url},{timeout:RENDER_TIMEOUT_MS});
+    } catch {
       renderedBlocked=true;
-      intentSignals.push("Rendered crawl blocked / timed out");
     }
 
-    /* ---- CRAWL CONTEXT STATE ---- */
+    /* ============================================
+       EXPOSURE-FIRST STATE MODEL
+       ============================================ */
+
+    const hasRealContent =
+      (staticData.wordCount||0) > 150 ||
+      (staticData.schemaObjects||[]).length > 2;
 
     let state = {
-      label:"observed",
-      reason:"Entity successfully crawled and interpreted",
-      confidence:"high"
+      label: "observed",
+      reason: "Entity exposes meaningful crawl surface",
+      confidence: "high"
     };
 
-    const hardSuppression =
-      staticBlocked ||
-      (!looksLikeRealContent && botDefenseHits.length > 0);
-
-    if(hardSuppression){
+    if(staticBlocked){
       state = {
-        label:"suppressed",
-        reason:"Crawler access restricted or intentionally gated",
-        confidence:"high"
+        label: "blocked",
+        reason: "Static surface inaccessible / hard denial",
+        confidence: "high"
       };
     }
-    else if(renderedBlocked && intent === "low"){
+    else if(!hasRealContent && botDefenseHits.length){
       state = {
-        label:"opaque",
-        reason:"Limited visibility; posture could not be confidently inferred",
-        confidence:"medium"
+        label: "suppressed",
+        reason: "Discovery access intentionally limited behind defenses",
+        confidence: "high"
+      };
+    }
+    else if(renderedBlocked && botDefenseHits.length){
+      state = {
+        label: "opaque",
+        reason: "Partial surface accessible but defensive friction present",
+        confidence: "medium"
       };
     }
 
-    /* ---- STRATEGY TAXONOMY ---- */
+    /* ---- INTENT FROM STATE (Exposure Posture) ---- */
 
+    let intent = "medium";
+
+    if(state.label==="observed") intent = "high";
+    if(state.label==="opaque")   intent = "low";
+    if(state.label==="suppressed") intent = "low";
+    if(state.label==="blocked")   intent = "blocked";
+
+    /* ---- STRATEGY (Business Lens) ---- */
     const aiStrategy = deriveStrategy({
       eccBand:ecc,
-      intent,
-      state
+      intent
     });
 
     /* ---- RESPONSE ---- */
-
     return res.status(200).json({
-
       success:true,
       url,
       hostname:host,
 
       ecc:{ score:eccScore, band:ecc, max:100 },
 
-      intent:{
-        posture:intent,
-        signals:intentSignals,
-        observedFrom:["static","rendered"]
-      },
-
+      intent:{ posture:intent },
       state,
       aiStrategy,
       quadrant: aiStrategy.quadrant,
       breakdown,
 
-      ...(debug && {
-        raw:{ staticBlocked, renderedBlocked, botDefenseHits, intentSignals }
-      }),
+      exposureSignals:{ staticBlocked, renderedBlocked, botDefenseHits },
 
       timestamp:new Date().toISOString()
     });
