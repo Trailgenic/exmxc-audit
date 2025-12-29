@@ -11,6 +11,44 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// ---- Normalizer (single canonical row format) ----
+function normalizeResult(raw) {
+
+  const state =
+    raw?.visibility?.state?.value ??
+    raw?.visibility?.state ??
+    raw?.state?.value ??
+    raw?.state?.label ??
+    raw?.state ??
+    "opaque";
+
+  const suppression =
+    raw?.visibility?.suppression?.reason ??
+    raw?.suppression?.reason ??
+    null;
+
+  const entityScore =
+    typeof raw?.entityScore === "number"
+      ? raw.entityScore
+      : typeof raw?.ecc?.score === "number"
+      ? raw.ecc.score
+      : null;
+
+  const mode =
+    raw?.schemaMeta?.rendered ? "rendered" : "static";
+
+  return {
+    url: raw.url,
+    state,
+    suppression,
+    entityScore,
+    mode,
+
+    // keep full object for diagnostics (non-UI use)
+    _raw: raw
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
@@ -24,17 +62,15 @@ export default async function handler(req, res) {
     const dataset = JSON.parse(raw);
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
-    const results = [];
+    const rawResults = [];
     const errors = [];
 
     for (const url of urls) {
-      // throttle lightly to protect crawl infra
       await sleep(500);
 
       let out = null;
 
       try {
-        // Reuse audit.js via fake req/res
         const fakeReq = {
           query: { url },
           headers: { origin: "batch-runner" },
@@ -53,7 +89,7 @@ export default async function handler(req, res) {
           throw new Error(out?.error || "Audit returned invalid payload");
         }
 
-        results.push(out);
+        rawResults.push(out);
 
       } catch (err) {
         const fail = {
@@ -63,24 +99,30 @@ export default async function handler(req, res) {
         };
 
         errors.push(fail);
-        results.push(fail);
+        rawResults.push(fail);
       }
     }
+
+    // ---------------------------
+    // Normalize for UI + Reports
+    // ---------------------------
+    const results = rawResults.map(r =>
+      r.success === false ? r : normalizeResult(r)
+    );
 
     // ===============================
     // Analytics (ECC + State Summary)
     // ===============================
 
-    const observed = results.filter(r => r.state?.label === "observed");
-    const suppressed = results.filter(r => r.state?.label === "suppressed");
-    const opaque = results.filter(r => r.state?.label === "opaque");
+    const observed = results.filter(r => r.state === "observed");
+    const suppressed = results.filter(r => r.state === "suppressed");
+    const opaque = results.filter(r => r.state === "opaque");
     const failed = results.filter(r => r.success === false);
 
-    const scored = observed
-      .filter(r => typeof r?.ecc?.score === "number");
+    const scored = observed.filter(r => typeof r.entityScore === "number");
 
     const avgECC =
-      scored.reduce((sum, r) => sum + r.ecc.score, 0) /
+      scored.reduce((sum, r) => sum + r.entityScore, 0) /
       (scored.length || 1);
 
     const summary = {
