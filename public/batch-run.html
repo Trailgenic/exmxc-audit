@@ -242,13 +242,57 @@ runBtn.addEventListener("click", async ()=>{
     if(!data.success){ statusEl.textContent="Batch failed"; return; }
 
     updateSummary(data);
-    renderTable(data.results || []);
-    statusEl.textContent="Completed";
+    function renderTable(rows){
+  resultsBody.innerHTML = "";
 
-  } catch(err){
-    statusEl.textContent="Error";
-    rawBox.textContent = JSON.stringify({error:err.message},null,2);
+  if(!rows?.length){
+    resultsBody.innerHTML = `
+      <tr><td colspan="5" class="text-center py-3 text-gray-400">
+        No results
+      </td></tr>`;
+    return;
   }
+
+  rows.forEach(r => {
+    // ----- STATE -----
+    const state =
+      r?.visibility?.state?.value ??
+      r?.visibility?.state ??
+      r?.state?.value ??
+      r?.state ??
+      "—";
+
+    // ----- SUPPRESSION -----
+    const suppression =
+      r?.visibility?.suppression?.reason ??
+      r?.suppression?.reason ??
+      "—";
+
+    // ----- ECC -----
+    const ecc =
+      typeof r?.entityScore === "number"
+        ? r.entityScore.toFixed(2)
+        : typeof r?.ecc === "number"
+        ? r.ecc.toFixed(2)
+        : "—";
+
+    // ----- MODE -----
+    const mode =
+      r?.schemaMeta?.rendered ? "rendered" : "static";
+
+    resultsBody.innerHTML += `
+      <tr>
+        <td class="px-3 py-2">
+          <a href="${r.url}" target="_blank"
+             class="text-blue-600 underline">${r.url}</a>
+        </td>
+        <td class="px-3 py-2 text-center">${state}</td>
+        <td class="px-3 py-2 text-center">${suppression}</td>
+        <td class="px-3 py-2 text-center">${ecc}</td>
+        <td class="px-3 py-2 text-center">${mode}</td>
+      </tr>`;
+  });
+}
 });
 </script>
 
