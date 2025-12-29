@@ -1,305 +1,243 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exmxc.ai — Batch EEI Audit</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>exmxc.ai — EEI Batch Visibility Audit</title>
+<script src="https://cdn.tailwindcss.com"></script>
 
-    <style>
-      body {
-        background-color: #f9fafb;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
-          Arial, sans-serif;
-      }
-      .json-box {
-        background-color: #0f172a;
-        color: #e2e8f0;
-        padding: 1rem;
-        border-radius: 0.75rem;
-        font-size: 0.9rem;
-        white-space: pre-wrap;
-        overflow-x: auto;
-      }
-      .score-bar {
-        height: 12px;
-        border-radius: 9999px;
-        background: linear-gradient(
-          90deg,
-          #dc2626 0%,
-          #facc15 40%,
-          #22c55e 80%
-        );
-        transition: width 0.5s ease;
-      }
-    </style>
-  </head>
+<style>
+  body {
+    background:#f6f7fb;
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  .json-box { background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:0.75rem; font-size:0.9rem; white-space:pre-wrap; overflow-x:auto;}
+  .badge {padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;display:inline-block}
+  .badge-observed {background:#dcfce7;color:#166534}
+  .badge-suppressed {background:#fef9c3;color:#854d0e}
+  .badge-opaque {background:#e5e7eb;color:#374151}
+  .badge-failed {background:#fee2e2;color:#7f1d1d}
+</style>
+</head>
 
-  <body class="max-w-6xl mx-auto py-10 px-5">
-    <!-- HEADER -->
-    <h1 class="text-3xl font-bold text-gray-900 text-center mb-2">
-      EEI Batch Audit
-    </h1>
-    <p class="text-center text-gray-600 text-sm mb-6">
-      Multi-site Entity Engineering™ Index (EEI)
-    </p>
+<body class="max-w-6xl mx-auto py-10 px-5">
 
-    <!-- SUMMARY CARD -->
-    <div
-      class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8 text-center shadow-sm"
-    >
-      <div class="text-sm uppercase tracking-wide text-amber-700 mb-1">
-        Batch EEI Summary
-      </div>
+<h1 class="text-3xl font-bold text-gray-900 text-center mb-2">
+  EEI Batch Visibility Audit (v6.6)
+</h1>
+<p class="text-center text-gray-600 text-sm mb-6">
+  Static-first visibility mapping across entities
+</p>
 
-      <div id="scoreDisplay" class="text-xl font-semibold text-gray-900 mb-2">
-        EEI: -- / 100
-      </div>
+<!-- SUMMARY -->
+<div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-8">
 
-      <div class="relative w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-        <div id="scoreBar" class="score-bar w-0"></div>
-      </div>
-
-      <div class="mt-3 text-sm text-gray-700">
-        <span class="font-medium">Dataset:</span>
-        <span id="datasetName">–</span>
-
-        <span class="mx-2 text-gray-400">•</span>
-
-        <span id="siteCount">0 sites</span>
-
-        <span class="mx-2 text-gray-400">•</span>
-
-        <span id="avgScore">Avg EEI: --</span>
-      </div>
+  <div class="flex flex-wrap justify-between gap-4">
+    <div>
+      <div class="text-xs uppercase text-gray-500 mb-1">Dataset</div>
+      <div class="font-semibold text-gray-900" id="datasetName">–</div>
     </div>
 
-    <!-- CONTROLS -->
-    <div
-      class="flex flex-col md:flex-row md:items-center gap-3 mb-8 border border-gray-200 rounded-xl p-5 bg-white shadow-sm"
-    >
-      <!-- Dataset selector -->
-      <div class="flex-1">
-        <label
-          class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1"
-          >Dataset</label
-        >
-        <select
-          id="datasetSelect"
-          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-black focus:outline-none bg-white"
-        >
-          <option>Loading…</option>
-        </select>
-      </div>
-
-      <!-- Run button -->
-      <div class="md:w-48">
-        <label class="text-xs font-semibold text-gray-600 uppercase mb-1"
-          >&nbsp;</label
-        >
-        <button
-          id="runBatchButton"
-          class="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800 transition w-full"
-        >
-          Run Batch Audit
-        </button>
-
-        <div id="batchStatus" class="text-xs text-gray-500 mt-2 text-center">
-          &nbsp;
-        </div>
-      </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500 mb-1">Sites</div>
+      <div class="font-semibold text-gray-900" id="siteCount">0</div>
     </div>
 
-    <!-- MAIN GRID -->
-    <div class="grid md:grid-cols-2 gap-8">
-      <!-- TABLE -->
-      <div>
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Site Scores</h2>
-
-        <div
-          class="border border-gray-200 rounded-xl bg-white shadow-sm max-h-[500px] overflow-auto"
-        >
-          <table class="min-w-full text-xs">
-            <thead class="bg-gray-50 sticky top-0 border-b border-gray-200">
-              <tr>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  URL
-                </th>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  EEI
-                </th>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  Stage
-                </th>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  Schema
-                </th>
-                <th class="px-3 py-2 text-left font-semibold text-gray-600">
-                  Mode
-                </th>
-              </tr>
-            </thead>
-            <tbody id="resultsTableBody" class="divide-y divide-gray-100">
-              <tr>
-                <td colspan="5" class="px-3 py-4 text-center text-gray-400">
-                  No batch run yet.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- RAW JSON -->
-      <div>
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Raw JSON</h2>
-        <pre id="result" class="json-box">// Awaiting batch run…</pre>
-      </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500 mb-1">Observed Avg ECC</div>
+      <div class="font-semibold text-gray-900" id="avgScore">--</div>
     </div>
+  </div>
 
-    <!-- FOOTER -->
-    <footer class="text-center text-xs text-gray-500 mt-10">
-      Powered by <span class="font-semibold text-black">exmxc.ai</span>
-    </footer>
+  <div class="mt-5 grid grid-cols-4 gap-3 text-center">
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+      <div class="text-xs text-emerald-700">Observed</div>
+      <div class="text-lg font-bold text-emerald-800" id="countObserved">0</div>
+    </div>
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div class="text-xs text-amber-700">Suppressed</div>
+      <div class="text-lg font-bold text-amber-800" id="countSuppressed">0</div>
+    </div>
+    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+      <div class="text-xs text-gray-600">Opaque</div>
+      <div class="text-lg font-bold text-gray-800" id="countOpaque">0</div>
+    </div>
+    <div class="bg-rose-50 border border-rose-200 rounded-lg p-3">
+      <div class="text-xs text-rose-700">Failed</div>
+      <div class="text-lg font-bold text-rose-800" id="countFailed">0</div>
+    </div>
+  </div>
 
-    <script>
-      const runBatchButton = document.getElementById("runBatchButton");
-      const resultEl = document.getElementById("result");
-      const scoreBar = document.getElementById("scoreBar");
-      const scoreDisplay = document.getElementById("scoreDisplay");
-      const datasetSelect = document.getElementById("datasetSelect");
-      const datasetName = document.getElementById("datasetName");
-      const siteCount = document.getElementById("siteCount");
-      const avgScore = document.getElementById("avgScore");
-      const batchStatus = document.getElementById("batchStatus");
-      const resultsTableBody = document.getElementById("resultsTableBody");
+</div>
 
-      /* ================================
-         LOAD VERTICALS FROM /api/verticals
-      ================================== */
-      async function loadDatasets() {
-        try {
-          const res = await fetch("/api/verticals");
-          const api = await res.json();
+<!-- CONTROLS -->
+<div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row gap-4">
+  <div class="flex-1">
+    <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Dataset</label>
+    <select id="datasetSelect" class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full bg-white">
+      <option>Loading…</option>
+    </select>
+  </div>
 
-          datasetSelect.innerHTML = ""; 
+  <div class="md:w-48">
+    <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">&nbsp;</label>
+    <button id="runBatchButton" class="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800 w-full">
+      Run Batch
+    </button>
+    <div id="batchStatus" class="text-xs text-gray-500 mt-2 text-center">&nbsp;</div>
+  </div>
+</div>
 
-          api.verticals.forEach(v => {
-            const opt = document.createElement("option");
-            opt.value = v.value; 
-            opt.textContent = v.label || v.value;
-            datasetSelect.appendChild(opt);
-          });
+<!-- GRID -->
+<div class="grid md:grid-cols-2 gap-8">
 
-        } catch (e) {
-          datasetSelect.innerHTML =
-            "<option value='core-web'>core-web (fallback)</option>";
-        }
-      }
+  <!-- TABLE -->
+  <div>
+    <h2 class="text-lg font-semibold text-gray-900 mb-3">Visibility Results</h2>
 
-      loadDatasets();
+    <div class="border border-gray-200 rounded-xl bg-white shadow-sm max-h-[520px] overflow-auto">
+      <table class="min-w-full text-xs">
+        <thead class="bg-gray-50 border-b border-gray-200 sticky top-0">
+          <tr>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">URL</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">State</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">ECC</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">Schema</th>
+            <th class="px-3 py-2 text-left font-semibold text-gray-600">Mode</th>
+          </tr>
+        </thead>
+        <tbody id="resultsTableBody" class="divide-y divide-gray-100">
+          <tr><td colspan="5" class="px-3 py-4 text-center text-gray-400">No batch run yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-      function setScoreBar(score) {
-        const safe = Math.max(0, Math.min(100, score || 0));
-        scoreBar.style.width = safe + "%";
-      }
+  <!-- JSON -->
+  <div>
+    <h2 class="text-lg font-semibold text-gray-900 mb-3">Raw JSON</h2>
+    <pre id="result" class="json-box">// Awaiting batch…</pre>
+  </div>
 
-      function formatStage(r) {
-        return r.entityStage || "—";
-      }
+</div>
 
-      function formatMode(r) {
-        if (!r.schemaMeta) return "static";
-        return r.schemaMeta.rendered ? "rendered" : "static";
-      }
+<footer class="text-center text-xs text-gray-500 mt-10">
+  Powered by <span class="font-semibold text-black">exmxc.ai</span>
+</footer>
 
-      function schemaCount(r) {
-        return r.schemaMeta?.schemaBlocks ?? 0;
-      }
+<!-- ================= SCRIPT ================= -->
+<script>
+  const els = {
+    runBtn: runBatchButton,
+    result: result,
+    datasetSelect,
+    datasetName,
+    siteCount,
+    avgScore,
+    countObserved,
+    countSuppressed,
+    countOpaque,
+    countFailed,
+    batchStatus,
+    table: resultsTableBody
+  };
 
-      function getAvgScore(data) {
-        if (typeof data.avgV5Score === "number") return data.avgV5Score;
-        if (typeof data.avgEntityScore === "number") return data.avgEntityScore;
-        if (typeof data.avgScore === "number") return data.avgScore;
-        return null;
-      }
-
-      runBatchButton.addEventListener("click", async () => {
-        const dataset = datasetSelect.value || "core-web";
-        const url = `/api/batch-run?dataset=${dataset}`;
-
-        resultEl.textContent = "// Running batch…";
-        batchStatus.textContent = "Running…";
-
-        try {
-          const res = await fetch(url);
-          const data = await res.json();
-
-          resultEl.textContent = JSON.stringify(data, null, 2);
-
-          if (!data || !data.success) {
-            batchStatus.textContent = "Batch failed.";
-            setScoreBar(0);
-            scoreDisplay.textContent = "EEI: -- / 100";
-            return;
-          }
-
-          datasetName.textContent = data.dataset || dataset;
-          siteCount.textContent = `${data.totalUrls ?? 0} sites`;
-
-          const avg = getAvgScore(data);
-
-          if (avg != null) {
-            avgScore.textContent = `Avg EEI: ${avg.toFixed(2)}`;
-            scoreDisplay.textContent = `EEI: ${avg.toFixed(2)} / 100`;
-            setScoreBar(avg);
-          } else {
-            avgScore.textContent = "Avg EEI: --";
-            scoreDisplay.textContent = "EEI: -- / 100";
-            setScoreBar(0);
-          }
-
-          batchStatus.textContent = "Completed";
-
-          if (Array.isArray(data.results) && data.results.length > 0) {
-            resultsTableBody.innerHTML = "";
-            data.results.forEach((r) => {
-              const score =
-                typeof r.v5Score === "number"
-                  ? r.v5Score
-                  : typeof r.entityScore === "number"
-                  ? r.entityScore
-                  : "—";
-
-              const tr = document.createElement("tr");
-              tr.innerHTML = `
-                <td class="px-3 py-2 text-xs">
-                  <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">
-                    ${r.url}
-                  </a>
-                </td>
-                <td class="px-3 py-2 text-xs">${score}</td>
-                <td class="px-3 py-2 text-xs">${formatStage(r)}</td>
-                <td class="px-3 py-2 text-xs">${schemaCount(r)}</td>
-                <td class="px-3 py-2 text-xs">${formatMode(r)}</td>
-              `;
-              resultsTableBody.appendChild(tr);
-            });
-          } else {
-            resultsTableBody.innerHTML =
-              "<tr><td colspan='5' class='px-3 py-4 text-center text-gray-400'>No results returned.</td></tr>";
-          }
-        } catch (err) {
-          batchStatus.textContent = "Batch error.";
-          resultEl.textContent = JSON.stringify(
-            { error: err.message || String(err) },
-            null,
-            2
-          );
-          setScoreBar(0);
-          scoreDisplay.textContent = "EEI: -- / 100";
-        }
+  async function loadDatasets() {
+    try {
+      const r = await fetch("/api/verticals");
+      const j = await r.json();
+      datasetSelect.innerHTML = "";
+      j.verticals.forEach(v=>{
+        const o=document.createElement("option");
+        o.value=v.value; o.textContent=v.label||v.value;
+        datasetSelect.appendChild(o);
       });
-    </script>
-  </body>
+    } catch {
+      datasetSelect.innerHTML="<option value='core-web'>core-web</option>";
+    }
+  }
+  loadDatasets();
+
+  function badge(state){
+    const s=state?.toLowerCase();
+    if(s==="observed") return `<span class="badge badge-observed">observed</span>`;
+    if(s==="suppressed") return `<span class="badge badge-suppressed">suppressed</span>`;
+    if(s==="opaque") return `<span class="badge badge-opaque">opaque</span>`;
+    if(s==="failed") return `<span class="badge badge-failed">failed</span>`;
+    return "—";
+  }
+
+  function mode(r){
+    if(!r.schemaMeta) return "static";
+    return r.schemaMeta.rendered ? "rendered":"static";
+  }
+
+  function schemaCount(r){
+    return r.schemaMeta?.schemaBlocks ?? 0;
+  }
+
+  function score(r){
+    return typeof r?.ecc?.score==="number" ? r.ecc.score.toFixed(2) : "—";
+  }
+
+  function extractAvg(data){
+    return typeof data?.summary?.avgECC==="number" ? data.summary.avgECC : null;
+  }
+
+  els.runBtn.addEventListener("click", async ()=>{
+    const dataset = datasetSelect.value || "core-web";
+    const url = `/api/batch-run?dataset=${dataset}`;
+
+    els.result.textContent="// Running…";
+    els.batchStatus.textContent="Running…";
+
+    try {
+      const res=await fetch(url);
+      const data=await res.json();
+      els.result.textContent=JSON.stringify(data,null,2);
+
+      if(!data.success){ els.batchStatus.textContent="Failed"; return; }
+
+      const s = data.summary || {};
+      els.datasetName.textContent = data.dataset || dataset;
+      els.siteCount.textContent = s.totalUrls ?? data.totalUrls ?? 0;
+
+      els.countObserved.textContent = s.observed ?? 0;
+      els.countSuppressed.textContent = s.suppressed ?? 0;
+      els.countOpaque.textContent = s.opaque ?? 0;
+      els.countFailed.textContent = s.failed ?? 0;
+
+      const avg = extractAvg(data);
+      els.avgScore.textContent = avg!=null ? avg.toFixed(2) : "--";
+
+      els.batchStatus.textContent="Completed";
+
+      // table
+      if(Array.isArray(data.results) && data.results.length){
+        els.table.innerHTML="";
+        data.results.forEach(r=>{
+          const tr=document.createElement("tr");
+          tr.innerHTML=`
+            <td class="px-3 py-2">
+              <a href="${r.url}" target="_blank" class="text-blue-600 hover:underline">${r.url}</a>
+            </td>
+            <td class="px-3 py-2">${badge(r.state?.label)}</td>
+            <td class="px-3 py-2">${score(r)}</td>
+            <td class="px-3 py-2">${schemaCount(r)}</td>
+            <td class="px-3 py-2">${mode(r)}</td>
+          `;
+          els.table.appendChild(tr);
+        });
+      } else {
+        els.table.innerHTML="<tr><td colspan='5' class='px-3 py-4 text-center text-gray-400'>No results returned.</td></tr>";
+      }
+
+    } catch(err){
+      els.batchStatus.textContent="Error";
+      els.result.textContent=JSON.stringify({error:err.message},null,2);
+    }
+  });
+</script>
+
+</body>
 </html>
