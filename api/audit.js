@@ -1,9 +1,10 @@
-// /api/audit.js — EEI v6.7 (Strategy Taxonomy Enabled)
+// /api/audit.js — EEI v6.7 (Strategy Taxonomy — Stable Edition)
+// --------------------------------------------------------------
 // ECC = STATIC ONLY
-// Intent = OBSERVED POSTURE (static + rendered)
-// State = Crawl Context (not business strategy)
-// aiStrategy = Business Strategy Lens (canonical)
-// -----------------------------------------------
+// Intent = Observed AI Posture (static + rendered)
+// State = Crawl Context Signal (NOT business strategy)
+// aiStrategy = Strategic Interpretation Layer
+// --------------------------------------------------------------
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -38,6 +39,7 @@ const RENDER_TIMEOUT_MS = 8000;
 /* ===============================
    HELPERS
 ================================ */
+
 function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
 function eccBand(score){
@@ -48,49 +50,41 @@ function eccBand(score){
 
 function quadrant(cap, intent){
   if(cap==="high" && intent==="high") return "AI-First Leader";
-  if(cap==="high" && intent==="low") return "Sovereign / Defensive Power";
+  if(cap==="high" && intent==="low")  return "Sovereign / Defensive Power";
   if(cap==="medium" && intent==="high") return "Aspirational Challenger";
   if(cap==="medium" && intent==="medium") return "Cautious Optimizer";
   return "Unclassified";
 }
 
-/* === Strategy Mapping ========================= */
+/* ---- Strategy Mapping ---- */
 
 function deriveStrategy({ eccBand, intent, state }) {
 
-  // Capability comes from ECC quality
   const capability =
     eccBand === "high" ? "high" :
     eccBand === "medium" ? "medium" : "low";
 
-  // Business Posture (not crawl mechanics)
   let posture = "Guarded Participation";
-  let rationale = "";
+  let rationale = "Participates in AI ecosystems with measured exposure.";
 
   if (intent === "high") {
     posture = "AI-Forward";
-    rationale = "Publicly signals AI adoption and discovery alignment.";
+    rationale = "Signals AI alignment and discovery visibility.";
   }
 
-  // Explicitly defensive environments
   if (state.label === "suppressed") {
     posture = "Closed / Defensive";
-    rationale =
-      "Prioritizes access control and minimizes AI-mediated discovery.";
+    rationale = "Intentionally limits AI-mediated discovery and crawling.";
   }
 
   if (state.label === "opaque" && intent === "low") {
     posture = "Closed / Defensive";
-    rationale =
-      "Low-signal environment with intentionally limited crawl exposure.";
+    rationale = "Low visibility posture with constrained crawl surface.";
   }
-
-  // Final quadrant classification
-  const quad = quadrant(capability, intent);
 
   return {
     posture,
-    quadrant: quad,
+    quadrant: quadrant(capability, intent),
     capability,
     intent,
     rationale
@@ -157,7 +151,6 @@ export default async function handler(req,res){
   res.setHeader("Access-Control-Allow-Origin","*");
   res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
-
   if(req.method==="OPTIONS") return res.status(200).end();
 
   try{
@@ -208,84 +201,93 @@ export default async function handler(req,res){
 
     const ecc = eccBand(eccScore);
 
-   // Default intent posture when real content is visible
-let intent = "medium";
+    /* ---- AI Intent Detection ---- */
 
-const looksLikeRealContent =
-  (staticData.wordCount || 0) > 150 ||
-  (staticData.schemaObjects || []).length > 2;
+    const intentSignals = [];
 
-// Upgrade to HIGH if AI-forward language exists
-if (staticHits.length >= 2) {
-  intent = "high";
-  intentSignals.push(
-    `AI-forward language detected (static): ${staticHits.join(", ")}`
-  );
-}
+    const AI_KEYWORDS = [
+      "ai","artificial intelligence","llm","agent","assistant",
+      "autonomous","ai-first","ai search","copilot","model"
+    ];
 
-// Only downgrade to LOW when defenses actually block discovery
-const hardAIBlocking =
-  !looksLikeRealContent && (staticBlocked || renderedBlocked);
+    const staticText =
+      (staticData.title + staticData.description + staticData.html)
+      .toLowerCase();
 
-if (hardAIBlocking) {
-  intent = "low";
-  intentSignals.push("Site posture suggests intentional AI opacity");
-}
+    const staticHits = AI_KEYWORDS.filter(k=>staticText.includes(k));
+
+    // defaults
+    let intent = "medium";
+
+    const botDefenseHits = [
+      "akamai","datadome","perimeterx","cloudflare","captcha",
+      "access denied","verify you are human"
+    ].filter(s=>staticText.includes(s));
+
+    const looksLikeRealContent =
+      (staticData.wordCount || 0) > 150 ||
+      (staticData.schemaObjects || []).length > 2;
+
+    if(staticHits.length >= 2){
+      intent = "high";
+      intentSignals.push(`AI-forward language detected: ${staticHits.join(", ")}`);
+    }
 
     /* ---- RENDERED CONFIRMATION ---- */
+
     let renderedBlocked=false;
+
     try{
-      const rendered = await axios.post(`${RENDER_WORKER}/crawl`,{url},{timeout:RENDER_TIMEOUT_MS});
-      const renderedText=JSON.stringify(rendered.data||{}).toLowerCase();
-      const renderedHits=AI_KEYWORDS.filter(k=>renderedText.includes(k));
+      const rendered = await axios.post(
+        `${RENDER_WORKER}/crawl`,
+        {url},
+        {timeout:RENDER_TIMEOUT_MS}
+      );
+
+      const renderedText = JSON.stringify(rendered.data||{}).toLowerCase();
+      const renderedHits = AI_KEYWORDS.filter(k=>renderedText.includes(k));
 
       if(renderedHits.length && intent!=="high" && botDefenseHits.length===0){
         intent="high";
-        intentSignals.push(`AI posture confirmed via render: ${renderedHits.join(", ")}`);
+        intentSignals.push(
+          `AI posture confirmed via render: ${renderedHits.join(", ")}`
+        );
       }
+
     } catch{
       renderedBlocked=true;
       intentSignals.push("Rendered crawl blocked / timed out");
     }
 
-    /* ---- CRAWL CONTEXT STATE (NOT STRATEGY) ---- */
+    /* ---- CRAWL CONTEXT STATE ---- */
 
-let state = {
-  label: "observed",
-  reason: "Entity successfully crawled and interpreted",
-  confidence: "high"
-};
+    let state = {
+      label:"observed",
+      reason:"Entity successfully crawled and interpreted",
+      confidence:"high"
+    };
 
-/**
- * We only treat bot-defense as suppression when it prevents
- * meaningful content from being retrieved.
- * Presence of Cloudflare/Akamai/CAPTCHA alone ≠ suppression.
- */
+    const hardSuppression =
+      staticBlocked ||
+      (!looksLikeRealContent && botDefenseHits.length > 0);
 
-const looksLikeRealContent =
-  (staticData.wordCount || 0) > 150 ||
-  (staticData.schemaObjects || []).length > 2;
+    if(hardSuppression){
+      state = {
+        label:"suppressed",
+        reason:"Crawler access restricted or intentionally gated",
+        confidence:"high"
+      };
+    }
+    else if(renderedBlocked && intent === "low"){
+      state = {
+        label:"opaque",
+        reason:"Limited visibility; posture could not be confidently inferred",
+        confidence:"medium"
+      };
+    }
 
-const hardSuppression =
-  staticBlocked ||
-  (!looksLikeRealContent && botDefenseHits.length > 0);
+    /* ---- STRATEGY TAXONOMY ---- */
 
-if (hardSuppression) {
-  state = {
-    label: "suppressed",
-    reason: "Crawler access restricted or intentionally gated",
-    confidence: "high"
-  };
-}
-else if (renderedBlocked && intent === "low") {
-  state = {
-    label: "opaque",
-    reason: "Limited visibility; posture could not be confidently inferred",
-    confidence: "medium"
-  };
-}
-
-    /* ---- STRATEGY TAXONOMY (BUSINESS LENS) ---- */
     const aiStrategy = deriveStrategy({
       eccBand:ecc,
       intent,
@@ -293,6 +295,7 @@ else if (renderedBlocked && intent === "low") {
     });
 
     /* ---- RESPONSE ---- */
+
     return res.status(200).json({
 
       success:true,
@@ -308,16 +311,21 @@ else if (renderedBlocked && intent === "low") {
       },
 
       state,
-      aiStrategy,          // << 🎯 canonical strategy signal
+      aiStrategy,
       quadrant: aiStrategy.quadrant,
       breakdown,
 
-      ...(debug && { raw:{ staticBlocked, renderedBlocked, botDefenseHits, intentSignals } }),
+      ...(debug && {
+        raw:{ staticBlocked, renderedBlocked, botDefenseHits, intentSignals }
+      }),
 
       timestamp:new Date().toISOString()
     });
 
   } catch(err){
-    return res.status(500).json({ success:false, error:err.message || "Internal error" });
+    return res.status(500).json({
+      success:false,
+      error:err.message || "Internal error"
+    });
   }
 }
