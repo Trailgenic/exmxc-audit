@@ -208,26 +208,29 @@ export default async function handler(req,res){
 
     const ecc = eccBand(eccScore);
 
-    /* ---- INTENT POSTURE ---- */
-    let intent="low";
-    const intentSignals=[];
+   // Default intent posture when real content is visible
+let intent = "medium";
 
-    const staticText=(staticData.title+" "+staticData.description+" "+staticData.html).toLowerCase();
+const looksLikeRealContent =
+  (staticData.wordCount || 0) > 150 ||
+  (staticData.schemaObjects || []).length > 2;
 
-    const AI_KEYWORDS=["ai","artificial intelligence","llm","agent","assistant","copilot","ai search","ai-first","reflective ai"];
+// Upgrade to HIGH if AI-forward language exists
+if (staticHits.length >= 2) {
+  intent = "high";
+  intentSignals.push(
+    `AI-forward language detected (static): ${staticHits.join(", ")}`
+  );
+}
 
-    const staticHits=AI_KEYWORDS.filter(k=>staticText.includes(k));
-    if(staticHits.length>=2){
-      intent="high";
-      intentSignals.push(`AI-forward language detected (static): ${staticHits.join(", ")}`);
-    }
+// Only downgrade to LOW when defenses actually block discovery
+const hardAIBlocking =
+  !looksLikeRealContent && (staticBlocked || renderedBlocked);
 
-    const BOT_DEFENSE=["akamai","perimeterx","datadome","cloudflare","captcha","access denied","verify you are human"];
-    const botDefenseHits=BOT_DEFENSE.filter(s=>staticText.includes(s));
-    if(botDefenseHits.length>0){
-      intent="low";
-      intentSignals.push(`Bot-defense detected: ${botDefenseHits.join(", ")}`);
-    }
+if (hardAIBlocking) {
+  intent = "low";
+  intentSignals.push("Site posture suggests intentional AI opacity");
+}
 
     /* ---- RENDERED CONFIRMATION ---- */
     let renderedBlocked=false;
