@@ -1,11 +1,15 @@
-// /api/batch-run.js — EEI v5.4 Unified Batch Endpoint + Drift History
-// Contract-safe with verticals.json + audit.js
-// No re-crawling logic. No aggregation here. Orchestration only.
+// /api/batch-run.js — EEI v6.6 Canonical Batch Orchestrator
+// Static-first, state-aware, suppression-safe
+// Runs audit.js for each URL — no DB, no workers
 
 import fs from "fs/promises";
 import path from "path";
 import auditHandler from "./audit.js";
 import { saveDriftSnapshot } from "../lib/drift-db.js";
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -21,81 +25,92 @@ export default async function handler(req, res) {
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
     const results = [];
+    const errors = [];
 
     for (const url of urls) {
-      // ⏳ pacing to avoid serverless socket churn
-      await new Promise((r) => setTimeout(r, 750));
+      // throttle lightly to protect crawl infra
+      await sleep(500);
 
       let out = null;
 
       try {
+        // Reuse audit.js via fake req/res
         const fakeReq = {
           query: { url },
-          headers: { origin: "http://localhost" },
+          headers: { origin: "batch-runner" },
           method: "GET",
         };
 
         const fakeRes = {
-          status(code) {
-            this.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            out = obj;
-            return obj;
-          },
-          setHeader() {},
+          status() { return this; },
+          json(obj) { out = obj; return obj; },
+          setHeader() {}
         };
 
         await auditHandler(fakeReq, fakeRes);
 
-        if (out && out.success) {
-          results.push(out);
-        } else {
-          results.push({
-            url,
-            success: false,
-            error: out?.details || out?.error || "EEI audit failed",
-          });
+        if (!out || out.success !== true) {
+          throw new Error(out?.error || "Audit returned invalid payload");
         }
+
+        results.push(out);
+
       } catch (err) {
-        results.push({
+        const fail = {
           url,
           success: false,
           error: err.message || "Unhandled audit exception",
-        });
+        };
+
+        errors.push(fail);
+        results.push(fail);
       }
     }
 
-    const successful = results.filter(
-      (r) => r && r.success && typeof r.entityScore === "number"
-    );
+    // ===============================
+    // Analytics (ECC + State Summary)
+    // ===============================
 
-    const avgScore =
-      successful.reduce((sum, r) => sum + r.entityScore, 0) /
-      (successful.length || 1);
+    const observed = results.filter(r => r.state?.label === "observed");
+    const suppressed = results.filter(r => r.state?.label === "suppressed");
+    const opaque = results.filter(r => r.state?.label === "opaque");
+    const failed = results.filter(r => r.success === false);
+
+    const scored = observed
+      .filter(r => typeof r?.ecc?.score === "number");
+
+    const avgECC =
+      scored.reduce((sum, r) => sum + r.ecc.score, 0) /
+      (scored.length || 1);
+
+    const summary = {
+      totalUrls: urls.length,
+      observed: observed.length,
+      suppressed: suppressed.length,
+      opaque: opaque.length,
+      failed: failed.length,
+      scored: scored.length,
+      avgECC: Number(avgECC.toFixed(2)),
+    };
 
     const payload = {
+      success: true,
+      version: "v6.6",
       vertical: dataset.vertical || safeDataset,
       dataset: safeDataset,
-      totalUrls: urls.length,
-      audited: successful.length,
-      failed: urls.length - successful.length,
-      avgEntityScore: Number(avgScore.toFixed(2)),
+      summary,
       results,
+      errors,
       timestamp: new Date().toISOString(),
     };
 
-    saveDriftSnapshot(payload.vertical, payload)
-  .catch(err => {
-    console.warn("Drift snapshot failed:", err.message);
-  });
-
-
-    return res.status(200).json({
-      success: true,
-      ...payload,
+    // Persist drift snapshot (best-effort)
+    saveDriftSnapshot(payload.vertical, payload).catch(err => {
+      console.warn("Drift snapshot failed:", err.message);
     });
+
+    return res.status(200).json(payload);
+
   } catch (err) {
     return res.status(500).json({
       success: false,
