@@ -1,12 +1,9 @@
-/* =======================================================
-   /api/audit.js — EEI v7.1
-   Exposure-First Intent Model + Strategy Taxonomy
-   -------------------------------------------------------
-   ECC  = Static Capability (structure & signals)
-   Intent = Business Posture (exposure vs gating)
-   State = Crawl Context (surface access reality)
-   aiStrategy = Canonical Strategic Lens
-======================================================= */
+// /api/audit.js — EEI v6.8 (Exposure-First Intent Engine)
+// -------------------------------------------------------
+// ECC  = Static Capability (quality layer)
+// State = Crawl Exposure (not strategy)
+// Intent = Participation posture (capped by exposure)
+// aiStrategy = Business Strategy Lens
 
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -38,11 +35,6 @@ const RENDER_WORKER =
 const STATIC_TIMEOUT_MS = 6000;
 const RENDER_TIMEOUT_MS = 8000;
 
-const AI_KEYWORDS = [
-  "ai","machine learning","llm","model","gen ai","artificial intelligence",
-  "chatbot","ai platform","ai tools","ai strategy","ai solutions"
-];
-
 function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
 
 function eccBand(score){
@@ -59,38 +51,108 @@ function quadrant(cap,intent){
   return "Unclassified";
 }
 
-/* === Strategy Mapping ========================= */
+/* ===============================
+   EXPOSURE-FIRST ENGINE
+================================ */
 
-function deriveStrategy({ eccBand:intentCap, intent, state }){
-
-  const capability =
-    intentCap==="high" ? "high" :
-    intentCap==="medium" ? "medium" : "low";
-
-  let posture = "Guarded Participation";
-  let rationale = "";
-
-  if(intent==="high"){
-    posture="AI-Forward";
-    rationale="Entity exposes meaningful surface for AI-mediated discovery.";
+// Crawl Exposure → canonical state
+function deriveExposureState({ staticBlocked=false, renderedBlocked=false, botDefenseHits=[] } = {}){
+  // Fully suppressed — no surface allowed to crawlers
+  if(staticBlocked && renderedBlocked){
+    return {
+      label:"suppressed",
+      reason:"Crawler access blocked at both static and rendered layers",
+      confidence:"high"
+    };
   }
 
+  // Opaque / guarded — partial surface with friction or defenses
+  if(renderedBlocked || (botDefenseHits||[]).length>0){
+    return {
+      label:"opaque",
+      reason:"Partial surface accessible but defensive friction present",
+      confidence:"medium"
+    };
+  }
+
+  // Full surface observable
+  return {
+    label:"observed",
+    reason:"Entity successfully crawled and interpreted",
+    confidence:"high"
+  };
+}
+
+// Exposure caps intent — keywords do NOT escalate
+function deriveIntentFromExposure(stateLabel,{ wordCount=0, aiPing=false } = {}){
+  switch(stateLabel){
+
+    case "suppressed":
+      return {
+        posture:"low",
+        ceiling:"low",
+        rationale:"Discovery surface intentionally withheld from crawlers."
+      };
+
+    case "opaque":
+      // limited participation — can rise only to medium
+      return {
+        posture: wordCount>900 ? "medium" : "low",
+        ceiling:"medium",
+        rationale:"Meaningful surface exists but exposure is intentionally constrained."
+      };
+
+    case "observed":
+      // only here can high intent exist
+      return {
+        posture:(aiPing || wordCount>1200) ? "high" : "medium",
+        ceiling:"high",
+        rationale:"Entity exposes full surface suitable for AI-mediated discovery."
+      };
+
+    default:
+      return { posture:"low", ceiling:"low", rationale:"Unknown exposure environment." };
+  }
+}
+
+// Business lens — state dominates narrative
+function deriveStrategy({ capability, state, intent }){
   if(state.label==="suppressed"){
-    posture="Closed / Defensive";
-    rationale="Discovery surface intentionally gated or minimized.";
+    return {
+      posture:"Closed / Suppressed",
+      quadrant:"Sovereign / Defensive Power",
+      capability,
+      intent:"low",
+      rationale:"Prioritizes access control and minimizes AI discovery exposure."
+    };
   }
 
-  if(state.label==="opaque" && intent==="low"){
-    posture="Closed / Defensive";
-    rationale="Limited crawl visibility with defensive friction shaping access.";
+  if(state.label==="opaque"){
+    return {
+      posture:"Guarded Participation",
+      quadrant:"Sovereign / Defensive Power",
+      capability,
+      intent:intent.posture,
+      rationale:"Structured presence with constrained surface visibility."
+    };
+  }
+
+  if(state.label==="observed" && intent.posture==="high"){
+    return {
+      posture:"AI-Forward",
+      quadrant:"AI-First Leader",
+      capability,
+      intent:"high",
+      rationale:"Entity participates openly and enables full AI-driven comprehension."
+    };
   }
 
   return {
-    posture,
-    quadrant: quadrant(capability,intent),
+    posture:"Open but Cautious",
+    quadrant:"Emergent Participant",
     capability,
-    intent,
-    rationale
+    intent:intent.posture,
+    rationale:"Visible participation without explicit AI-forward enablement."
   };
 }
 
@@ -107,29 +169,32 @@ function parseJsonLd(raw){
 }
 
 /* ===============================
-   STATIC CRAWL (ECC SOURCE)
+   STATIC CRAWL
 ================================ */
 async function staticCrawl(url){
   const resp = await axios.get(url,{
     timeout:STATIC_TIMEOUT_MS,
     maxRedirects:5,
     headers:{
-      "User-Agent":"Mozilla/5.0 (compatible; exmxc-static/7.1; +https://exmxc.ai)",
+      "User-Agent":"Mozilla/5.0 (compatible; exmxc-static/6.8; +https://exmxc.ai)",
       Accept:"text/html"
     }
   });
 
-  const html=resp.data||"";
-  const $=cheerio.load(html);
+  const html = resp.data || "";
+  const $ = cheerio.load(html);
 
-  const schemaObjects=$('script[type="application/ld+json"]')
+  const schemaObjects = $('script[type="application/ld+json"]')
     .map((_,el)=>parseJsonLd($(el).text()))
-    .get().flat();
+    .get()
+    .flat();
 
-  const pageLinks=$("a[href]").map((_,el)=>$(el).attr("href"))
-    .get().filter(Boolean);
+  const pageLinks = $("a[href]")
+    .map((_,el)=>$(el).attr("href"))
+    .get()
+    .filter(Boolean);
 
-  const bodyText=$("body").text().replace(/\s+/g," ").trim();
+  const bodyText = $("body").text().replace(/\s+/g," ").trim();
 
   return {
     html,
@@ -154,28 +219,28 @@ export default async function handler(req,res){
   if(req.method==="OPTIONS") return res.status(200).end();
 
   try{
-    const input=req.method==="POST" ? req.body?.url : req.query?.url;
+    const input = req.method==="POST" ? req.body?.url : req.query?.url;
     if(!input || typeof input!=="string"){
       return res.status(400).json({ success:false, error:"Missing URL" });
     }
 
-    const debug=req.query?.debug==="1" || req.headers["x-eei-debug"]==="true";
-    const url=input.startsWith("http") ? input : `https://${input}`;
-    const host=new URL(url).hostname.replace(/^www\./,"");
+    const debug = req.query?.debug==="1" || req.headers["x-eei-debug"]==="true";
+    const url = input.startsWith("http") ? input : `https://${input}`;
+    const host = new URL(url).hostname.replace(/^www\./,"");
 
     /* ---- STATIC ---- */
     let staticData, staticBlocked=false;
-    try{ staticData=await staticCrawl(url); }
+    try{ staticData = await staticCrawl(url); }
     catch{
       staticBlocked=true;
       staticData={ html:"", title:"", description:"", canonicalHref:url,
         schemaObjects:[], pageLinks:[], wordCount:0 };
     }
 
-    const $=cheerio.load(staticData.html||"");
+    const $ = cheerio.load(staticData.html||"");
 
     /* ---- ECC ---- */
-    const breakdown=[
+    const breakdown = [
       scoreTitle($,staticData),
       scoreMetaDescription($,staticData),
       scoreCanonical($,url,staticData),
@@ -193,105 +258,52 @@ export default async function handler(req,res){
 
     let raw=0;
     for(const b of breakdown) raw+=clamp(b.points||0,0,b.max);
-    const eccScore=staticBlocked ? 0 :
+
+    const eccScore = staticBlocked ? 0 :
       clamp(Math.round((raw*100)/TOTAL_WEIGHT),0,100);
-    const ecc=eccBand(eccScore);
 
-    /* ---- EXPOSURE-FIRST INTENT ---------------- */
+    const ecc = eccBand(eccScore);
 
-    const hasRealContent =
-      (staticData.wordCount||0) > 150 ||
-      (staticData.schemaObjects||[]).length > 2;
+    /* ---- RENDER CONFIRMATION ---- */
+    let renderedBlocked=false, botDefenseHits=[], aiPing=false;
 
-    let intentSignals=[];
-    let botDefenseHits=[];
-
-    const htmlLower=(staticData.html||"").toLowerCase();
-    ["cloudflare","akamai","ddos","captcha","bot protection"]
-      .forEach(k=>{ if(htmlLower.includes(k)) botDefenseHits.push(k); });
-
-    let intent = "medium";   // default participatory
-
-    // AI-forward language boosts to HIGH
-    const staticHits = AI_KEYWORDS.filter(k =>
-      htmlLower.includes(k)
-    );
-    if(staticHits.length>=2){
-      intent="high";
-      intentSignals.push(`AI-language detected: ${staticHits.join(", ")}`);
-    }
-
-    /* ---- RENDER PASS ---- */
-    let renderedBlocked=false;
     try{
       const rendered = await axios.post(
         `${RENDER_WORKER}/crawl`,
-        {url},
-        {timeout:RENDER_TIMEOUT_MS}
+        { url },
+        { timeout:RENDER_TIMEOUT_MS }
       );
+
       const renderedText = JSON.stringify(rendered.data||{}).toLowerCase();
-      const renderedHits = AI_KEYWORDS.filter(k=>renderedText.includes(k));
-      if(renderedHits.length && intent!=="high" && botDefenseHits.length===0){
-        intent="high";
-        intentSignals.push(
-          `AI posture confirmed via render: ${renderedHits.join(", ")}`
-        );
+      aiPing = renderedText.includes("ai") || renderedText.includes("llm");
+
+      if(rendered.data?.botDefense){
+        botDefenseHits = rendered.data.botDefense;
       }
+
     } catch{
       renderedBlocked=true;
-      intentSignals.push("Rendered crawl blocked / timed out");
     }
 
-    /* ---- CRAWL CONTEXT STATE (EXPOSURE LADDER) ---- */
+    /* ---- EXPOSURE-FIRST STATE ---- */
+    const exposureSignals = { staticBlocked, renderedBlocked, botDefenseHits };
 
-    let state={
-      label:"observed",
-      reason:"Entity exposes meaningful discovery surface",
-      confidence:"high"
-    };
+    const state = deriveExposureState(exposureSignals);
 
-    // Hard suppression — access truly restricted
-    const hardSuppression =
-      staticBlocked ||
-      (!hasRealContent && botDefenseHits.length>0);
+    const intent = deriveIntentFromExposure(
+      state.label,
+      { wordCount: staticData.wordCount, aiPing }
+    );
 
-    if(hardSuppression){
-      state={
-        label:"suppressed",
-        reason:"Crawler access restricted or intentionally gated",
-        confidence:"high"
-      };
-      intent="low";
-    }
-
-    // Opaque only when friction *limits* meaningful access
-    else if(renderedBlocked && botDefenseHits.length>0 && !hasRealContent){
-      state={
-        label:"opaque",
-        reason:"Defensive friction limits meaningful discovery surface",
-        confidence:"medium"
-      };
-      intent="low";
-    }
-
-    // Otherwise — still exposed despite background defenses
-    else if(hasRealContent && botDefenseHits.length>0){
-      state={
-        label:"observed",
-        reason:"Meaningful surface exposed despite defensive infrastructure",
-        confidence:"high"
-      };
-    }
-
-    /* ---- STRATEGY LENS ---- */
     const aiStrategy = deriveStrategy({
-      eccBand:ecc,
-      intent,
-      state
+      capability:ecc,
+      state,
+      intent
     });
 
     /* ---- RESPONSE ---- */
     return res.status(200).json({
+
       success:true,
       url,
       hostname:host,
@@ -299,9 +311,9 @@ export default async function handler(req,res){
       ecc:{ score:eccScore, band:ecc, max:100 },
 
       intent:{
-        posture:intent,
-        signals:intentSignals,
-        observedFrom:["static","rendered"]
+        posture:intent.posture,
+        ceiling:intent.ceiling,
+        rationale:intent.rationale
       },
 
       state,
@@ -309,9 +321,7 @@ export default async function handler(req,res){
       quadrant: aiStrategy.quadrant,
       breakdown,
 
-      ...(debug && {
-        raw:{ staticBlocked, renderedBlocked, botDefenseHits, intentSignals, hasRealContent }
-      }),
+      ...(debug && { raw:{ exposureSignals, aiPing } }),
 
       timestamp:new Date().toISOString()
     });
