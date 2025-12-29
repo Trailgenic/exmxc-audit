@@ -1,6 +1,6 @@
-// /api/batch-run.js — EEI v6.6 Canonical Batch Orchestrator
-// Static-first, state-aware, suppression-safe
-// Runs audit.js for each URL — no DB, no workers
+// /api/batch-run.js — EEI v6.7
+// Strategic Posture Batch Orchestrator
+// Normalizes to AI-Strategy taxonomy (back-compat safe)
 
 import fs from "fs/promises";
 import path from "path";
@@ -11,45 +11,78 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// ---- Normalizer (single canonical row format) ----
+/* -------------------------------
+   NORMALIZER — STRATEGY CANONICAL
+-------------------------------- */
 function normalizeResult(raw) {
 
   const state =
-    raw?.visibility?.state?.value ??
-    raw?.visibility?.state ??
-    raw?.state?.value ??
     raw?.state?.label ??
     raw?.state ??
+    raw?.visibility?.state?.value ??
     "opaque";
 
-  const suppression =
+  const stateReason =
+    raw?.state?.reason ??
     raw?.visibility?.suppression?.reason ??
-    raw?.suppression?.reason ??
     null;
 
-  const entityScore =
-    typeof raw?.entityScore === "number"
-      ? raw.entityScore
-      : typeof raw?.ecc?.score === "number"
+  const ecc =
+    typeof raw?.ecc?.score === "number"
       ? raw.ecc.score
+      : typeof raw?.entityScore === "number"
+      ? raw.entityScore
       : null;
+
+  const posture =
+    raw?.aiStrategy?.posture ??
+    null;
+
+  const capability =
+    raw?.aiStrategy?.capability ??
+    null;
+
+  const intent =
+    raw?.aiStrategy?.intent ??
+    raw?.intent?.posture ??
+    null;
+
+  const quadrant =
+    raw?.aiStrategy?.quadrant ??
+    raw?.quadrant ??
+    null;
 
   const mode =
     raw?.schemaMeta?.rendered ? "rendered" : "static";
 
   return {
     url: raw.url,
+
+    // Visibility lens
     state,
-    suppression,
-    entityScore,
+    stateReason,
+
+    // Strategic taxonomy
+    posture,
+    capability,
+    intent,
+    quadrant,
+
+    // Capability metric
+    ecc,
+
     mode,
 
-    // keep full object for diagnostics (non-UI use)
+    // Keep full raw for diagnostics & reports
     _raw: raw
   };
 }
 
+/* ===============================
+   HANDLER
+================================ */
 export default async function handler(req, res) {
+
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
 
@@ -62,10 +95,12 @@ export default async function handler(req, res) {
     const dataset = JSON.parse(raw);
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
+
     const rawResults = [];
     const errors = [];
 
     for (const url of urls) {
+
       await sleep(500);
 
       let out = null;
@@ -74,7 +109,7 @@ export default async function handler(req, res) {
         const fakeReq = {
           query: { url },
           headers: { origin: "batch-runner" },
-          method: "GET",
+          method: "GET"
         };
 
         const fakeRes = {
@@ -95,7 +130,7 @@ export default async function handler(req, res) {
         const fail = {
           url,
           success: false,
-          error: err.message || "Unhandled audit exception",
+          error: err.message || "Unhandled audit exception"
         };
 
         errors.push(fail);
@@ -103,50 +138,72 @@ export default async function handler(req, res) {
       }
     }
 
-    // ---------------------------
-    // Normalize for UI + Reports
-    // ---------------------------
+    /* --------------------------------
+       NORMALIZE FOR UI + ANALYTICS
+    -------------------------------- */
     const results = rawResults.map(r =>
       r.success === false ? r : normalizeResult(r)
     );
 
-    // ===============================
-    // Analytics (ECC + State Summary)
-    // ===============================
+    /* ===============================
+       STRATEGIC SUMMARY
+    =============================== */
 
     const observed = results.filter(r => r.state === "observed");
     const suppressed = results.filter(r => r.state === "suppressed");
     const opaque = results.filter(r => r.state === "opaque");
     const failed = results.filter(r => r.success === false);
 
-    const scored = observed.filter(r => typeof r.entityScore === "number");
+    // posture distribution
+    const byPosture = {
+      open: results.filter(r => r.posture === "Open / Transparent").length,
+      balanced: results.filter(r => r.posture === "Balanced / Selective").length,
+      defensive: results.filter(r => r.posture === "Closed / Defensive").length
+    };
+
+    // capability distribution
+    const byCapability = {
+      high: results.filter(r => r.capability === "high").length,
+      medium: results.filter(r => r.capability === "medium").length,
+      low: results.filter(r => r.capability === "low").length
+    };
+
+    const scored = observed.filter(r => typeof r.ecc === "number");
 
     const avgECC =
-      scored.reduce((sum, r) => sum + r.entityScore, 0) /
+      scored.reduce((s, r) => s + r.ecc, 0) /
       (scored.length || 1);
 
     const summary = {
       totalUrls: urls.length,
+
+      // visibility map
       observed: observed.length,
       suppressed: suppressed.length,
       opaque: opaque.length,
       failed: failed.length,
+
+      // strategy map
+      posture: byPosture,
+      capability: byCapability,
+
+      // capability metric
       scored: scored.length,
-      avgECC: Number(avgECC.toFixed(2)),
+      avgECC: Number(avgECC.toFixed(2))
     };
 
     const payload = {
       success: true,
-      version: "v6.6",
+      version: "v6.7",
       vertical: dataset.vertical || safeDataset,
       dataset: safeDataset,
       summary,
       results,
       errors,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
 
-    // Persist drift snapshot (best-effort)
+    // best-effort drift persistence
     saveDriftSnapshot(payload.vertical, payload).catch(err => {
       console.warn("Drift snapshot failed:", err.message);
     });
@@ -157,7 +214,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       error: "Batch run failed",
-      details: err.message,
+      details: err.message
     });
   }
 }
