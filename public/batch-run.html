@@ -7,12 +7,12 @@
 <script src="https://cdn.tailwindcss.com"></script>
 
 <style>
-  body { background:#f8fafc; }
-  .pill { padding:2px 8px;border-radius:12px;font-size:12px }
-  .pill.observed { background:#dcfce7;color:#065f46 }
-  .pill.suppressed { background:#fef9c3;color:#854d0e }
-  .pill.opaque { background:#f1f5f9;color:#475569 }
-  .pill.failed { background:#fee2e2;color:#7f1d1d }
+  body{background:#f8fafc}
+  .pill{padding:2px 8px;border-radius:12px;font-size:12px}
+  .pill.observed{background:#dcfce7;color:#065f46}
+  .pill.suppressed{background:#fef9c3;color:#854d0e}
+  .pill.opaque{background:#f1f5f9;color:#475569}
+  .pill.failed{background:#fee2e2;color:#7f1d1d}
   .json-box{background:#020617;color:#e5e7eb;border-radius:10px;padding:14px;font-size:12px}
   details summary{cursor:pointer;color:#2563eb}
 </style>
@@ -25,7 +25,6 @@
 
 <!-- SUMMARY GRID -->
 <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-
   <div class="bg-white border rounded-xl p-4 shadow-sm">
     <div class="text-xs text-gray-500 uppercase mb-1">Dataset</div>
     <div id="datasetLabel" class="font-semibold text-gray-900">—</div>
@@ -67,35 +66,27 @@
   </div>
 </div>
 
-<!-- SUPPRESSION BREAKDOWN -->
-<div id="suppressionBox" class="hidden bg-white border rounded-xl p-5 shadow-sm mb-8">
-  <div class="text-sm font-semibold mb-1">Suppression Breakdown</div>
-  <div id="suppressionList" class="text-sm text-gray-600">No suppression detected</div>
-</div>
-
-<!-- RESULTS GRID -->
+<!-- RESULTS -->
 <div class="grid md:grid-cols-2 gap-6">
 
-  <!-- TABLE -->
   <div>
     <div class="text-lg font-semibold mb-2">Visibility Results</div>
     <div class="border rounded-xl bg-white shadow-sm max-h-[520px] overflow-auto">
       <table class="min-w-full text-sm">
         <thead class="bg-gray-50 sticky top-0">
-          <tr>
-            <th class="px-3 py-2 text-left">URL</th>
-            <th class="px-3 py-2">State</th>
-            <th class="px-3 py-2">Suppression</th>
-            <th class="px-3 py-2">ECC</th>
-            <th class="px-3 py-2">Mode</th>
-          </tr>
+        <tr>
+          <th class="px-3 py-2 text-left">URL</th>
+          <th class="px-3 py-2">State</th>
+          <th class="px-3 py-2">Suppression</th>
+          <th class="px-3 py-2">ECC</th>
+          <th class="px-3 py-2">Mode</th>
+        </tr>
         </thead>
         <tbody id="resultsBody" class="divide-y"></tbody>
       </table>
     </div>
   </div>
 
-  <!-- RAW JSON -->
   <div>
     <details>
       <summary class="mb-2">Show Raw JSON</summary>
@@ -117,21 +108,16 @@ const observedCount = document.getElementById("observedCount");
 const suppressedCount = document.getElementById("suppressedCount");
 const observedAvgECC = document.getElementById("observedAvgECC");
 
-const suppressionBox = document.getElementById("suppressionBox");
-const suppressionList = document.getElementById("suppressionList");
-
-/* ------------------
-   Load datasets list
------------------- */
+/* ================ LOAD DATASETS ================= */
 async function loadDatasets(){
   try{
     const res = await fetch("/api/verticals");
     const data = await res.json();
     datasetSelect.innerHTML = "";
     data.verticals.forEach(v=>{
-      const opt=document.createElement("option");
-      opt.value=v.value;
-      opt.textContent=v.label||v.value;
+      const opt = document.createElement("option");
+      opt.value = v.value;
+      opt.textContent = v.label || v.value;
       datasetSelect.appendChild(opt);
     });
   } catch {
@@ -140,9 +126,7 @@ async function loadDatasets(){
 }
 loadDatasets();
 
-/* ------------------
-   Helpers
------------------- */
+/* ================ HELPERS ================= */
 function pill(state){
   return `<span class="pill ${state}">${state}</span>`;
 }
@@ -150,32 +134,34 @@ function pill(state){
 function renderTable(rows){
   resultsBody.innerHTML="";
 
-  if(!rows.length){
-    resultsBody.innerHTML=`<tr><td colspan="5" class="text-center py-3 text-gray-400">No results</td></tr>`;
+  if(!rows?.length){
+    resultsBody.innerHTML =
+      `<tr><td colspan="5" class="text-center py-3 text-gray-400">No results</td></tr>`;
     return;
   }
 
   rows.forEach(r=>{
     const state =
-      r.state?.value ||
-      r.visibility?.state ||
-      r.state ||
+      r?.visibility?.state?.value ??
+      r?.visibility?.state ??
+      r?.state?.value ??
+      r?.state ??
       "—";
 
     const suppression =
-      r.suppression?.reason ||
-      r.visibility?.suppression?.reason ||
+      r?.visibility?.suppression?.reason ??
+      r?.suppression?.reason ??
       "—";
 
     const ecc =
-      typeof r.entityScore === "number" ? r.entityScore.toFixed(2) :
-      typeof r.ecc === "number" ? r.ecc.toFixed(2) :
-      "—";
+      typeof r?.entityScore === "number"
+        ? r.entityScore.toFixed(2)
+        : "—";
 
     const mode =
-      r.schemaMeta?.rendered ? "rendered" : "static";
+      r?.schemaMeta?.rendered ? "rendered" : "static";
 
-    resultsBody.innerHTML+=`
+    resultsBody.innerHTML += `
       <tr>
         <td class="px-3 py-2">
           <a href="${r.url}" target="_blank" class="text-blue-600 underline">${r.url}</a>
@@ -188,113 +174,50 @@ function renderTable(rows){
   });
 }
 
-/* ------------------
-   Compute summary stats
------------------- */
-function updateSummary(payload){
-  datasetLabel.textContent = payload.dataset || "—";
-  siteTotal.textContent = payload.totalUrls ?? payload.results?.length ?? "—";
+/* ================ SUMMARY ================= */
+function updateSummary(data){
+  datasetLabel.textContent = data.dataset;
+  siteTotal.textContent = data.totalUrls;
 
-  const observed = payload.results.filter(r =>
-    (r.state?.value || r.state) === "observed"
+  const observed = data.results.filter(r =>
+    (r?.visibility?.state?.value ?? r?.state) === "observed"
   );
 
-  const suppressed = payload.results.filter(r =>
-    (r.state?.value || r.state) === "suppressed"
+  const suppressed = data.results.filter(r =>
+    (r?.visibility?.state?.value ?? r?.state) === "suppressed"
   );
 
   observedCount.textContent = observed.length;
   suppressedCount.textContent = suppressed.length;
 
-  const eccValues = observed
+  const eccVals = observed
     .map(r => r.entityScore)
     .filter(n => typeof n === "number");
 
   observedAvgECC.textContent =
-    eccValues.length ? (eccValues.reduce((a,b)=>a+b,0)/eccValues.length).toFixed(2) : "—";
-
-  if(suppressed.length){
-    suppressionBox.classList.remove("hidden");
-    const reasons = {};
-    suppressed.forEach(r=>{
-      const reason = r.suppression?.reason || "unknown";
-      reasons[reason] = (reasons[reason] || 0)+1;
-    });
-    suppressionList.innerHTML = Object.entries(reasons)
-      .map(([k,v])=>`<div>${k} — <strong>${v}</strong></div>`).join("");
-  } else {
-    suppressionBox.classList.add("hidden");
-  }
+    eccVals.length
+      ? (eccVals.reduce((a,b)=>a+b,0)/eccVals.length).toFixed(2)
+      : "—";
 }
 
-/* ------------------
-   Run batch
------------------- */
+/* ================ RUN BATCH ================= */
 runBtn.addEventListener("click", async ()=>{
   const dataset = datasetSelect.value;
-  statusEl.textContent="Running…";
+  statusEl.textContent = "Running…";
 
-  try{
-    const res = await fetch(`/api/batch-run?dataset=${dataset}`);
-    const data = await res.json();
-    rawBox.textContent = JSON.stringify(data,null,2);
+  const res = await fetch(`/api/batch-run?dataset=${dataset}`);
+  const data = await res.json();
+  rawBox.textContent = JSON.stringify(data,null,2);
 
-    if(!data.success){ statusEl.textContent="Batch failed"; return; }
-
-    updateSummary(data);
-    function renderTable(rows){
-  resultsBody.innerHTML = "";
-
-  if(!rows?.length){
-    resultsBody.innerHTML = `
-      <tr><td colspan="5" class="text-center py-3 text-gray-400">
-        No results
-      </td></tr>`;
+  if(!data.success){
+    statusEl.textContent = "Batch failed";
     return;
   }
 
-  rows.forEach(r => {
-    // ----- STATE -----
-    const state =
-      r?.visibility?.state?.value ??
-      r?.visibility?.state ??
-      r?.state?.value ??
-      r?.state ??
-      "—";
-
-    // ----- SUPPRESSION -----
-    const suppression =
-      r?.visibility?.suppression?.reason ??
-      r?.suppression?.reason ??
-      "—";
-
-    // ----- ECC -----
-    const ecc =
-      typeof r?.entityScore === "number"
-        ? r.entityScore.toFixed(2)
-        : typeof r?.ecc === "number"
-        ? r.ecc.toFixed(2)
-        : "—";
-
-    // ----- MODE -----
-    const mode =
-      r?.schemaMeta?.rendered ? "rendered" : "static";
-
-    resultsBody.innerHTML += `
-      <tr>
-        <td class="px-3 py-2">
-          <a href="${r.url}" target="_blank"
-             class="text-blue-600 underline">${r.url}</a>
-        </td>
-        <td class="px-3 py-2 text-center">${state}</td>
-        <td class="px-3 py-2 text-center">${suppression}</td>
-        <td class="px-3 py-2 text-center">${ecc}</td>
-        <td class="px-3 py-2 text-center">${mode}</td>
-      </tr>`;
-  });
-}
+  updateSummary(data);
+  renderTable(data.results);
+  statusEl.textContent = "Completed";
 });
 </script>
-
 </body>
 </html>
