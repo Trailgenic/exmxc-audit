@@ -228,7 +228,6 @@ runBtn.onclick = async () => {
     let band = "Low";
     if (score >= 70) band = "High";
     else if (score >= 40) band = "Medium";
-
     document.getElementById("scoreBand").textContent = band;
 
     /* =========================
@@ -236,8 +235,6 @@ runBtn.onclick = async () => {
     ==========================*/
     const bar = document.getElementById("postureFill");
     const label = document.getElementById("postureLabel");
-
-    // width reflects capability %
     bar.style.width = score + "%";
 
     if (data.state === "blocked"){
@@ -254,17 +251,21 @@ runBtn.onclick = async () => {
     }
 
     /* =========================
-       TIER STABILITY BARS
+       TIER STABILITY (WITH SCORES)
     ==========================*/
-    function setTier(id,val){
-      const el = document.getElementById(id);
-      el.style.width = `${val}%`;
-      el.title = `${val}% stability`;
+    function applyTier(idBar,idLabel,obj){
+      const pct = Math.round(obj?.normalized ?? 0);
+      const bar = document.getElementById(idBar);
+      const label = document.getElementById(idLabel);
+
+      bar.style.width = `${pct}%`;
+      bar.title = `${pct}% stability`;
+      label.textContent = `${pct}%`;
     }
 
-    setTier("tier1Bar", Math.round(data.tierScores?.tier1?.normalized ?? 0));
-    setTier("tier2Bar", Math.round(data.tierScores?.tier2?.normalized ?? 0));
-    setTier("tier3Bar", Math.round(data.tierScores?.tier3?.normalized ?? 0));
+    applyTier("tier1Bar","tier1Score",data.tierScores?.tier1);
+    applyTier("tier2Bar","tier2Score",data.tierScores?.tier2);
+    applyTier("tier3Bar","tier3Score",data.tierScores?.tier3);
 
     /* =========================
        SIGNAL BREAKDOWN
