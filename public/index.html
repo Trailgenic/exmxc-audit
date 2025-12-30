@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Internal Entity Clarity Review</title>
+<title>Internal Entity Clarity Review — v7.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <style>
@@ -13,34 +13,28 @@
   --text:#e6ebff;
   --muted:#9aa4c7;
   --accent:#4f7cff;
-  --active:#1f3b8a;
-  --warn:#d97706;
+  --gold:#ffd85e;
+  --green:#4ade80;
+  --orange:#fb923c;
+  --red:#ef4444;
 }
 
 * { box-sizing:border-box; }
 
-body {
+body{
   margin:0;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   background:radial-gradient(circle at top,#0a1024,#030611);
   color:var(--text);
 }
 
-.container {
+.container{
   max-width:1200px;
   margin:40px auto;
   padding:0 20px;
 }
 
-h1 { margin-bottom:14px; }
-
-.input-row {
-  display:flex;
-  gap:12px;
-  margin-bottom:22px;
-}
-
-input {
+input{
   flex:1;
   padding:14px 16px;
   border-radius:10px;
@@ -49,7 +43,7 @@ input {
   color:var(--text);
 }
 
-button {
+button{
   padding:14px 22px;
   border-radius:10px;
   border:none;
@@ -59,104 +53,78 @@ button {
   cursor:pointer;
 }
 
-.panel {
+.panel{
   background:linear-gradient(180deg,#0b1224,#060b1c);
   border:1px solid var(--border);
   border-radius:14px;
   padding:20px;
 }
 
-.top-grid {
+.top-grid{
   display:grid;
-  grid-template-columns:1.2fr 1fr;
+  grid-template-columns:1fr 1.1fr;
   gap:20px;
-  margin-bottom:20px;
 }
 
-/* QUADRANT */
-.quadrant {
-  position:relative;
-  height:360px;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  grid-template-rows:1fr 1fr;
-  gap:10px;
+/* POSTURE CARD */
+.posture-box{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
 }
 
-.quad {
-  border:1px dashed var(--border);
-  border-radius:12px;
-  padding:36px 16px 16px;
-  font-size:14px;
-  position:relative;
-}
-
-.quad.active {
-  border:2px solid var(--accent);
-  background:rgba(79,124,255,0.08);
-}
-
-.quad.inferred {
-  border-style:solid;
-  border-color:var(--warn);
-  background:rgba(217,119,6,0.08);
-}
-
-.quad strong { display:block; margin-bottom:6px; }
-
-.state-badge {
-  position:absolute;
-  top:10px;
-  right:10px;
-  font-size:11px;
-  padding:4px 8px;
+.posture-badge{
+  display:inline-block;
+  padding:8px 14px;
   border-radius:999px;
-  background:#020617;
   border:1px solid var(--border);
-  color:var(--muted);
+  font-weight:600;
+  font-size:13px;
 }
 
-.state-badge.warn {
-  border-color:var(--warn);
-  color:#fbbf24;
-}
+.posture-open{ background:rgba(79,124,255,.08); border-color:#4f7cff; }
+.posture-defensive{ background:rgba(251,146,60,.08); border-color:#fb923c; }
+.posture-blocked{ background:rgba(239,68,68,.08); border-color:#ef4444; }
 
-/* CENTER SCORE */
-.center-score {
-  position:absolute;
-  top:47%;
-  left:50%;
-  transform:translate(-50%,-50%);
+/* SCORE DISC */
+.center-score{
   width:120px;
   height:120px;
   border-radius:50%;
-  background:#060b1c;
   border:2px solid var(--accent);
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  z-index:5;
+  margin-top:10px;
 }
 
-.center-score span {
+.center-score span{
   font-size:34px;
-  font-weight:700;
+  font-weight:800;
 }
 
-/* STRATEGY */
-.strategy h3 { margin-top:0; }
-
-ul { padding-left:18px; }
-
-details { margin-top:16px; }
-
-details summary {
-  cursor:pointer;
-  font-weight:600;
+/* TIERS */
+.tier{
+  margin-top:10px;
 }
 
-pre {
+.bar{
+  margin-top:6px;
+  height:10px;
+  border-radius:6px;
+  background:#020617;
+  border:1px solid var(--border);
+}
+
+.fill{
+  height:100%;
+  border-radius:6px;
+  background:linear-gradient(90deg,#4f7cff,#6f9bff);
+}
+
+/* JSON Panels */
+pre{
   background:#020617;
   padding:14px;
   border-radius:10px;
@@ -168,105 +136,82 @@ pre {
 
 <body>
 <div class="container">
-  <h1>EEI Internal Audit</h1>
+  <h1>EEI Internal Audit — v7.0</h1>
 
-  <div class="input-row">
-    <input id="urlInput" placeholder="example.com" />
+  <div style="display:flex;gap:12px;margin-bottom:20px;">
+    <input id="urlInput" placeholder="example.com">
     <button id="runBtn">Run Audit</button>
   </div>
 
   <div id="results" style="display:none;">
+
     <div class="top-grid">
 
-      <!-- QUADRANT -->
+      <!-- LEFT PANEL -->
       <div class="panel">
-        <div class="quadrant">
+        <div class="posture-box">
+          <h3>Strategic Posture</h3>
 
-          <div id="q-ai" class="quad">
-            <strong>🚀 AI-First Leader</strong>
-            High Capability · High Intent
-          </div>
-
-          <div id="q-sovereign" class="quad">
-            <strong>🏰 Sovereign / Defensive Power</strong>
-            High Capability · Low Intent
-          </div>
-
-          <div id="q-aspire" class="quad">
-            <strong>🌱 Aspirational Challenger</strong>
-            Medium Capability · High Intent
-          </div>
-
-          <div id="q-cautious" class="quad">
-            <strong>⚖️ Cautious Optimizer</strong>
-            Medium Capability · Medium Intent
-          </div>
+          <div id="postureBadge" class="posture-badge">—</div>
+          <div id="postureExplain" style="color:var(--muted);font-size:14px;"></div>
 
           <div class="center-score">
             <span id="score">–</span>
-            <small>Capability</small>
+            <small>Capability Score</small>
           </div>
 
+          <div id="capabilityBand" style="margin-top:6px;font-weight:600;"></div>
         </div>
       </div>
 
-      <!-- STRATEGY -->
-      <div class="panel strategy">
-        <h3>Strategy — Pros / Cons</h3>
-        <div id="strategyBox"></div>
+      <!-- RIGHT PANEL -->
+      <div class="panel">
+        <h3>Tier Stability</h3>
+        <div id="tiers"></div>
       </div>
-    </div>
 
-    <!-- INTENT SIGNALS -->
-    <div class="panel">
-      <strong>AI Intent Signals (Observed)</strong>
-      <ul id="signals"></ul>
     </div>
 
     <!-- EVIDENCE -->
-    <details class="panel">
-      <summary>View Evidence</summary>
+    <details class="panel" style="margin-top:18px;">
+      <summary>Signal Breakdown</summary>
       <pre id="evidence"></pre>
     </details>
 
     <!-- RAW JSON -->
     <details class="panel">
-      <summary>Raw JSON (Internal)</summary>
+      <summary>Raw JSON</summary>
       <pre id="raw"></pre>
     </details>
+
   </div>
 </div>
 
 <script>
-const runBtn = document.getElementById("runBtn");
-const results = document.getElementById("results");
+const runBtn=document.getElementById("runBtn");
+const results=document.getElementById("results");
 
-function clearActive() {
-  document.querySelectorAll(".quad").forEach(q=>{
-    q.classList.remove("active","inferred");
-    const b=q.querySelector(".state-badge");
-    if(b) b.remove();
-  });
-}
-
-function badge(label, warn=false){
-  const d=document.createElement("div");
-  d.className="state-badge"+(warn?" warn":"");
-  d.textContent=label;
-  return d;
+function renderTiers(tiers){
+  const root=document.getElementById("tiers");
+  root.innerHTML="";
+  for(const k of Object.keys(tiers)){
+    const t=tiers[k];
+    const div=document.createElement("div");
+    div.className="tier";
+    div.innerHTML=`
+      <label>${t.label}</label>
+      <div class="bar">
+        <div class="fill" style="width:${t.normalized}%"></div>
+      </div>
+    `;
+    root.appendChild(div);
+  }
 }
 
 function renderEvidence(breakdown=[]){
   return breakdown.map(b =>
     `${b.key} — ${b.points}/${b.max}${b.notes?` — ${b.notes}`:""}`
-  ).join("\n");
-}
-
-function fetchWithTimeout(url,ms=9000){
-  return Promise.race([
-    fetch(url),
-    new Promise((_,r)=>setTimeout(()=>r(new Error("TIMEOUT")),ms))
-  ]);
+  ).join("\\n");
 }
 
 runBtn.onclick=async()=>{
@@ -277,74 +222,32 @@ runBtn.onclick=async()=>{
   runBtn.textContent="Running…";
   results.style.display="none";
 
-  let data;
-  try{
-    const res=await fetchWithTimeout(`/api/audit?url=${encodeURIComponent(url)}`);
-    data=await res.json();
-  }catch{
-    alert("Audit blocked or timed out.");
-    runBtn.disabled=false;
-    runBtn.textContent="Run Audit";
-    return;
-  }
+  const res=await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+  const data=await res.json();
 
   runBtn.disabled=false;
   runBtn.textContent="Run Audit";
 
-  document.getElementById("score").textContent=data.ecc.score;
-  clearActive();
+  // POSTURE BADGE
+  const pb=document.getElementById("postureBadge");
+  pb.textContent=data.posture;
 
-  let quad;
-  if(data.quadrant.includes("AI-First")) quad="q-ai";
-  else if(data.quadrant.includes("Sovereign")) quad="q-sovereign";
-  else if(data.quadrant.includes("Aspirational")) quad="q-aspire";
-  else quad="q-cautious";
+  pb.className="posture-badge";
+  if(data.posture==="Open") pb.classList.add("posture-open");
+  else if(data.posture==="Defensive") pb.classList.add("posture-defensive");
+  else pb.classList.add("posture-blocked");
 
-  const el=document.getElementById(quad);
-  el.classList.add("active");
+  document.getElementById("postureExplain").textContent=data.postureExplanation||"";
+  document.getElementById("score").textContent=data.eccScore ?? "–";
+  document.getElementById("capabilityBand").textContent=`Capability Band: ${data.capability?.band||"—"}`;
 
-  if(data.state?.label==="suppressed"){
-    el.classList.add("inferred");
-    el.appendChild(badge("🔒 Suppressed (Inferred)",true));
-  }else{
-    el.appendChild(badge("👁 Observable (Measured)"));
-  }
+  // TIER BARS
+  if(data.tierScores) renderTiers(data.tierScores);
+  else document.getElementById("tiers").innerHTML="<em>No scoring — posture is Blocked.</em>";
 
-  document.getElementById("signals").innerHTML=
-    (data.intent.signals||[]).map(s=>`<li>${s}</li>`).join("");
-
-  document.getElementById("evidence").textContent=
-    renderEvidence(data.breakdown||[]);
-
-  document.getElementById("raw").textContent=
-    JSON.stringify(data,null,2);
-
-  document.getElementById("strategyBox").innerHTML = data.state?.label==="suppressed"
-    ? `
-      <strong>Pros</strong>
-      <ul>
-        <li>Maintains narrative and access control</li>
-        <li>Limits competitive signal leakage</li>
-      </ul>
-      <strong>Cons</strong>
-      <ul>
-        <li>Forfeits passive AI discovery</li>
-        <li>Relies on sustained brand dominance</li>
-      </ul>
-      <em>High latent capability with intentional AI opacity.</em>
-    `
-    : `
-      <strong>Pros</strong>
-      <ul>
-        <li>Compounds AI discovery advantage</li>
-        <li>High inference efficiency</li>
-      </ul>
-      <strong>Cons</strong>
-      <ul>
-        <li>Requires continuous structural upkeep</li>
-      </ul>
-      <em>Capability: ${data.ecc.band.toUpperCase()} · Intent: ${data.intent.posture.toUpperCase()}</em>
-    `;
+  // Evidence & Raw
+  document.getElementById("evidence").textContent=renderEvidence(data.breakdown||[]);
+  document.getElementById("raw").textContent=JSON.stringify(data,null,2);
 
   results.style.display="block";
 };
