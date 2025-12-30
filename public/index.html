@@ -1,308 +1,445 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>EEI Internal Audit — v7.0</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8" />
+  <title>EEI Internal Audit — v7.0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg:#050914;
+      --panel:#0b1224;
+      --border:#1e2a4a;
+      --text:#e6ebff;
+      --muted:#9aa4c7;
+      --accent:#4f7cff;
+      --green:#22c55e;
+      --amber:#fbbf24;
+      --red:#ef4444;
+    }
 
-<style>
-:root {
-  --bg:#050912;
-  --panel:#0b1222;
-  --border:#1e2a45;
-  --text:#e7ebff;
-  --muted:#9aa4c7;
-  --accent:#4f7cff;
-  --green:#22c55e;
-  --amber:#f59e0b;
-  --red:#ef4444;
-}
+    * { box-sizing:border-box; }
 
-*{box-sizing:border-box;}
+    body {
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      background:radial-gradient(circle at top,#0a1024,#030611);
+      color:var(--text);
+    }
 
-body{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  background:radial-gradient(circle at top,#0a1024,#020510);
-  color:var(--text);
-}
+    .container {
+      max-width:1200px;
+      margin:40px auto;
+      padding:0 20px 40px;
+    }
 
-.container{
-  max-width:1200px;
-  margin:32px auto;
-  padding:0 16px;
-}
+    h1 {
+      margin:0 0 16px;
+      font-size:24px;
+      font-weight:600;
+    }
 
-h1{margin-bottom:10px;}
+    .input-row {
+      display:flex;
+      gap:12px;
+      margin-bottom:22px;
+    }
 
-.input-row{
-  display:flex;
-  gap:10px;
-  margin-bottom:22px;
-}
+    .input-row input {
+      flex:1;
+      padding:14px 16px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:var(--panel);
+      color:var(--text);
+    }
 
-input{
-  flex:1;
-  padding:14px 16px;
-  border-radius:10px;
-  border:1px solid var(--border);
-  background:var(--panel);
-  color:var(--text);
-}
+    .input-row button {
+      padding:14px 22px;
+      border-radius:10px;
+      border:none;
+      background:linear-gradient(135deg,#4f7cff,#6f9bff);
+      color:white;
+      font-weight:600;
+      cursor:pointer;
+      min-width:120px;
+    }
 
-button{
-  padding:14px 22px;
-  border-radius:10px;
-  border:none;
-  background:linear-gradient(135deg,#4f7cff,#6f9bff);
-  color:white;
-  font-weight:600;
-  cursor:pointer;
-}
+    .input-row button:disabled {
+      opacity:.6;
+      cursor:default;
+    }
 
-.panel{
-  background:linear-gradient(180deg,#0b1224,#060b1c);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:18px;
-}
+    .grid {
+      display:grid;
+      grid-template-columns:1.1fr 1fr;
+      gap:20px;
+      margin-bottom:20px;
+    }
 
-.grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:18px;
-}
+    .panel {
+      background:linear-gradient(180deg,#0b1224,#060b1c);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:20px 22px;
+    }
 
-.state-bar{
-  width:100%;
-  height:10px;
-  border-radius:8px;
-  background:#0f172a;
-  margin:10px 0 8px 0;
-  overflow:hidden;
-}
+    .panel h2,
+    .panel h3 {
+      margin-top:0;
+      margin-bottom:10px;
+      font-size:16px;
+      font-weight:600;
+    }
 
-.state-fill{
-  height:100%;
-  width:100%;
-  border-radius:8px;
-}
+    /* Strategic posture / score */
+    .posture-header {
+      margin-bottom:12px;
+    }
 
-.score-wrapper{
-  margin-top:20px;
-  display:flex;
-  align-items:center;
-  gap:14px;
-}
+    .posture-label {
+      font-size:14px;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
 
-.score-circle{
-  width:110px;
-  height:110px;
-  border-radius:50%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  border:2px solid var(--accent);
-  font-size:34px;
-  font-weight:700;
-}
+    .posture-bar {
+      position:relative;
+      height:8px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+    }
 
-.tier-bar{
-  width:100%;
-  height:8px;
-  border-radius:6px;
-  background:#111827;
-  margin-top:6px;
-}
+    .posture-fill {
+      position:absolute;
+      top:0;
+      left:0;
+      height:100%;
+      width:0%;
+      background:var(--green);
+      transition:width .35s ease;
+    }
 
-.tier-fill{
-  height:100%;
-  border-radius:6px;
-  background:#6f9bff;
-}
+    .score-row {
+      display:flex;
+      align-items:center;
+      gap:18px;
+      margin-top:22px;
+    }
 
-ul{margin-top:8px;}
-pre{
-  background:#020617;
-  padding:14px;
-  border-radius:10px;
-  font-size:12px;
-  overflow-x:auto;
-}
-</style>
+    .score-circle {
+      width:120px;
+      height:120px;
+      border-radius:50%;
+      border:2px solid var(--accent);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+    }
+
+    .score-circle span {
+      font-size:34px;
+      font-weight:700;
+    }
+
+    .score-meta {
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      font-size:14px;
+    }
+
+    .score-meta-label {
+      color:var(--muted);
+    }
+
+    /* Tier stability */
+    .tier-row {
+      margin-top:8px;
+      margin-bottom:10px;
+    }
+
+    .tier-label-line {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:13px;
+      margin-bottom:4px;
+    }
+
+    .tier-label-line span.tier-name {
+      color:var(--text);
+    }
+
+    .tier-label-line span.tier-score {
+      color:var(--muted);
+      font-variant-numeric:tabular-nums;
+    }
+
+    .tier-bar {
+      position:relative;
+      height:6px;
+      border-radius:999px;
+      background:#020617;
+      overflow:hidden;
+    }
+
+    .tier-bar-fill {
+      position:absolute;
+      top:0;
+      left:0;
+      height:100%;
+      width:0%;
+      background:var(--accent);
+      transition:width .35s ease;
+    }
+
+    /* Signal breakdown */
+    #signalsList {
+      margin:0;
+      padding-left:18px;
+      font-size:13px;
+    }
+
+    #signalsList li {
+      margin-bottom:3px;
+    }
+
+    #signalsList em {
+      font-style:normal;
+    }
+
+    /* Raw JSON */
+    details {
+      margin-top:18px;
+    }
+
+    details summary {
+      cursor:pointer;
+      font-size:14px;
+      font-weight:500;
+    }
+
+    pre {
+      margin-top:10px;
+      background:#020617;
+      border-radius:10px;
+      padding:14px;
+      font-size:12px;
+      max-height:360px;
+      overflow:auto;
+      color:var(--muted);
+    }
+
+    @media (max-width: 900px){
+      .grid {
+        grid-template-columns:1fr;
+      }
+      .score-row {
+        flex-direction:row;
+      }
+    }
+
+    @media (max-width: 640px){
+      .score-row {
+        flex-direction:column;
+        align-items:flex-start;
+      }
+    }
+  </style>
 </head>
-
 <body>
-<div class="container">
-  <h1>EEI Internal Audit — v7.0</h1>
+  <div class="container">
+    <h1>EEI Internal Audit — v7.0</h1>
 
-  <div class="input-row">
-    <input id="urlInput" placeholder="example.com" />
-    <button id="runBtn">Run Audit</button>
-  </div>
+    <div class="input-row">
+      <input id="urlInput" placeholder="example.com" />
+      <button id="runBtn">Run Audit</button>
+    </div>
 
-  <div id="results" style="display:none;">
+    <div id="results" style="display:none;">
+      <div class="grid">
+        <!-- Strategic Posture -->
+        <div class="panel">
+          <h2>Strategic Posture</h2>
+          <div class="posture-header">
+            <div id="postureLabel" class="posture-label">—</div>
+            <div class="posture-bar">
+              <div id="postureFill" class="posture-fill"></div>
+            </div>
+          </div>
 
-    <div class="grid">
-
-      <!-- STRATEGIC POSTURE -->
-      <div class="panel">
-        <strong>Strategic Posture</strong>
-        <div id="postureLabel" style="margin-top:6px;color:var(--muted);">—</div>
-
-        <div class="state-bar">
-          <div id="postureFill" class="state-fill"></div>
+          <div class="score-row">
+            <div class="score-circle">
+              <span id="scoreValue">—</span>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                Capability Score
+              </div>
+            </div>
+            <div class="score-meta">
+              <div class="score-meta-label">Capability Band</div>
+              <div id="scoreBand">—</div>
+            </div>
+          </div>
         </div>
 
-        <div class="score-wrapper">
-          <div class="score-circle" id="scoreValue">—</div>
-          <div>
-            <div style="font-size:12px;color:var(--muted);">Capability Band</div>
-            <div id="scoreBand" style="font-size:18px;">—</div>
+        <!-- Tier Stability -->
+        <div class="panel">
+          <h3>Tier Stability</h3>
+
+          <div class="tier-row">
+            <div class="tier-label-line">
+              <span class="tier-name">Entity comprehension &amp; trust (Tier 1)</span>
+              <span id="tier1Score" class="tier-score">0%</span>
+            </div>
+            <div class="tier-bar">
+              <div id="tier1Bar" class="tier-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="tier-row">
+            <div class="tier-label-line">
+              <span class="tier-name">Structural data fidelity (Tier 2)</span>
+              <span id="tier2Score" class="tier-score">0%</span>
+            </div>
+            <div class="tier-bar">
+              <div id="tier2Bar" class="tier-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="tier-row">
+            <div class="tier-label-line">
+              <span class="tier-name">Page-level hygiene (Tier 3)</span>
+              <span id="tier3Score" class="tier-score">0%</span>
+            </div>
+            <div class="tier-bar">
+              <div id="tier3Bar" class="tier-bar-fill"></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- TIER STABILITY -->
+      <!-- Signal breakdown -->
       <div class="panel">
-        <strong>Tier Stability</strong>
-
-        <div style="margin-top:10px;">Entity comprehension & trust</div>
-        <div class="tier-bar"><div id="tier1Bar" class="tier-fill"></div></div>
-
-        <div style="margin-top:10px;">Structural data fidelity</div>
-        <div class="tier-bar"><div id="tier2Bar" class="tier-fill"></div></div>
-
-        <div style="margin-top:10px;">Page-level hygiene</div>
-        <div class="tier-bar"><div id="tier3Bar" class="tier-fill"></div></div>
+        <h3>Signal Breakdown</h3>
+        <ul id="signalsList"></ul>
       </div>
 
+      <!-- Raw JSON -->
+      <div class="panel">
+        <details>
+          <summary>Raw JSON</summary>
+          <pre id="raw"></pre>
+        </details>
+      </div>
     </div>
-
-    <!-- BREAKDOWN -->
-    <div class="panel" style="margin-top:18px;">
-      <strong>Signal Breakdown</strong>
-      <ul id="signalsList"></ul>
-    </div>
-
-    <!-- RAW -->
-    <details class="panel" style="margin-top:12px;">
-      <summary>Raw JSON</summary>
-      <pre id="raw"></pre>
-    </details>
-
   </div>
-</div>
 
-<script>
-const runBtn = document.getElementById("runBtn");
-const results = document.getElementById("results");
+  <script>
+    const runBtn = document.getElementById("runBtn");
+    const results = document.getElementById("results");
 
-runBtn.onclick = async () => {
-  const url = document.getElementById("urlInput").value.trim();
-  if (!url) return;
+    runBtn.onclick = async () => {
+      const url = document.getElementById("urlInput").value.trim();
+      if (!url) return;
 
-  runBtn.disabled = true;
-  runBtn.textContent = "Running…";
+      runBtn.disabled = true;
+      runBtn.textContent = "Running…";
 
-  try {
+      try {
+        const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+        if (!res.ok) {
+          throw new Error("Bad response status " + res.status);
+        }
+        const data = await res.json();
 
-    /* =========================
-       REQUEST + ERROR HANDLING
-    ==========================*/
-    const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+        if (!data.success) {
+          throw new Error(data.error || "Audit failed");
+        }
 
-    if (!res.ok){
-      throw new Error("API request failed: " + res.status);
-    }
+        // ---- show results ----
+        results.style.display = "block";
 
-    const data = await res.json();
+        /* =========================
+           CAPABILITY SCORE
+        ==========================*/
+        const score = data.ecc?.score ?? 0;
+        document.getElementById("scoreValue").textContent = score;
 
-    runBtn.disabled = false;
-    runBtn.textContent = "Run Audit";
+        let band = "Low";
+        if (score >= 70) band = "High";
+        else if (score >= 40) band = "Medium";
+        document.getElementById("scoreBand").textContent = band;
 
-    if (!data.success){
-      alert("Audit failed");
-      return;
-    }
+        /* =========================
+           STRATEGIC POSTURE BAR
+        ==========================*/
+        const postureFill = document.getElementById("postureFill");
+        const postureLabel = document.getElementById("postureLabel");
 
-    results.style.display = "block";
+        postureFill.style.width = score + "%";
 
-    /* =========================
-       CAPABILITY SCORE + BAND
-    ==========================*/
-    const score = data.ecc?.score ?? 0;
-    document.getElementById("scoreValue").textContent = score;
+        if (data.state === "blocked") {
+          postureFill.style.background = "var(--red)";
+          postureLabel.textContent = "Blocked — Hard Access Controls";
+        } else if (data.state === "defensive") {
+          postureFill.style.background = "var(--amber)";
+          postureLabel.textContent = "Defensive — Partial Visibility / Bot Friction";
+        } else {
+          postureFill.style.background = "var(--green)";
+          postureLabel.textContent = "Open — AI-Forward Surface";
+        }
 
-    let band = "Obscure";
-    if (score >= 90) band = "Sovereign";
-    else if (score >= 70) band = "High";
-    else if (score >= 50) band = "Developing";
+        /* =========================
+           TIER STABILITY (WITH SCORES)
+        ==========================*/
+        function applyTier(barId, labelId, tierObj) {
+          const barEl = document.getElementById(barId);
+          const labelEl = document.getElementById(labelId);
 
-    document.getElementById("scoreBand").textContent = band;
+          if (!barEl || !labelEl || !tierObj) return;
 
-    /* =========================
-       STRATEGIC POSTURE BAR
-    ==========================*/
-    const bar = document.getElementById("postureFill");
-    const label = document.getElementById("postureLabel");
+          const pct = Math.round(tierObj.normalized ?? 0);
+          barEl.style.width = pct + "%";
+          barEl.title = pct + "% stability";
+          labelEl.textContent = pct + "%";
+        }
 
-    bar.style.width = score + "%";
+        applyTier("tier1Bar", "tier1Score", data.tierScores?.tier1);
+        applyTier("tier2Bar", "tier2Score", data.tierScores?.tier2);
+        applyTier("tier3Bar", "tier3Score", data.tierScores?.tier3);
 
-    if (data.state === "blocked"){
-      bar.style.background = "var(--red)";
-      label.textContent = "Blocked — Hard Access Controls";
-    }
-    else if (data.state === "defensive"){
-      bar.style.background = "var(--amber)";
-      label.textContent = "Defensive — Partial Visibility / Bot Friction";
-    }
-    else{
-      bar.style.background = "var(--green)";
-      label.textContent = "Open — AI-Forward Surface";
-    }
+        /* =========================
+           SIGNAL BREAKDOWN
+        ==========================*/
+        const signalsEl = document.getElementById("signalsList");
+        if (signalsEl) {
+          signalsEl.innerHTML = (data.scoringBars || [])
+            .map(r =>
+              `<li><strong>${r.key}</strong> — ${r.percent}%` +
+              (r.notes ? ` <em style="color:#9aa4c7">${r.notes}</em>` : "") +
+              `</li>`
+            )
+            .join("");
+        }
 
-    /* =========================
-       TIER STABILITY + % LABELS
-    ==========================*/
-    function applyTier(idBar,idLabel,obj){
-      const pct = Math.round(obj?.normalized ?? 0);
-      const bar = document.getElementById(idBar);
-      const label = document.getElementById(idLabel);
+        /* =========================
+           RAW JSON
+        ==========================*/
+        const rawEl = document.getElementById("raw");
+        if (rawEl) {
+          rawEl.textContent = JSON.stringify(data, null, 2);
+        }
 
-      bar.style.width = `${pct}%`;
-      bar.title = `${pct}% stability`;
-      label.textContent = `Tier • ${pct}%`;
-    }
-
-    applyTier("tier1Bar","tier1Score",data.tierScores?.tier1);
-    applyTier("tier2Bar","tier2Score",data.tierScores?.tier2);
-    applyTier("tier3Bar","tier3Score",data.tierScores?.tier3);
-
-    /* =========================
-       SIGNAL BREAKDOWN
-    ==========================*/
-    document.getElementById("signalsList").innerHTML =
-      (data.scoringBars || []).map(r =>
-        `<li><strong>${r.key}</strong> — ${r.percent}% 
-         <em style="color:#9aa4c7">${r.notes||""}</em></li>`
-      ).join("");
-
-    /* =========================
-       RAW JSON VIEW
-    ==========================*/
-    document.getElementById("raw").textContent =
-      JSON.stringify(data,null,2);
-
-  } catch(err){
-    runBtn.disabled = false;
-    runBtn.textContent = "Run Audit";
-    console.error("REQUEST ERROR", err);
-    alert("Request failed");
-  }
-};
-</script>
-
-
+      } catch (err) {
+        console.error(err);
+        alert("Request failed");
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = "Run Audit";
+      }
+    };
+  </script>
 </body>
 </html>
