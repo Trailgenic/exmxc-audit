@@ -10,6 +10,8 @@ exmxc-audit is a diagnostic intelligence module developed by exmxc.ai, the strat
 
 It evaluates websites and digital entities for AI comprehension readiness — measuring how modern AI systems perceive, reconstruct, and trust an entity under real-world crawl conditions.
 
+This is not SEO — this is structural legibility for machines.
+
 ---
 
 ## ⚙️ Core Capabilities
