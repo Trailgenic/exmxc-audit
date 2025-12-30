@@ -1,17 +1,14 @@
 # exmxc-audit
 
-An exmxc.ai intelligence module — auditing the AI-search era
+A strategic intelligence module for auditing AI-search comprehension and machine-level entity legibility.
 
 ---
 
 ## 🧠 Overview
 
-**exmxc-audit** is a diagnostic intelligence module developed by **exmxc.ai**, the strategic intelligence institution for the AI-search era.
+exmxc-audit is a diagnostic intelligence module developed by exmxc.ai, the strategic intelligence institution for the AI-search era.
 
-It evaluates websites and digital entities for **AI comprehension readiness** — measuring how modern AI systems perceive, reconstruct, and trust an entity under real-world crawl conditions.
-
-> This is not SEO.  
-> This is **machine-level entity legibility**.
+It evaluates websites and digital entities for AI comprehension readiness — measuring how modern AI systems perceive, reconstruct, and trust an entity under real-world crawl conditions.
 
 ---
 
