@@ -220,10 +220,25 @@ runBtn.onclick = async () => {
     results.style.display = "block";
 
     /* =========================
-       STRATEGIC POSTURE
+       CAPABILITY SCORE
+    ==========================*/
+    const score = data.ecc?.score ?? 0;
+    document.getElementById("scoreValue").textContent = score;
+
+    let band = "Low";
+    if (score >= 70) band = "High";
+    else if (score >= 40) band = "Medium";
+
+    document.getElementById("scoreBand").textContent = band;
+
+    /* =========================
+       STRATEGIC POSTURE BAR
     ==========================*/
     const bar = document.getElementById("postureFill");
     const label = document.getElementById("postureLabel");
+
+    // width reflects capability %
+    bar.style.width = score + "%";
 
     if (data.state === "blocked"){
       bar.style.background = "var(--red)";
@@ -239,30 +254,20 @@ runBtn.onclick = async () => {
     }
 
     /* =========================
-       CAPABILITY SCORE
-    ==========================*/
-    const score = data.ecc?.score ?? "—";
-    document.getElementById("scoreValue").textContent = score;
-
-    let band = "Low";
-    if (score >= 70) band = "High";
-    else if (score >= 40) band = "Medium";
-
-    document.getElementById("scoreBand").textContent = band;
-
-    /* =========================
-       TIER STABILITY
+       TIER STABILITY BARS
     ==========================*/
     function setTier(id,val){
-      document.getElementById(id).style.width = `${val}%`;
+      const el = document.getElementById(id);
+      el.style.width = `${val}%`;
+      el.title = `${val}% stability`;
     }
 
-    setTier("tier1Bar", data.tierScores?.tier1?.normalized ?? 0);
-    setTier("tier2Bar", data.tierScores?.tier2?.normalized ?? 0);
-    setTier("tier3Bar", data.tierScores?.tier3?.normalized ?? 0);
+    setTier("tier1Bar", Math.round(data.tierScores?.tier1?.normalized ?? 0));
+    setTier("tier2Bar", Math.round(data.tierScores?.tier2?.normalized ?? 0));
+    setTier("tier3Bar", Math.round(data.tierScores?.tier3?.normalized ?? 0));
 
     /* =========================
-       BREAKDOWN LIST
+       SIGNAL BREAKDOWN
     ==========================*/
     document.getElementById("signalsList").innerHTML =
       (data.scoringBars || []).map(r =>
@@ -282,5 +287,6 @@ runBtn.onclick = async () => {
   }
 };
 </script>
+
 </body>
 </html>
