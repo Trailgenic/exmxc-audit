@@ -206,7 +206,16 @@ runBtn.onclick = async () => {
   runBtn.textContent = "Running…";
 
   try {
+
+    /* =========================
+       REQUEST + ERROR HANDLING
+    ==========================*/
     const res = await fetch(`/api/audit?url=${encodeURIComponent(url)}`);
+
+    if (!res.ok){
+      throw new Error("API request failed: " + res.status);
+    }
+
     const data = await res.json();
 
     runBtn.disabled = false;
@@ -220,14 +229,16 @@ runBtn.onclick = async () => {
     results.style.display = "block";
 
     /* =========================
-       CAPABILITY SCORE
+       CAPABILITY SCORE + BAND
     ==========================*/
     const score = data.ecc?.score ?? 0;
     document.getElementById("scoreValue").textContent = score;
 
-    let band = "Low";
-    if (score >= 70) band = "High";
-    else if (score >= 40) band = "Medium";
+    let band = "Obscure";
+    if (score >= 90) band = "Sovereign";
+    else if (score >= 70) band = "High";
+    else if (score >= 50) band = "Developing";
+
     document.getElementById("scoreBand").textContent = band;
 
     /* =========================
@@ -235,6 +246,7 @@ runBtn.onclick = async () => {
     ==========================*/
     const bar = document.getElementById("postureFill");
     const label = document.getElementById("postureLabel");
+
     bar.style.width = score + "%";
 
     if (data.state === "blocked"){
@@ -251,7 +263,7 @@ runBtn.onclick = async () => {
     }
 
     /* =========================
-       TIER STABILITY (WITH SCORES)
+       TIER STABILITY + % LABELS
     ==========================*/
     function applyTier(idBar,idLabel,obj){
       const pct = Math.round(obj?.normalized ?? 0);
@@ -260,7 +272,7 @@ runBtn.onclick = async () => {
 
       bar.style.width = `${pct}%`;
       bar.title = `${pct}% stability`;
-      label.textContent = `${pct}%`;
+      label.textContent = `Tier • ${pct}%`;
     }
 
     applyTier("tier1Bar","tier1Score",data.tierScores?.tier1);
@@ -272,11 +284,12 @@ runBtn.onclick = async () => {
     ==========================*/
     document.getElementById("signalsList").innerHTML =
       (data.scoringBars || []).map(r =>
-        `<li><strong>${r.key}</strong> — ${r.percent}% <em style="color:#9aa4c7">${r.notes||""}</em></li>`
+        `<li><strong>${r.key}</strong> — ${r.percent}% 
+         <em style="color:#9aa4c7">${r.notes||""}</em></li>`
       ).join("");
 
     /* =========================
-       RAW JSON
+       RAW JSON VIEW
     ==========================*/
     document.getElementById("raw").textContent =
       JSON.stringify(data,null,2);
@@ -284,10 +297,12 @@ runBtn.onclick = async () => {
   } catch(err){
     runBtn.disabled = false;
     runBtn.textContent = "Run Audit";
+    console.error("REQUEST ERROR", err);
     alert("Request failed");
   }
 };
 </script>
+
 
 </body>
 </html>
