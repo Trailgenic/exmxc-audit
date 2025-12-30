@@ -1,11 +1,7 @@
-// /api/audit.js — EEI v7.0 (Posture + Capability + Tiers)
-// -----------------------------------------------
-// Posture = Blocked | Defensive | Open
-// Capability Bands = Sovereign | Strategic | Emerging | Nascent
-// Tier Bars preserved (Entity / Structural / Hygiene)
-// No "intent", no keyword inference, no crawl-health noise.
-
+// /api/audit.js — EEI v7.1 (Strategic Category + ECC + Tier Bars)
 import * as cheerio from "cheerio";
+import { crawlPage } from "./core-scan.js";
+
 import {
   scoreTitle,
   scoreMetaDescription,
@@ -20,230 +16,218 @@ import {
   scoreInternalLinks,
   scoreExternalLinks,
   scoreFaviconOg,
-  tierFromScore
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { crawlPage } from "./core-scan.js";
 
-/* ===============================
-   HELPERS
-================================ */
-function normalizeUrl(input){
-  let u = (input||"").trim();
-  if(!/^https?:\/\//i.test(u)) u = `https://${u}`;
-  try { return new URL(u).toString(); }
-  catch { return null; }
+/* ------------------------
+   UTILITIES
+-------------------------*/
+function normalizeUrl(input) {
+  let u = (input || "").trim();
+  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+  try { return new URL(u).toString(); } catch { return null; }
 }
 
-function hostnameOf(urlStr){
-  try { return new URL(urlStr).hostname.replace(/^www\./,""); }
+function hostnameOf(urlStr) {
+  try { return new URL(urlStr).hostname.replace(/^www\./i, ""); }
   catch { return ""; }
 }
 
-function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
-
-/* ===============================
-   CAPABILITY BANDS
-================================ */
-function capabilityFromScore(score){
-  if(score >= 85) return { band:"Sovereign",   color:"gold" };
-  if(score >= 70) return { band:"Strategic",  color:"green" };
-  if(score >= 55) return { band:"Emerging",   color:"orange" };
-  return { band:"Nascent", color:"red" };
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
 }
 
-/* ===============================
-   POSTURE CLASSIFICATION
-================================ */
-/**
- * Posture is based ONLY on exposure outcome:
- *
- * Blocked   = crawl fails / gated / no retrievable surface
- * Defensive = partial surface / restricted exposure / friction patterns
- * Open      = stable accessible surface with no gating
- *
- * Capability is evaluated independently from posture.
- */
-function classifyPosture({ blocked, partialSurface }){
-  if(blocked) return { posture:"Blocked", explanation:"Surface fully gated or inaccessible to crawlers" };
-  if(partialSurface) return { posture:"Defensive", explanation:"Partial surface accessible with exposure constraints" };
-  return { posture:"Open", explanation:"Surface accessible without defensive friction" };
-}
-
-/* ===============================
-   SIGNAL → TIER BUCKETS
-================================ */
+/* ------------------------
+   TIER GROUPING
+-------------------------*/
 const SIGNAL_TIER = {
-  "Title Precision":"tier3",
-  "Meta Description Integrity":"tier3",
-  "Canonical Clarity":"tier3",
-  "Brand & Technical Consistency":"tier3",
+  "Social Entity Links": "tier1",
+  "Internal Lattice Integrity": "tier1",
+  "External Authority Signal": "tier1",
+  "AI Crawl Fidelity": "tier1",
+  "Inference Efficiency": "tier1",
 
-  "Schema Presence & Validity":"tier2",
-  "Organization Schema":"tier2",
-  "Breadcrumb Schema":"tier2",
-  "Author/Person Schema":"tier2",
+  "Schema Presence & Validity": "tier2",
+  "Organization Schema": "tier2",
+  "Breadcrumb Schema": "tier2",
+  "Author/Person Schema": "tier2",
 
-  "Social Entity Links":"tier1",
-  "Internal Lattice Integrity":"tier1",
-  "External Authority Signal":"tier1",
-  "AI Crawl Fidelity":"tier1",
-  "Inference Efficiency":"tier1"
+  "Title Precision": "tier3",
+  "Meta Description Integrity": "tier3",
+  "Canonical Clarity": "tier3",
+  "Brand & Technical Consistency": "tier3",
 };
 
 const TIER_LABELS = {
-  tier1:"Entity comprehension & trust",
-  tier2:"Structural data fidelity",
-  tier3:"Page-level hygiene"
+  tier1: "Entity comprehension & trust",
+  tier2: "Structural data fidelity",
+  tier3: "Page-level hygiene",
 };
 
-/* ===============================
+/* ------------------------
+   STRATEGIC CATEGORY LOGIC
+-------------------------*/
+function categorizeSurface({ staticBlocked, renderedBlocked, botDefenseHits }) {
+  if (staticBlocked || renderedBlocked) return "blocked";
+  if (botDefenseHits && botDefenseHits.length > 0) return "defensive";
+  return "open";
+}
+
+/* ------------------------
    MAIN HANDLER
-================================ */
-export default async function handler(req,res){
+-------------------------*/
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  res.setHeader("Access-Control-Allow-Origin","*");
-  res.setHeader("Access-Control-Allow-Methods","GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
-  if(req.method==="OPTIONS") return res.status(200).end();
+  if (req.method === "OPTIONS") return res.status(200).end();
 
-  try{
+  try {
     const input = req.query?.url;
-    if(!input) return res.status(400).json({ error:"Missing URL" });
+    if (!input) return res.status(400).json({ error: "Missing URL" });
 
-    const url = normalizeUrl(input);
-    if(!url) return res.status(400).json({ error:"Invalid URL format" });
+    const normalized = normalizeUrl(input);
+    if (!normalized)
+      return res.status(400).json({ error: "Invalid URL format" });
 
-    const host = hostnameOf(url);
+    const host = hostnameOf(normalized);
 
-    /* -------- CRAWL PAGE -------- */
-    const crawl = await crawlPage({ url, mode:"static" });
+    /* ----- Crawl ----- */
+    const crawl = await crawlPage({ url: normalized, mode: "rendered" });
 
-    const blocked = !crawl || crawl.error || !crawl.html;
-
-    if(blocked){
+    // If crawl truly fails, treat as BLOCKED — not an error
+    if (crawl.error || !crawl.html) {
       return res.status(200).json({
-        success:true,
-        url,
-        hostname:host,
-        posture:"Blocked",
-        postureExplanation:"Surface fully gated or inaccessible to crawlers",
-        eccScore:0,
-        capability:{ band:"Unknown", color:"gray" },
-        tierScores:null,
-        scoringBars:[],
-        breakdown:[],
-        timestamp:new Date().toISOString()
+        success: true,
+        url: normalized,
+        hostname: host,
+        category: "blocked",
+        ecc: { score: 0, band: "none", max: 100 },
+        tierScores: null,
+        breakdown: [],
+        rationale: "Site blocked or gated at crawl boundary",
+        timestamp: new Date().toISOString(),
       });
     }
 
     const {
       html,
-      pageLinks,
       schemaObjects,
-      canonicalHref,
-      title: crawlTitle,
-      description: crawlDescription
+      pageLinks,
+      staticBlocked,
+      renderedBlocked,
+      botDefenseHits = [],
     } = crawl;
 
     const $ = cheerio.load(html);
 
-    const bodyText = $("body").text().replace(/\s+/g," ").trim();
-    const wordCount = bodyText ? bodyText.split(" ").length : 0;
+    /* ----- Category Decision ----- */
+    const category = categorizeSurface({
+      staticBlocked,
+      renderedBlocked,
+      botDefenseHits,
+    });
 
-    /* -------- PARTIAL SURFACE heuristic -------- */
-    const partialSurface =
-      wordCount < 120 ||
-      (pageLinks || []).length < 5 ||
-      (schemaObjects || []).length === 0;
-
-    /* -------- POSTURE -------- */
-    const posture = classifyPosture({ blocked:false, partialSurface });
-
-    /* -------- 13 SIGNAL SCORING -------- */
+    /* If BLOCKED or DEFENSIVE, we still score observable surface,
+       but strategic meaning comes from category */
     const results = [
       scoreTitle($),
       scoreMetaDescription($),
-      scoreCanonical($,url),
+      scoreCanonical($, normalized),
       scoreSchemaPresence(schemaObjects),
       scoreOrgSchema(schemaObjects),
       scoreBreadcrumbSchema(schemaObjects),
-      scoreAuthorPerson(schemaObjects,$),
-      scoreSocialLinks(schemaObjects,pageLinks),
+      scoreAuthorPerson(schemaObjects, $),
+      scoreSocialLinks(schemaObjects, pageLinks),
       scoreAICrawlSignals($),
       scoreContentDepth($),
-      scoreInternalLinks(pageLinks,host),
-      scoreExternalLinks(pageLinks,host),
-      scoreFaviconOg($)
+      scoreInternalLinks(pageLinks, host),
+      scoreExternalLinks(pageLinks, host),
+      scoreFaviconOg($),
     ];
 
+    /* ----- Aggregate Score + Tiers ----- */
     let totalRaw = 0;
-    const tierRaw = { tier1:0, tier2:0, tier3:0 };
-    const tierMax = { tier1:0, tier2:0, tier3:0 };
+    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
 
-    for(const sig of results){
-      const safe = clamp(sig.points||0,0,sig.max);
+    for (const sig of results) {
+      const safe = clamp(sig.points || 0, 0, sig.max);
       const tier = SIGNAL_TIER[sig.key] || "tier3";
       totalRaw += safe;
-      tierRaw[tier]+=safe;
-      tierMax[tier]+=sig.max;
+      tierRaw[tier] += safe;
+      tierMax[tier] += sig.max;
     }
 
-    const eccScore = clamp(Math.round((totalRaw*100)/TOTAL_WEIGHT),0,100);
-    const capability = capabilityFromScore(eccScore);
+    const eccScore = clamp(Math.round((totalRaw * 100) / TOTAL_WEIGHT), 0, 100);
 
-    /* -------- Tier Output -------- */
     const tierScores = {
-      tier1:{
-        label:TIER_LABELS.tier1,
-        normalized: tierMax.tier1 ? Number(((tierRaw.tier1/tierMax.tier1)*100).toFixed(2)) : 0
+      tier1: {
+        label: TIER_LABELS.tier1,
+        raw: tierRaw.tier1,
+        max: tierMax.tier1,
+        normalized: tierMax.tier1
+          ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
+          : 0,
       },
-      tier2:{
-        label:TIER_LABELS.tier2,
-        normalized: tierMax.tier2 ? Number(((tierRaw.tier2/tierMax.tier2)*100).toFixed(2)) : 0
+      tier2: {
+        label: TIER_LABELS.tier2,
+        raw: tierRaw.tier2,
+        max: tierMax.tier2,
+        normalized: tierMax.tier2
+          ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
+          : 0,
       },
-      tier3:{
-        label:TIER_LABELS.tier3,
-        normalized: tierMax.tier3 ? Number(((tierRaw.tier3/tierMax.tier3)*100).toFixed(2)) : 0
-      }
+      tier3: {
+        label: TIER_LABELS.tier3,
+        raw: tierRaw.tier3,
+        max: tierMax.tier3,
+        normalized: tierMax.tier3
+          ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
+          : 0,
+      },
     };
 
-    const scoringBars = results.map(r=>({
-      key:r.key,
-      points:r.points,
-      max:r.max,
-      percent:r.max ? Math.round((r.points/r.max)*100) : 0,
-      notes:r.notes
-    }));
+    const band =
+      eccScore >= 90
+        ? "sovereign"
+        : eccScore >= 75
+        ? "strong"
+        : eccScore >= 55
+        ? "emerging"
+        : "weak";
 
     return res.status(200).json({
-      success:true,
-      url,
-      hostname:host,
+      success: true,
+      url: normalized,
+      hostname: host,
 
-      posture: posture.posture,
-      postureExplanation: posture.explanation,
+      category, // 🔒 blocked | 🛡 defensive | 🌐 open
 
-      eccScore,
-      capability,
+      ecc: {
+        score: eccScore,
+        band,
+        max: 100,
+      },
 
       tierScores,
-      scoringBars,
-      breakdown:results,
+      breakdown: results,
 
-      canonical: canonicalHref || url,
-      title: (crawlTitle||"").trim(),
-      description: crawlDescription||"",
+      defenses: {
+        staticBlocked: !!staticBlocked,
+        renderedBlocked: !!renderedBlocked,
+        botDefenseHits,
+      },
 
-      timestamp:new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
-  } catch(err){
+  } catch (err) {
     return res.status(500).json({
-      success:false,
-      error:"Internal server error",
-      details:err.message||String(err)
+      success: false,
+      error: "Internal server error",
+      detail: err.message || String(err),
     });
   }
 }
