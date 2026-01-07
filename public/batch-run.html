@@ -2,326 +2,188 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>exmxc.ai — EEI Batch Visibility Audit</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EEI Batch Visibility Audit — v7 Strategic UI</title>
 
 <style>
-  body { background:#f6f7fb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
-  .json-box { background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:0.75rem; font-size:0.9rem; white-space:pre-wrap; overflow-x:auto;}
-  .badge {padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;display:inline-block}
-  .badge-observed {background:#dcfce7;color:#166534}
-  .badge-suppressed {background:#fef9c3;color:#854d0e}
-  .badge-opaque {background:#e5e7eb;color:#374151}
-  .badge-failed {background:#fee2e2;color:#7f1d1d}
+  body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;
+    background:#f7f8fb;color:#111;margin:0;padding:32px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{margin:0 0 4px;font-weight:700}
+  .sub{color:#666;margin-bottom:24px}
+  .card{background:#fff;border-radius:14px;padding:20px;
+    box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:20px}
+  .row{display:flex;gap:14px}
+  .cell{flex:1;background:#f9fafb;border:1px solid #eee;
+    border-radius:10px;padding:14px;text-align:center}
+  .label{font-size:12px;color:#666;margin-bottom:4px}
+  .value{font-size:22px;font-weight:700}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:10px 8px;font-size:13px}
+  th{color:#555;text-align:left;border-bottom:1px solid #e5e5e5}
+  tr:hover{background:#fafafa}
+  .mono{font-family:Menlo,Consolas,monospace;font-size:12px}
+  .tag{padding:4px 8px;border-radius:10px;font-size:12px;display:inline-block}
+  .open{background:#e5fbef;color:#076c3c}
+  .defensive{background:#fff2c8;color:#8a5b00}
+  .blocked{background:#ffe5e5;color:#9a1a1a}
+  .cap-high{background:#e6f1ff;color:#114c9a}
+  .cap-med{background:#fff3da;color:#8a6200}
+  .cap-low{background:#ffe6e6;color:#9a1a1a}
 </style>
 </head>
 
-<body class="max-w-6xl mx-auto py-10 px-5">
+<body>
+<div class="wrap">
 
-<h1 class="text-3xl font-bold text-gray-900 text-center mb-2">
-  EEI Batch Visibility Audit (v6.7 UI)
-</h1>
-<p class="text-center text-gray-600 text-sm mb-6">
-  Static-first visibility + strategy posture mapping
-</p>
+<h1>EEI Batch Visibility Audit — v7</h1>
+<div class="sub">Static-first crawl posture • ECC capability banding</div>
 
-<!-- ===== SUMMARY ===== -->
-<div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-8">
-
-  <div class="flex flex-wrap justify-between gap-4">
-    <div>
-      <div class="text-xs uppercase text-gray-500 mb-1">Dataset</div>
-      <div class="font-semibold text-gray-900" id="datasetName">–</div>
+<div class="card" id="summaryBox">
+  <div class="row">
+    <div class="cell">
+      <div class="label">DATASET</div>
+      <div class="value" id="datasetName">—</div>
     </div>
-
-    <div>
-      <div class="text-xs uppercase text-gray-500 mb-1">Sites</div>
-      <div class="font-semibold text-gray-900" id="siteCount">0</div>
+    <div class="cell">
+      <div class="label">SITES</div>
+      <div class="value" id="countSites">0</div>
     </div>
-
-    <div>
-      <div class="text-xs uppercase text-gray-500 mb-1">Observed Avg ECC</div>
-      <div class="font-semibold text-gray-900" id="avgScore">--</div>
+    <div class="cell">
+      <div class="label">OPEN</div>
+      <div class="value" id="countOpen">0</div>
     </div>
-
-    <div>
-      <div class="text-xs uppercase text-gray-500 mb-1">Last Run</div>
-      <div class="font-semibold text-gray-900" id="lastRun">—</div>
+    <div class="cell">
+      <div class="label">DEFENSIVE</div>
+      <div class="value" id="countDefensive">0</div>
     </div>
-  </div>
-
-  <div class="mt-5 grid grid-cols-4 gap-3 text-center">
-    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-      <div class="text-xs text-emerald-700">Observed</div>
-      <div class="text-lg font-bold text-emerald-800" id="countObserved">0</div>
+    <div class="cell">
+      <div class="label">BLOCKED</div>
+      <div class="value" id="countBlocked">0</div>
     </div>
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
-      <div class="text-xs text-amber-700">Suppressed</div>
-      <div class="text-lg font-bold text-amber-800" id="countSuppressed">0</div>
+    <div class="cell">
+      <div class="label">FAILED</div>
+      <div class="value" id="countFailed">0</div>
     </div>
-    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-      <div class="text-xs text-gray-600">Opaque</div>
-      <div class="text-lg font-bold text-gray-800" id="countOpaque">0</div>
+    <div class="cell">
+      <div class="label">AVG ECC</div>
+      <div class="value" id="avgECC">0.00</div>
     </div>
-    <div class="bg-rose-50 border border-rose-200 rounded-lg p-3">
-      <div class="text-xs text-rose-700">Failed</div>
-      <div class="text-lg font-bold text-rose-800" id="countFailed">0</div>
+    <div class="cell">
+      <div class="label">LAST RUN</div>
+      <div class="value" id="lastRun">—</div>
     </div>
-  </div>
-
-  <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
-    <div id="postureBreakdown" class="text-gray-700"></div>
-    <div id="capabilityBreakdown" class="text-gray-700"></div>
   </div>
 </div>
 
-<!-- ===== CONTROLS ===== -->
-<div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row gap-4">
-  <div class="flex-1">
-    <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Dataset</label>
-    <select id="datasetSelect" class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full bg-white">
-      <option>Loading…</option>
-    </select>
-  </div>
-
-  <div class="md:w-48">
-    <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">&nbsp;</label>
-    <button id="runBatchButton" class="bg-black text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-800 w-full">
-      Run Batch
-    </button>
-    <div id="batchStatus" class="text-xs text-gray-500 mt-2 text-center">&nbsp;</div>
-  </div>
+<div class="card">
+  <div class="label" style="margin-bottom:6px">DATASET</div>
+  <select id="datasetSelect" style="padding:8px 10px;border-radius:10px;border:1px solid #ccc">
+    <option value="tg-strategic">TG Strategic</option>
+  </select>
+  <button id="runBtn"
+    style="margin-left:10px;padding:8px 14px;border-radius:10px;border:none;
+    background:#000;color:#fff;cursor:pointer">Run Batch</button>
 </div>
 
-<div id="runNotice" class="hidden text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-  Batch running… latest results will refresh when complete.
-</div>
+<div class="card">
+  <h3 style="margin:0 0 8px">Strategic Posture + Capability</h3>
 
-<!-- ===== TABLE ===== -->
-<h2 class="text-lg font-semibold text-gray-900 mb-2">Visibility + Strategy Results</h2>
-
-<div class="border border-gray-200 rounded-xl bg-white shadow-sm max-h-[520px] overflow-auto mb-6">
-  <table class="min-w-full text-xs">
-    <thead class="bg-gray-50 border-b border-gray-200 sticky top-0">
+  <table id="resultsTable">
+    <thead>
       <tr>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">URL</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">State</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Reason</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">ECC</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Posture</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Cap.</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Intent</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Quad.</th>
-        <th class="px-3 py-2 text-left font-semibold text-gray-600">Mode</th>
+        <th>URL</th>
+        <th>Posture</th>
+        <th>ECC</th>
+        <th>Capability</th>
+        <th>Mode</th>
       </tr>
     </thead>
-    <tbody id="resultsTableBody" class="divide-y divide-gray-100">
-      <tr><td colspan="9" class="px-3 py-4 text-center text-gray-400">No batch run yet.</td></tr>
-    </tbody>
+    <tbody></tbody>
   </table>
 </div>
 
-<!-- ===== RAW JSON ===== -->
-<details>
-  <summary class="cursor-pointer text-sm text-blue-600 mb-2">Show Raw JSON</summary>
-  <pre id="result" class="json-box">// Awaiting batch…</pre>
-</details>
-
-<footer class="text-center text-xs text-gray-500 mt-10">
-  Powered by <span class="font-semibold text-black">exmxc.ai</span>
-</footer>
-
 <script>
-const els = {
-  runBtn: runBatchButton,
-  result: result,
-  datasetSelect,
-  datasetName,
-  siteCount,
-  avgScore,
-  countObserved,
-  countSuppressed,
-  countOpaque,
-  countFailed,
-  batchStatus,
-  table: resultsTableBody,
-  lastRun,
-  runNotice,
-  postureBreakdown,
-  capabilityBreakdown
+const els={
+ datasetName:document.getElementById("datasetName"),
+ countSites:document.getElementById("countSites"),
+ countOpen:document.getElementById("countOpen"),
+ countDefensive:document.getElementById("countDefensive"),
+ countBlocked:document.getElementById("countBlocked"),
+ countFailed:document.getElementById("countFailed"),
+ avgECC:document.getElementById("avgECC"),
+ lastRun:document.getElementById("lastRun"),
+ tableBody:document.querySelector("#resultsTable tbody"),
+ runBtn:document.getElementById("runBtn"),
+ sel:document.getElementById("datasetSelect")
 };
 
-/* Load datasets */
-(async function loadDatasets(){
-  try{
-    const r = await fetch("/api/verticals");
-    const j = await r.json();
-    datasetSelect.innerHTML = "";
-    j.verticals.forEach(v=>{
-      const o=document.createElement("option");
-      o.value=v.value;
-      o.textContent=v.label||v.value;
-      datasetSelect.appendChild(o);
-    });
-  } catch {
-    datasetSelect.innerHTML="<option value='core-web'>core-web</option>";
-  }
-})();
+function capBand(score){
+  if(score>=80) return {label:"High", cls:"cap-high"};
+  if(score>=60) return {label:"Medium", cls:"cap-med"};
+  return {label:"Low", cls:"cap-low"};
+}
 
-/* ===== Canonical-first helpers (v6.7-aligned) ===== */
-
-function badge(state){
+function postureTag(state){
   const s=(state||"").toLowerCase();
-  if(s==="observed") return `<span class="badge badge-observed">observed</span>`;
-  if(s==="suppressed") return `<span class="badge badge-suppressed">suppressed</span>`;
-  if(s==="opaque") return `<span class="badge badge-opaque">opaque</span>`;
-  if(s==="failed") return `<span class="badge badge-failed">failed</span>`;
-  return "—";
+  if(s==="open") return `<span class="tag open">Open</span>`;
+  if(s==="defensive") return `<span class="tag defensive">Defensive</span>`;
+  if(s==="blocked") return `<span class="tag blocked">Blocked</span>`;
+  return `<span class="tag blocked">Failed</span>`;
 }
 
-function isFailure(r){ return r?.success === false; }
+async function runBatch(){
+  els.runBtn.textContent="Running…";
+  els.runBtn.disabled=true;
 
-function getState(r){
-  if(isFailure(r)) return "failed";
-  return r?.state
-    || r?.state?.label
-    || r?.visibility?.state?.value
-    || r?.visibility?.state
-    || "opaque";
+  const ds=els.sel.value;
+  const resp=await fetch(`/api/batch-run?dataset=${ds}`);
+  const data=await resp.json();
+
+  els.datasetName.textContent=data.dataset||ds;
+  els.countSites.textContent=(data.results||[]).length;
+  els.lastRun.textContent=new Date(data.timestamp).toLocaleString();
+
+  let open=0,defensive=0,blocked=0,failed=0,totalECC=0,scored=0;
+
+  els.tableBody.innerHTML="";
+
+  (data.results||[]).forEach(r=>{
+    if(r.success===false){failed++;return;}
+
+    const ecc=Number(r.ecc||r?._raw?.ecc?.score||0);
+    if(ecc>0){totalECC+=ecc;scored++;}
+
+    const st=(r.state||"").toLowerCase();
+    if(st==="open") open++;
+    else if(st==="defensive") defensive++;
+    else if(st==="blocked") blocked++;
+    else failed++;
+
+    const cap=capBand(ecc);
+    const row=document.createElement("tr");
+    row.innerHTML=`
+      <td class="mono"><a href="${r.url}" target="_blank">${r.url}</a></td>
+      <td>${postureTag(st)}</td>
+      <td>${ecc.toFixed(0)}</td>
+      <td><span class="tag ${cap.cls}">${cap.label}</span></td>
+      <td>${r.mode||"static"}</td>`;
+    els.tableBody.appendChild(row);
+  });
+
+  els.countOpen.textContent=open;
+  els.countDefensive.textContent=defensive;
+  els.countBlocked.textContent=blocked;
+  els.countFailed.textContent=failed;
+  els.avgECC.textContent=scored? (totalECC/scored).toFixed(2):"0.00";
+
+  els.runBtn.textContent="Run Batch";
+  els.runBtn.disabled=false;
 }
 
-function getStateReason(r){
-  if(isFailure(r)) return r?.error || "audit failed";
-  return r?.stateReason
-    || r?.suppression
-    || r?.visibility?.suppression?.reason
-    || null;
-}
-
-function getECC(r){
-  if(isFailure(r)) return "—";
-  if(typeof r?.ecc === "number") return r.ecc.toFixed(2);
-  if(typeof r?.entityScore === "number") return r.entityScore.toFixed(2);
-  if(typeof r?.ecc?.score === "number") return r.ecc.score.toFixed(2);
-  return "—";
-}
-
-function getMode(r){
-  if(isFailure(r)) return "—";
-  return r?.mode || (r?.schemaMeta?.rendered ? "rendered" : "static");
-}
-
-function getPosture(r){ return isFailure(r) ? "—" : (r?.posture || "—"); }
-function getCapability(r){ return isFailure(r) ? "—" : (r?.capability || "—"); }
-function getIntent(r){ return isFailure(r) ? "—" : (r?.intent || "—"); }
-function getQuadrant(r){ return isFailure(r) ? "—" : (r?.quadrant || "—"); }
-
-function extractAvg(data){
-  return typeof data?.summary?.avgECC === "number"
-    ? data.summary.avgECC
-    : null;
-}
-
-function rowClass(state){
-  const s=(state||"").toLowerCase();
-  if(s==="observed") return "bg-emerald-50";
-  if(s==="suppressed") return "bg-amber-50";
-  if(s==="opaque") return "bg-gray-50";
-  if(s==="failed") return "bg-rose-50";
-  return "";
-}
-
-function setRunning(running){
-  els.runBtn.disabled = running;
-  els.runBtn.textContent = running ? "Running…" : "Run Batch";
-}
-
-/* ===== RUN BATCH ===== */
-els.runBtn.addEventListener("click", async ()=>{
-  if(els.runBtn.disabled) return;
-
-  const dataset = datasetSelect.value || "core-web";
-  const url = `/api/batch-run?dataset=${dataset}`;
-
-  setRunning(true);
-  els.runNotice.classList.remove("hidden");
-  els.batchStatus.textContent="Running…";
-  els.result.textContent="// Running…";
-
-  try{
-    const res = await fetch(url);
-    const data = await res.json();
-    els.result.textContent = JSON.stringify(data,null,2);
-
-    if(!data.success){
-      els.batchStatus.textContent="Failed";
-      return;
-    }
-
-    const s = data.summary || {};
-    els.datasetName.textContent = data.dataset || dataset;
-    els.siteCount.textContent = s.totalUrls ?? 0;
-
-    els.countObserved.textContent = s.observed ?? 0;
-    els.countSuppressed.textContent = s.suppressed ?? 0;
-    els.countOpaque.textContent = s.opaque ?? 0;
-    els.countFailed.textContent = s.failed ?? 0;
-
-    const avg = extractAvg(data);
-    els.avgScore.textContent = avg!=null ? avg.toFixed(2) : "--";
-    els.lastRun.textContent = new Date().toLocaleString();
-
-    const p = s.posture || {};
-    els.postureBreakdown.innerHTML =
-      `Posture — Open: ${p.open||0} • Balanced: ${p.balanced||0} • Defensive: ${p.defensive||0}`;
-
-    const c = s.capability || {};
-    els.capabilityBreakdown.innerHTML =
-      `Capability — High: ${c.high||0} • Medium: ${c.medium||0} • Low: ${c.low||0}`;
-
-    els.batchStatus.textContent="Completed";
-
-    /* ===== TABLE RENDER ===== */
-    if(Array.isArray(data.results) && data.results.length){
-      els.table.innerHTML = "";
-      data.results.forEach(r=>{
-        const st = getState(r);
-        const reason = getStateReason(r);
-
-        const tr = document.createElement("tr");
-        tr.className = rowClass(st);
-
-        tr.innerHTML = `
-          <td class="px-3 py-2 max-w-[360px] truncate">
-            <a href="${r.url}" target="_blank" title="${r.url}"
-              class="text-blue-600 hover:underline">${r.url}</a>
-          </td>
-          <td class="px-3 py-2">${badge(st)}</td>
-          <td class="px-3 py-2">${reason || "<span class='text-gray-400'>—</span>"}</td>
-          <td class="px-3 py-2">${getECC(r)}</td>
-          <td class="px-3 py-2">${getPosture(r)}</td>
-          <td class="px-3 py-2">${getCapability(r)}</td>
-          <td class="px-3 py-2">${getIntent(r)}</td>
-          <td class="px-3 py-2">${getQuadrant(r)}</td>
-          <td class="px-3 py-2">${getMode(r)}</td>
-        `;
-        els.table.appendChild(tr);
-      });
-    } else {
-      els.table.innerHTML =
-        "<tr><td colspan='9' class='px-3 py-4 text-center text-gray-400'>No results returned.</td></tr>";
-    }
-
-  } catch(err){
-    els.batchStatus.textContent="Error";
-    els.result.textContent = JSON.stringify({error:err.message},null,2);
-  } finally {
-    setRunning(false);
-    els.runNotice.classList.add("hidden");
-  }
-});
+els.runBtn.onclick=runBatch;
 </script>
 
+</div>
 </body>
 </html>
