@@ -9,12 +9,6 @@
   <style>
     body { background:#f7f7f8; }
     .chip { padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
-    .chip-open { background:#e7f8ef; color:#0d7a45; }
-    .chip-def { background:#fff4d8; color:#9b6b00; }
-    .chip-block { background:#fee7e7; color:#9b1c1c; }
-    .cap-high { background:#e8efff; color:#1c3faa; }
-    .cap-med { background:#f5f0ff; color:#5b3dc4; }
-    .cap-low { background:#fff0f0; color:#b91c1c; }
     .index-box { border-radius:14px; background:white; padding:18px 20px; }
   </style>
 </head>
@@ -135,6 +129,25 @@
 
       </div>
 
+      <!-- UPGRADE LEVERAGE TARGETS -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <div class="bg-white rounded-xl shadow p-6">
+          <h3 class="text-lg font-semibold mb-3">
+            High-ROI Upgrade Targets
+          </h3>
+          <ul id="leverageHigh" class="space-y-2 text-sm text-gray-700"></ul>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-6">
+          <h3 class="text-lg font-semibold mb-3">
+            Quick-Win Repairables
+          </h3>
+          <ul id="leverageQuick" class="space-y-2 text-sm text-gray-700"></ul>
+        </div>
+
+      </div>
+
       <!-- NOTES -->
       <div class="bg-white rounded-xl shadow p-6">
         <h3 class="text-lg font-semibold mb-2">Analyst Notes</h3>
@@ -167,6 +180,10 @@ const els = {
   anchorList: document.getElementById("anchorList"),
   riskList: document.getElementById("riskList"),
   breakList: document.getElementById("breakList"),
+
+  leverageHigh: document.getElementById("leverageHigh"),
+  leverageQuick: document.getElementById("leverageQuick"),
+
   notesList: document.getElementById("notesList")
 };
 
@@ -218,7 +235,7 @@ els.btn.onclick = async () => {
 function render(data, dataset){
   els.results.classList.remove("hidden");
 
-  const { stats, indexes, notes } = data;
+  const { stats, indexes, notes, leverage } = data;
 
   els.dsName.textContent = dataset;
   els.dsSites.textContent = stats.totalSites;
@@ -244,7 +261,29 @@ function render(data, dataset){
   els.breakList.innerHTML = stats.breakpoints
     .map(x=>`<li>${x.url} — ${x.ecc}</li>`).join("");
 
-  els.notesList.innerHTML = notes.map(n=>`<li>${n}</li>`).join("");
+  /* Upgrade Leverage Targets */
+  els.leverageHigh.innerHTML =
+    leverage.highROI.length
+      ? leverage.highROI.map(x =>
+          `<li>
+            <span class="font-medium">${x.url}</span> — ${x.ecc}
+            <div class="text-gray-500">${x.rationale}</div>
+          </li>`
+        ).join("")
+      : `<li class="text-gray-400">None detected</li>`;
+
+  els.leverageQuick.innerHTML =
+    leverage.quickWins.length
+      ? leverage.quickWins.map(x =>
+          `<li>
+            <span class="font-medium">${x.url}</span> — ${x.ecc}
+            <div class="text-gray-500">${x.rationale}</div>
+          </li>`
+        ).join("")
+      : `<li class="text-gray-400">None detected</li>`;
+
+  els.notesList.innerHTML =
+    notes.map(n=>`<li>${n}</li>`).join("");
 }
 </script>
 
