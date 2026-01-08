@@ -174,45 +174,78 @@ function deriveBands({ resilience, exposure, fragility }) {
 }
 
 /* ================================
-   UPGRADE LEVERAGE TARGETS (NEW)
+   UPGRADE LEVERAGE TARGETS (v7)
+   Impact-weighted priority scoring
 ================================ */
-function computeUpgradeLeverage(stats) {
-  const candidates = stats.entities.map(e => {
+function computeUpgradeLeverage(stats = {}) {
+
+  // ---- SAFETY DEFAULTS ----
+  const anchors = stats.anchors || [];
+  const risks = stats.risks || [];
+  const breakpoints = stats.breakpoints || [];
+
+  // Reconstruct a working entity list
+  const entities = [
+    ...anchors,
+    ...risks,
+    ...breakpoints
+  ].map(e => ({
+    url: e.url || "",
+    ecc: Number(e.ecc || 0),
+    posture: (e.posture || "").toLowerCase(),
+    band: (e.band || "").toLowerCase()
+  }));
+
+  if (!entities.length) {
+    return { highROI: [], quickWins: [] };
+  }
+
+  const candidates = entities.map(e => {
     let leverage = 0;
-    let rationale = [];
+    const rationale = [];
 
-    // Defensive → Open = systemic posture lift
+    // --- POSTURE LIFT IMPACT ---
+    // Defensive → Open = largest systemic gain
     if (e.posture === "defensive") {
-      leverage += 2;
-      rationale.push("Posture upgrade to Open materially increases crawl trust");
+      leverage += 2.5;
+      rationale.push("Posture upgrade to Open increases model trust & routing authority");
     }
 
-    // Medium → High when close to threshold
+    // Blocked but Medium+ capability → Repairable surface
+    if (e.posture === "blocked" && (e.band === "medium" || e.band === "high")) {
+      leverage += 2;
+      rationale.push("Repairable block — capability already present, crawl access unlocks value");
+    }
+
+    // --- CAPABILITY COMPOUNDING ---
+    // Medium near-high threshold → small schema upgrade compounds impact
     if (e.band === "medium" && e.ecc >= 75) {
-      leverage += 2;
-      rationale.push("Near-high capability — small upgrade compounds impact");
+      leverage += 1.5;
+      rationale.push("Near-high capability — marginal upgrade compounds influence");
     }
 
-    // Remove fragility concentration
+    // Defensive-Low → fragility reduction
     if (e.posture === "defensive" && e.band === "low") {
       leverage += 1;
-      rationale.push("Reduces fragility concentration in defensive-low belt");
+      rationale.push("Removes fragility concentration in defensive-low belt");
     }
 
+    // Normalize + round
     return {
       ...e,
-      leverage,
+      leverage: Number(leverage.toFixed(2)),
       rationale: rationale.join(". ")
     };
   });
 
+  // ---- PRIORITIZATION BUCKETS ----
   const highROI = candidates
     .filter(x => x.leverage >= 3)
-    .sort((a, b) => b.ecc - a.ecc)
+    .sort((a, b) => b.leverage - a.leverage || b.ecc - a.ecc)
     .slice(0, 8);
 
   const quickWins = candidates
-    .filter(x => x.leverage === 2)
+    .filter(x => x.leverage >= 1.5 && x.leverage < 3)
     .sort((a, b) => b.ecc - a.ecc)
     .slice(0, 8);
 
