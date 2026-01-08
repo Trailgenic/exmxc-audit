@@ -235,7 +235,13 @@ els.btn.onclick = async () => {
 function render(data, dataset){
   els.results.classList.remove("hidden");
 
-  const { stats, indexes, notes, leverage } = data;
+  const { stats, indexes, notes } = data;
+
+  // ---- SAFE DEFAULTS (prevents crash if API doesn't return leverage) ----
+  const leverage = data.leverage || {
+    highROI: [],
+    quickWins: []
+  };
 
   els.dsName.textContent = dataset;
   els.dsSites.textContent = stats.totalSites;
@@ -248,43 +254,47 @@ function render(data, dataset){
   els.riskBand.textContent = indexes.riskBand;
   els.trajectory.textContent = indexes.trajectory;
 
-  els.matrixTable.innerHTML = Object.entries(stats.matrix)
+  els.matrixTable.innerHTML = Object.entries(stats.matrix || {})
     .map(([k,v])=>`<tr><td class="py-1">${k}</td><td>${v}</td></tr>`)
     .join("");
 
-  els.anchorList.innerHTML = stats.anchors
+  els.anchorList.innerHTML = (stats.anchors || [])
     .map(x=>`<li>${x.url} — ${x.ecc}</li>`).join("");
 
-  els.riskList.innerHTML = stats.risks
+  els.riskList.innerHTML = (stats.risks || [])
     .map(x=>`<li>${x.url} — ${x.ecc}</li>`).join("");
 
-  els.breakList.innerHTML = stats.breakpoints
+  els.breakList.innerHTML = (stats.breakpoints || [])
     .map(x=>`<li>${x.url} — ${x.ecc}</li>`).join("");
 
-  /* Upgrade Leverage Targets */
+  // ---- Upgrade Leverage Targets ----
+  const highROI = Array.isArray(leverage.highROI) ? leverage.highROI : [];
+  const quickWins = Array.isArray(leverage.quickWins) ? leverage.quickWins : [];
+
   els.leverageHigh.innerHTML =
-    leverage.highROI.length
-      ? leverage.highROI.map(x =>
+    highROI.length
+      ? highROI.map(x =>
           `<li>
             <span class="font-medium">${x.url}</span> — ${x.ecc}
-            <div class="text-gray-500">${x.rationale}</div>
+            <div class="text-gray-500">${x.rationale || ""}</div>
           </li>`
         ).join("")
       : `<li class="text-gray-400">None detected</li>`;
 
   els.leverageQuick.innerHTML =
-    leverage.quickWins.length
-      ? leverage.quickWins.map(x =>
+    quickWins.length
+      ? quickWins.map(x =>
           `<li>
             <span class="font-medium">${x.url}</span> — ${x.ecc}
-            <div class="text-gray-500">${x.rationale}</div>
+            <div class="text-gray-500">${x.rationale || ""}</div>
           </li>`
         ).join("")
       : `<li class="text-gray-400">None detected</li>`;
 
   els.notesList.innerHTML =
-    notes.map(n=>`<li>${n}</li>`).join("");
+    (notes || []).map(n=>`<li>${n}</li>`).join("");
 }
+
 </script>
 
 </body>
