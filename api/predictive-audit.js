@@ -34,7 +34,7 @@ function matrixKey(posture, band) {
 }
 
 /* ================================
-   ANALYSIS CORE — SAFE / v7-compat
+   ANALYSIS CORE  — fixed posture source
 ================================ */
 function analyze(results = []) {
   const clean = results.filter(r => r && r.url);
@@ -57,7 +57,7 @@ function analyze(results = []) {
   let sumECC = 0;
 
   const counts = { open: 0, defensive: 0, blocked: 0, unknown: 0 };
-  const caps   = { high: 0, medium: 0, low: 0 };
+  const caps = { high: 0, medium: 0, low: 0 };
 
   const matrix = {
     "open-high": 0,
@@ -77,10 +77,13 @@ function analyze(results = []) {
   const entities = [];
 
   for (const r of clean) {
-    // posture now comes ONLY from state (old behavior)
-    const posture = normalizePosture(r.state);
 
-    const ecc  = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
+    // 🔹 Correct posture source (primary = aiStrategy.posture)
+    const posture = normalizePosture(
+      r.posture || r.aiStrategy?.posture || r.state
+    );
+
+    const ecc = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
     const band = capabilityBand(ecc);
 
     sumECC += ecc;
@@ -89,14 +92,14 @@ function analyze(results = []) {
     caps[band]++;
 
     const key = `${posture}-${band}`;
-    if (key in matrix) matrix[key]++;
+    if (matrix[key] !== undefined) matrix[key]++;
 
     const record = { url: r.url, ecc, posture, band };
     entities.push(record);
 
-    if (posture === "open"      && band === "high")  anchors.push(record);
-    if (posture === "defensive" && band === "low")   risks.push(record);
-    if (posture === "blocked"   && band !== "low")   breakpoints.push(record);
+    if (posture === "open" && band === "high") anchors.push(record);
+    if (posture === "defensive" && band === "low") risks.push(record);
+    if (posture === "blocked" && band !== "low") breakpoints.push(record);
   }
 
   const avgECC = Number((sumECC / total).toFixed(2));
@@ -113,6 +116,7 @@ function analyze(results = []) {
     entities
   };
 }
+
 
 /* ================================
    INDEX CALCULATION (v7)
