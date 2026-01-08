@@ -1,4 +1,4 @@
-// /api/predictive-audit.js — Predictive-v7 (Stateless)
+// /api/predictive-audit.js — Predictive-v7 + Upgrade Leverage Targets
 // Vertical-level structural risk intelligence based on:
 // Strategic Posture + ECC capability banding + resilience / exposure indexes
 
@@ -15,24 +15,22 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
-/**
- * Normalize ECC capability band from numeric ECC
- */
 function capabilityBand(ecc = 0) {
   if (ecc >= 80) return "high";
   if (ecc >= 60) return "medium";
   return "low";
 }
 
-/**
- * Classify posture safely
- */
 function normalizePosture(state = "") {
   const s = state.toLowerCase();
   if (s === "open") return "open";
   if (s === "defensive") return "defensive";
   if (s === "blocked") return "blocked";
   return "unknown";
+}
+
+function matrixKey(posture, band) {
+  return `${posture}-${band}`;
 }
 
 /* ================================
@@ -51,7 +49,8 @@ function analyze(results = []) {
       avgECC: 0,
       anchors: [],
       risks: [],
-      breakpoints: []
+      breakpoints: [],
+      entities: []
     };
   }
 
@@ -60,7 +59,6 @@ function analyze(results = []) {
   const counts = { open: 0, defensive: 0, blocked: 0, unknown: 0 };
   const caps = { high: 0, medium: 0, low: 0 };
 
-  // Posture × Capability lattice
   const matrix = {
     "open-high": 0,
     "open-medium": 0,
@@ -76,6 +74,7 @@ function analyze(results = []) {
   const anchors = [];
   const risks = [];
   const breakpoints = [];
+  const entities = [];
 
   for (const r of clean) {
     const posture = normalizePosture(r.state);
@@ -87,23 +86,15 @@ function analyze(results = []) {
     counts[posture] = (counts[posture] ?? 0) + 1;
     caps[band]++;
 
-    const key = `${posture}-${band}`;
+    const key = matrixKey(posture, band);
     if (matrix[key] !== undefined) matrix[key]++;
 
-    // Strategic anchor = Open + High capability
-    if (posture === "open" && band === "high") {
-      anchors.push({ url: r.url, ecc, posture, band });
-    }
+    const record = { url: r.url, ecc, posture, band };
+    entities.push(record);
 
-    // Fragility risk = Defensive + Low capability
-    if (posture === "defensive" && band === "low") {
-      risks.push({ url: r.url, ecc, posture, band });
-    }
-
-    // Breakpoint = Blocked but Medium+ capability (repairable)
-    if (posture === "blocked" && band !== "low") {
-      breakpoints.push({ url: r.url, ecc, posture, band });
-    }
+    if (posture === "open" && band === "high") anchors.push(record);
+    if (posture === "defensive" && band === "low") risks.push(record);
+    if (posture === "blocked" && band !== "low") breakpoints.push(record);
   }
 
   const avgECC = Number((sumECC / total).toFixed(2));
@@ -116,7 +107,8 @@ function analyze(results = []) {
     avgECC,
     anchors,
     risks,
-    breakpoints
+    breakpoints,
+    entities
   };
 }
 
@@ -124,10 +116,6 @@ function analyze(results = []) {
    INDEX CALCULATION (v7)
 ================================ */
 
-/**
- * Resilience = strength of Open-High + Open-Medium,
- * minus penalty for Blocked nodes.
- */
 function computeResilience(stats) {
   const { total, matrix } = stats;
   if (!total) return 0;
@@ -144,9 +132,6 @@ function computeResilience(stats) {
   return clamp01(raw);
 }
 
-/**
- * Exposure = Defensive-Low + Blocked share
- */
 function computeExposure(stats) {
   const { total, matrix } = stats;
   if (!total) return 0;
@@ -159,10 +144,6 @@ function computeExposure(stats) {
   return clamp01(risky / total);
 }
 
-/**
- * Fragility Drift = entities one-step from failure
- * (Defensive-Low + Open-Low)
- */
 function computeFragility(stats) {
   const { total, matrix } = stats;
   if (!total) return 0;
@@ -174,9 +155,6 @@ function computeFragility(stats) {
   return clamp01(belt / total);
 }
 
-/**
- * Risk + Trajectory classification
- */
 function deriveBands({ resilience, exposure, fragility }) {
   let riskBand = "Stable";
   if (exposure >= 0.45 || fragility >= 0.35) riskBand = "Fragile";
@@ -196,7 +174,53 @@ function deriveBands({ resilience, exposure, fragility }) {
 }
 
 /* ================================
-   ANALYST NOTES (v7 narrative)
+   UPGRADE LEVERAGE TARGETS (NEW)
+================================ */
+function computeUpgradeLeverage(stats) {
+  const candidates = stats.entities.map(e => {
+    let leverage = 0;
+    let rationale = [];
+
+    // Defensive → Open = systemic posture lift
+    if (e.posture === "defensive") {
+      leverage += 2;
+      rationale.push("Posture upgrade to Open materially increases crawl trust");
+    }
+
+    // Medium → High when close to threshold
+    if (e.band === "medium" && e.ecc >= 75) {
+      leverage += 2;
+      rationale.push("Near-high capability — small upgrade compounds impact");
+    }
+
+    // Remove fragility concentration
+    if (e.posture === "defensive" && e.band === "low") {
+      leverage += 1;
+      rationale.push("Reduces fragility concentration in defensive-low belt");
+    }
+
+    return {
+      ...e,
+      leverage,
+      rationale: rationale.join(". ")
+    };
+  });
+
+  const highROI = candidates
+    .filter(x => x.leverage >= 3)
+    .sort((a, b) => b.ecc - a.ecc)
+    .slice(0, 8);
+
+  const quickWins = candidates
+    .filter(x => x.leverage === 2)
+    .sort((a, b) => b.ecc - a.ecc)
+    .slice(0, 8);
+
+  return { highROI, quickWins };
+}
+
+/* ================================
+   ANALYST NOTES
 ================================ */
 function generateNotes(stats, indexes) {
   const notes = [];
@@ -241,8 +265,7 @@ export default async function handler(req, res) {
 
   let body = req.body;
   if (typeof body === "string") {
-    try { body = JSON.parse(body); }
-    catch { body = {}; }
+    try { body = JSON.parse(body); } catch { body = {}; }
   }
 
   const { dataset = "unknown", results } = body || {};
@@ -262,6 +285,7 @@ export default async function handler(req, res) {
 
   const bands = deriveBands({ resilience, exposure, fragility });
 
+  const leverage = computeUpgradeLeverage(stats);   // ⬅️ NEW
   const notes = generateNotes(stats, { resilience, exposure, fragility });
 
   return res.status(200).json({
@@ -288,6 +312,7 @@ export default async function handler(req, res) {
       ...bands
     },
 
+    leverage,   // ⬅️ NEW OUTPUT
     notes
   });
 }
