@@ -1,258 +1,293 @@
-// /api/predictive-audit.js
-// Predictive EEI — vertical-level stress test (Option B Hybrid)
-// Uses latest batch results passed in from the client + /data/predictive-model.json
+// /api/predictive-audit.js — Predictive-v7 (Stateless)
+// Vertical-level structural risk intelligence based on:
+// Strategic Posture + ECC capability banding + resilience / exposure indexes
 
-import fs from "fs/promises";
 import path from "path";
 
-const MODEL_PATH = path.join(process.cwd(), "data", "predictive-model.json");
+/* ================================
+   Helpers
+================================ */
+function pct(n, d) {
+  return d === 0 ? 0 : Number(((n / d) * 100).toFixed(1));
+}
 
-/**
- * Safely load predictive-model.json, with sane defaults if it's empty/minimal.
- */
-async function loadModel() {
-  try {
-    const raw = await fs.readFile(MODEL_PATH, "utf8");
-    const json = raw.trim() ? JSON.parse(raw) : {};
-    const weights = json.weights || {};
-
-    return {
-      version: json.version || "v1",
-      weights: {
-        avgEEI: weights.avgEEI ?? 0.5,
-        sovereignShare: weights.sovereignShare ?? 0.2,
-        structuredShare: weights.structuredShare ?? 0.15,
-        visibleShare: weights.visibleShare ?? 0.1,
-        emergentShare: weights.emergentShare ?? 0.05
-      },
-      thresholds: {
-        highRisk: json.thresholds?.highRisk ?? 45,
-        mediumRisk: json.thresholds?.mediumRisk ?? 60,
-        strongVertical: json.thresholds?.strongVertical ?? 75,
-        stableVertical: json.thresholds?.stableVertical ?? 55
-      }
-    };
-  } catch (err) {
-    // If the file is missing or invalid, fall back to defaults
-    console.error("[predictive-audit] Failed to load predictive-model.json:", err);
-    return {
-      version: "v1-default",
-      weights: {
-        avgEEI: 0.5,
-        sovereignShare: 0.2,
-        structuredShare: 0.15,
-        visibleShare: 0.1,
-        emergentShare: 0.05
-      },
-      thresholds: {
-        highRisk: 45,
-        mediumRisk: 60,
-        strongVertical: 75,
-        stableVertical: 55
-      }
-    };
-  }
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
 }
 
 /**
- * Compute basic stats from a vertical's EEI results.
- * `results` is the array of per-site audits from batch-run.
+ * Normalize ECC capability band from numeric ECC
  */
-function analyzeVertical(results = []) {
-  const clean = results.filter(
-    (r) => r && typeof r.entityScore === "number" && !Number.isNaN(r.entityScore)
-  );
+function capabilityBand(ecc = 0) {
+  if (ecc >= 80) return "high";
+  if (ecc >= 60) return "medium";
+  return "low";
+}
+
+/**
+ * Classify posture safely
+ */
+function normalizePosture(state = "") {
+  const s = state.toLowerCase();
+  if (s === "open") return "open";
+  if (s === "defensive") return "defensive";
+  if (s === "blocked") return "blocked";
+  return "unknown";
+}
+
+/* ================================
+   ANALYSIS CORE
+================================ */
+function analyze(results = []) {
+  const clean = results.filter(r => r && r.url);
 
   const total = clean.length;
   if (!total) {
     return {
-      totalSites: 0,
-      avgEEI: 0,
-      stageCounts: {
-        sovereign: 0,
-        structured: 0,
-        visible: 0,
-        emergent: 0,
-        unknown: 0
-      },
-      shares: {
-        sovereign: 0,
-        structured: 0,
-        visible: 0,
-        emergent: 0
-      },
-      top5: [],
-      bottom5: []
+      total,
+      counts: { open: 0, defensive: 0, blocked: 0, unknown: 0 },
+      caps: { high: 0, medium: 0, low: 0 },
+      matrix: {},
+      avgECC: 0,
+      anchors: [],
+      risks: [],
+      breakpoints: []
     };
   }
 
-  let sum = 0;
-  const stageCounts = {
-    sovereign: 0,
-    structured: 0,
-    visible: 0,
-    emergent: 0,
-    unknown: 0
+  let sumECC = 0;
+
+  const counts = { open: 0, defensive: 0, blocked: 0, unknown: 0 };
+  const caps = { high: 0, medium: 0, low: 0 };
+
+  // Posture × Capability lattice
+  const matrix = {
+    "open-high": 0,
+    "open-medium": 0,
+    "open-low": 0,
+    "defensive-high": 0,
+    "defensive-medium": 0,
+    "defensive-low": 0,
+    "blocked-low": 0,
+    "blocked-medium": 0,
+    "blocked-high": 0
   };
+
+  const anchors = [];
+  const risks = [];
+  const breakpoints = [];
 
   for (const r of clean) {
-    const s = r.entityScore ?? 0;
-    sum += s;
+    const posture = normalizePosture(r.state);
+    const ecc = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
+    const band = capabilityBand(ecc);
 
-    const stage = (r.entityStage || "").toLowerCase();
-    if (stage.includes("sovereign")) stageCounts.sovereign++;
-    else if (stage.includes("structured")) stageCounts.structured++;
-    else if (stage.includes("visible")) stageCounts.visible++;
-    else if (stage.includes("emergent")) stageCounts.emergent++;
-    else stageCounts.unknown++;
+    sumECC += ecc;
+
+    counts[posture] = (counts[posture] ?? 0) + 1;
+    caps[band]++;
+
+    const key = `${posture}-${band}`;
+    if (matrix[key] !== undefined) matrix[key]++;
+
+    // Strategic anchor = Open + High capability
+    if (posture === "open" && band === "high") {
+      anchors.push({ url: r.url, ecc, posture, band });
+    }
+
+    // Fragility risk = Defensive + Low capability
+    if (posture === "defensive" && band === "low") {
+      risks.push({ url: r.url, ecc, posture, band });
+    }
+
+    // Breakpoint = Blocked but Medium+ capability (repairable)
+    if (posture === "blocked" && band !== "low") {
+      breakpoints.push({ url: r.url, ecc, posture, band });
+    }
   }
 
-  const avgEEI = sum / total;
-
-  const shares = {
-    sovereign: stageCounts.sovereign / total,
-    structured: stageCounts.structured / total,
-    visible: stageCounts.visible / total,
-    emergent: stageCounts.emergent / total
-  };
-
-  const sorted = [...clean].sort(
-    (a, b) => (b.entityScore ?? 0) - (a.entityScore ?? 0)
-  );
-
-  const top5 = sorted.slice(0, 5);
-  const bottom5 = sorted.slice(-5).reverse();
+  const avgECC = Number((sumECC / total).toFixed(2));
 
   return {
-    totalSites: total,
-    avgEEI,
-    stageCounts,
-    shares,
-    top5,
-    bottom5
+    total,
+    counts,
+    caps,
+    matrix,
+    avgECC,
+    anchors,
+    risks,
+    breakpoints
   };
+}
+
+/* ================================
+   INDEX CALCULATION (v7)
+================================ */
+
+/**
+ * Resilience = strength of Open-High + Open-Medium,
+ * minus penalty for Blocked nodes.
+ */
+function computeResilience(stats) {
+  const { total, matrix } = stats;
+  if (!total) return 0;
+
+  const anchors =
+    (matrix["open-high"] ?? 0) * 1.0 +
+    (matrix["open-medium"] ?? 0) * 0.5;
+
+  const penalties =
+    (matrix["blocked-low"] ?? 0) * 1.0 +
+    (matrix["blocked-medium"] ?? 0) * 0.6;
+
+  const raw = (anchors - penalties) / total;
+  return clamp01(raw);
 }
 
 /**
- * Turn stats + model weights into a predictive index and narrative.
+ * Exposure = Defensive-Low + Blocked share
  */
-function computePrediction(stats, model) {
-  const { avgEEI, shares } = stats;
-  const { weights, thresholds } = model;
+function computeExposure(stats) {
+  const { total, matrix } = stats;
+  if (!total) return 0;
 
-  // Normalize avg EEI to 0–1
-  const normAvg = avgEEI / 100;
+  const risky =
+    (matrix["defensive-low"] ?? 0) * 1.0 +
+    (matrix["blocked-low"] ?? 0) * 1.0 +
+    (matrix["blocked-medium"] ?? 0) * 0.6;
 
-  // Lower visible/emergent share is good, so we invert those.
-  const visiblePenalty = 1 - shares.visible;
-  const emergentPenalty = 1 - shares.emergent;
-
-  let rawScore =
-    weights.avgEEI * normAvg +
-    weights.sovereignShare * shares.sovereign +
-    weights.structuredShare * shares.structured +
-    weights.visibleShare * visiblePenalty +
-    weights.emergentShare * emergentPenalty;
-
-  // Clamp and scale to 0–100
-  rawScore = Math.max(0, Math.min(1, rawScore));
-  const predictiveScore = Math.round(rawScore * 100);
-
-  // Risk band based mainly on avgEEI + emergent share
-  let riskBand = "Low Drift Risk";
-  if (avgEEI < thresholds.highRisk || shares.emergent >= 0.35) {
-    riskBand = "High Drift Risk";
-  } else if (avgEEI < thresholds.mediumRisk || shares.emergent >= 0.2) {
-    riskBand = "Moderate Drift Risk";
-  }
-
-  // Trajectory tag based on predictiveScore
-  let trajectory = "Stable";
-  if (predictiveScore >= thresholds.strongVertical) {
-    trajectory = "Upward — Authority Consolidating";
-  } else if (predictiveScore >= thresholds.stableVertical) {
-    trajectory = "Stable — Entity Cohesive, Room to Scale";
-  } else {
-    trajectory = "Volatile — Fragmented or Under-signaled";
-  }
-
-  const notes = [];
-
-  if (shares.sovereign >= 0.4) {
-    notes.push("Strong concentration of Sovereign entities in this vertical.");
-  } else if (shares.structured >= 0.4) {
-    notes.push("Structured entities dominate; small upgrades can tip many into Sovereign.");
-  } else if (shares.emergent >= 0.3) {
-    notes.push("Many brands are still Emergent; large upside but high drift risk.");
-  }
-
-  if (avgEEI >= 70) {
-    notes.push("Average EEI is already high; focus on moat and drift prevention.");
-  } else if (avgEEI >= 55) {
-    notes.push("Average EEI is mid-tier; upgrades in schema and graph depth will move the whole pack.");
-  } else {
-    notes.push("Average EEI is low; this vertical is wide open for a disciplined schema-first player.");
-  }
-
-  return {
-    predictiveScore,
-    riskBand,
-    trajectory,
-    notes
-  };
+  return clamp01(risky / total);
 }
 
+/**
+ * Fragility Drift = entities one-step from failure
+ * (Defensive-Low + Open-Low)
+ */
+function computeFragility(stats) {
+  const { total, matrix } = stats;
+  if (!total) return 0;
+
+  const belt =
+    (matrix["defensive-low"] ?? 0) +
+    (matrix["open-low"] ?? 0);
+
+  return clamp01(belt / total);
+}
+
+/**
+ * Risk + Trajectory classification
+ */
+function deriveBands({ resilience, exposure, fragility }) {
+  let riskBand = "Stable";
+  if (exposure >= 0.45 || fragility >= 0.35) riskBand = "Fragile";
+  else if (exposure >= 0.25 || fragility >= 0.22) riskBand = "Watch";
+
+  let trajectory = "Flat";
+
+  if (resilience >= 0.6 && exposure <= 0.2) {
+    trajectory = "Strengthening";
+  } else if (resilience <= 0.35 && exposure >= 0.35) {
+    trajectory = "Weakening";
+  } else if (fragility >= 0.4) {
+    trajectory = "Drifting Toward Failure";
+  }
+
+  return { riskBand, trajectory };
+}
+
+/* ================================
+   ANALYST NOTES (v7 narrative)
+================================ */
+function generateNotes(stats, indexes) {
+  const notes = [];
+  const { matrix, avgECC } = stats;
+  const { resilience, exposure, fragility } = indexes;
+
+  if ((matrix["open-high"] ?? 0) >= 5) {
+    notes.push("Strong anchor cluster: multiple Open-High entities stabilize the vertical.");
+  }
+
+  if (matrix["defensive-medium"] >= matrix["open-medium"]) {
+    notes.push("Large Defensive-Medium belt: meaningful upside if upgrades move posture to Open.");
+  }
+
+  if (exposure >= 0.35) {
+    notes.push("High structural exposure: Defensive-Low and Blocked nodes create fragility concentration.");
+  }
+
+  if (fragility >= 0.3) {
+    notes.push("Significant fragility belt: many entities are one step from failure.");
+  }
+
+  if (avgECC >= 75) {
+    notes.push("Average ECC is strong — focus shifts from lift to moat-building.");
+  } else if (avgECC >= 60) {
+    notes.push("ECC is mid-tier — schema + graph depth improvements can move the pack upward.");
+  } else {
+    notes.push("Low ECC baseline — vertical is open territory for a disciplined, schema-first operator.");
+  }
+
+  return notes;
+}
+
+/* ================================
+   API HANDLER — Predictive-v7
+================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  let body;
-  try {
-    // Next can pass body as object or string depending on config
-    body =
-      typeof req.body === "string" && req.body.trim()
-        ? JSON.parse(req.body)
-        : req.body || {};
-  } catch (err) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid JSON body for predictive audit." });
+  let body = req.body;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); }
+    catch { body = {}; }
   }
 
-  const { dataset = "unknown-vertical", results } = body || {};
+  const { dataset = "unknown", results } = body || {};
 
-  if (!Array.isArray(results) || results.length === 0) {
+  if (!Array.isArray(results) || !results.length) {
     return res.status(400).json({
       success: false,
-      error:
-        "Predictive audit requires a non-empty `results` array (use the output from /api/batch-run)."
+      error: "Predictive-v7 requires a non-empty `results` array (use output from /api/batch-run)."
     });
   }
 
-  const model = await loadModel();
-  const stats = analyzeVertical(results);
-  const prediction = computePrediction(stats, model);
+  const stats = analyze(results);
+
+  const resilience = computeResilience(stats);
+  const exposure   = computeExposure(stats);
+  const fragility  = computeFragility(stats);
+
+  const bands = deriveBands({ resilience, exposure, fragility });
+
+  const notes = generateNotes(stats, { resilience, exposure, fragility });
 
   return res.status(200).json({
     success: true,
-    mode: "predictive",
+    mode: "predictive-v7",
     dataset,
-    modelVersion: model.version,
+
     stats: {
-      totalSites: stats.totalSites,
-      avgEEI: Number(stats.avgEEI.toFixed(2)),
-      stageCounts: stats.stageCounts,
-      shares: {
-        sovereign: Number((stats.shares.sovereign * 100).toFixed(1)),
-        structured: Number((stats.shares.structured * 100).toFixed(1)),
-        visible: Number((stats.shares.visible * 100).toFixed(1)),
-        emergent: Number((stats.shares.emergent * 100).toFixed(1))
-      },
-      top5: stats.top5,
-      bottom5: stats.bottom5
+      totalSites: stats.total,
+      avgECC: stats.avgECC,
+      postureCounts: stats.counts,
+      capabilityCounts: stats.caps,
+      matrix: stats.matrix,
+
+      anchors: stats.anchors.slice(0, 10),
+      risks: stats.risks.slice(0, 10),
+      breakpoints: stats.breakpoints.slice(0, 10)
     },
-    predictive: prediction
+
+    indexes: {
+      resilience,
+      exposure,
+      fragility,
+      ...bands
+    },
+
+    notes
   });
 }
