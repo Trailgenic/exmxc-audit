@@ -104,26 +104,32 @@
 </div>
 
 <script>
-const els={
- datasetName:document.getElementById("datasetName"),
- countSites:document.getElementById("countSites"),
- countOpen:document.getElementById("countOpen"),
- countDefensive:document.getElementById("countDefensive"),
- countBlocked:document.getElementById("countBlocked"),
- countFailed:document.getElementById("countFailed"),
- avgECC:document.getElementById("avgECC"),
- lastRun:document.getElementById("lastRun"),
- tableBody:document.querySelector("#resultsTable tbody"),
- runBtn:document.getElementById("runBtn"),
- sel:document.getElementById("datasetSelect")
+const els = {
+  datasetName: document.getElementById("datasetName"),
+  countSites: document.getElementById("countSites"),
+  countOpen: document.getElementById("countOpen"),
+  countDefensive: document.getElementById("countDefensive"),
+  countBlocked: document.getElementById("countBlocked"),
+  countFailed: document.getElementById("countFailed"),
+  avgECC: document.getElementById("avgECC"),
+  lastRun: document.getElementById("lastRun"),
+  tableBody: document.querySelector("#resultsTable tbody"),
+  runBtn: document.getElementById("runBtn"),
+  sel: document.getElementById("datasetSelect")
 };
 
+/* ============================
+   Capability banding
+============================ */
 function capBand(score){
   if(score>=80) return {label:"High", cls:"cap-high"};
   if(score>=60) return {label:"Medium", cls:"cap-med"};
   return {label:"Low", cls:"cap-low"};
 }
 
+/* ============================
+   Posture badge
+============================ */
 function postureTag(state){
   const s=(state||"").toLowerCase();
   if(s==="open") return `<span class="tag open">Open</span>`;
@@ -132,57 +138,98 @@ function postureTag(state){
   return `<span class="tag blocked">Failed</span>`;
 }
 
+/* ============================
+   Load verticals.json
+============================ */
+async function loadVerticals(){
+  try{
+    const res = await fetch("/data/verticals.json");
+    const data = await res.json();
+
+    els.sel.innerHTML = "";
+
+    Object.entries(data).forEach(([key,v])=>{
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = v.name || key;
+      els.sel.appendChild(opt);
+    });
+
+    // restore previous selection if valid
+    const saved = localStorage.getItem("eei:lastDataset");
+    if(saved && data[saved]) els.sel.value = saved;
+
+  } catch(err){
+    console.warn("verticals.json load failed — fallback to core-web", err);
+    els.sel.innerHTML = `<option value="core-web">Core Web</option>`;
+  }
+}
+
+loadVerticals();
+
+/* ============================
+   Run Batch (v7)
+============================ */
 async function runBatch(){
-  els.runBtn.textContent="Running…";
-  els.runBtn.disabled=true;
+  els.runBtn.textContent = "Running…";
+  els.runBtn.disabled = true;
 
-  const ds=els.sel.value;
-  const resp=await fetch(`/api/batch-run?dataset=${ds}`);
-  const data=await resp.json();
+  const ds = els.sel.value || "core-web";
+  localStorage.setItem("eei:lastDataset", ds);
 
-  els.datasetName.textContent=data.dataset||ds;
-  els.countSites.textContent=(data.results||[]).length;
-  els.lastRun.textContent=new Date(data.timestamp).toLocaleString();
+  const resp = await fetch(`/api/batch-run?dataset=${ds}`);
+  const data = await resp.json();
 
-  let open=0,defensive=0,blocked=0,failed=0,totalECC=0,scored=0;
+  els.datasetName.textContent = data.dataset || ds;
+  els.countSites.textContent = (data.results||[]).length;
+  els.lastRun.textContent = new Date(data.timestamp).toLocaleString();
 
-  els.tableBody.innerHTML="";
+  let open=0, defensive=0, blocked=0, failed=0;
+  let totalECC=0, scored=0;
+
+  els.tableBody.innerHTML = "";
 
   (data.results||[]).forEach(r=>{
-    if(r.success===false){failed++;return;}
+    if(r.success === false){
+      failed++;
+      return;
+    }
 
-    const ecc=Number(r.ecc||r?._raw?.ecc?.score||0);
-    if(ecc>0){totalECC+=ecc;scored++;}
+    const ecc = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
+    if(ecc>0){ totalECC += ecc; scored++; }
 
-    const st=(r.state||"").toLowerCase();
+    const st = (r.state||"").toLowerCase();
     if(st==="open") open++;
     else if(st==="defensive") defensive++;
     else if(st==="blocked") blocked++;
     else failed++;
 
-    const cap=capBand(ecc);
-    const row=document.createElement("tr");
-    row.innerHTML=`
+    const cap = capBand(ecc);
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
       <td class="mono"><a href="${r.url}" target="_blank">${r.url}</a></td>
       <td>${postureTag(st)}</td>
       <td>${ecc.toFixed(0)}</td>
       <td><span class="tag ${cap.cls}">${cap.label}</span></td>
-      <td>${r.mode||"static"}</td>`;
+      <td>${r.mode || "static"}</td>
+    `;
     els.tableBody.appendChild(row);
   });
 
-  els.countOpen.textContent=open;
-  els.countDefensive.textContent=defensive;
-  els.countBlocked.textContent=blocked;
-  els.countFailed.textContent=failed;
-  els.avgECC.textContent=scored? (totalECC/scored).toFixed(2):"0.00";
+  els.countOpen.textContent = open;
+  els.countDefensive.textContent = defensive;
+  els.countBlocked.textContent = blocked;
+  els.countFailed.textContent = failed;
+  els.avgECC.textContent = scored ? (totalECC/scored).toFixed(2) : "0.00";
 
-  els.runBtn.textContent="Run Batch";
-  els.runBtn.disabled=false;
+  els.runBtn.textContent = "Run Batch";
+  els.runBtn.disabled = false;
 }
 
-els.runBtn.onclick=runBatch;
+els.runBtn.onclick = runBatch;
 </script>
+
 
 </div>
 </body>
