@@ -77,7 +77,17 @@ function analyze(results = []) {
   const entities = [];
 
   for (const r of clean) {
-    const posture = normalizePosture(r.state);
+
+    // 🔹 Back-compat posture normalization
+    const rawPosture = (r.posture || "").toLowerCase();
+
+    const posture = normalizePosture(
+      rawPosture.includes("open")        ? "open" :
+      rawPosture.includes("defensive")   ? "defensive" :
+      rawPosture.includes("balanced")    ? "defensive" : // ← legacy mapping
+      r.state                             // fallback to batch-run field
+    );
+
     const ecc = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
     const band = capabilityBand(ecc);
 
@@ -86,7 +96,7 @@ function analyze(results = []) {
     counts[posture] = (counts[posture] ?? 0) + 1;
     caps[band]++;
 
-    const key = matrixKey(posture, band);
+    const key = `${posture}-${band}`;
     if (matrix[key] !== undefined) matrix[key]++;
 
     const record = { url: r.url, ecc, posture, band };
