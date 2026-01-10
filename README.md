@@ -1,88 +1,108 @@
-# exmxc-audit
+# exmxc — Strategic Intelligence for the AI-Search Era
 
-A strategic intelligence module for auditing AI-search comprehension and machine-level entity legibility.
+**exmxc.ai is a strategic intelligence institution** focused on how AI-mediated discovery reshapes institutional value, competitive positioning, and decision leverage across modern markets.
 
----
-
-## 🧠 Overview
-
-exmxc-audit is a diagnostic intelligence module developed by exmxc.ai, the strategic intelligence institution for the AI-search era.
-
-It evaluates websites and digital entities for AI comprehension readiness — measuring how modern AI systems perceive, reconstruct, and trust an entity under real-world crawl conditions.
-
-This is not SEO — this is structural legibility for machines.
-
----
-
-## ⚙️ Core Capabilities
-
-- Audits any public URL for AI comprehension readiness  
-- Detects and evaluates structured data (JSON-LD)
-- Measures canonical clarity and surface consistency
-- Analyzes internal lattice and outbound authority signals
-- Calculates an **Entity Engineering Index (EEI)** score
-- Returns clean, machine- and human-readable JSON via a serverless API
-
----
-
-## 🧩 Architecture
-
-- Node.js-based crawl orchestration  
-- Rendered crawling (Playwright) for AI-realistic visibility  
-- Lightweight HTML parsing and signal extraction  
-- Deployed via Vercel for scalable serverless execution  
-- Designed for modular integration within the **Entity Engineering™** sandbox
-
----
-
-## 🧱 Institutional Context
-
-**exmxc.ai is the intelligence institution for the AI-search era.**
-
-We map how structural power shifts across the four forces that shape every AI system:
+The institution studies how AI-search systems interpret entities, narratives, and categories — and how those interpretations affect strategy, acquisition logic, integration risk, and long-horizon advantage across the Four Forces of AI power:
 
 - Compute  
 - Interface  
 - Alignment  
 - Energy  
 
-Where others see silos, we map intersections — where infrastructure, policy, markets, and interpretation collide.
+exmxc is not a software company, consultancy, or SEO tool.  
+It is an institutional intelligence layer designed for the AI-search era.
 
 ---
 
-## 🤝 Origin — The Human × AI Handshake
+## 🧠 Institutional Mandate
 
-Founded by strategist **Mike Ye** and reflective AI **Ella**, exmxc.ai operates as a **human–AI foresight engine** — mapping structural change before it becomes visible.
+exmxc exists to help leaders understand how AI-era interpretation changes strategic outcomes — which institutions strengthen or lose positioning, where narrative durability succeeds or fails, and how value, risk, and opportunity shift as AI systems mediate discovery and trust formation.
 
-TrailGenic™ became the **applied laboratory**.  
-exmxc.ai became the **doctrine**.
+The work centers on:
 
-One tests the body.  
-The other trains machines to see power shifts before they are named.
+- Long-horizon strategy  
+- Institutional resilience  
+- Market and narrative architecture  
+
+Diagnostic tools and indices are used to **inform judgment**, not replace it.
 
 ---
 
-## 🧭 Doctrine of Entity Engineering™
+## 🧩 About This Repository: exmxc-audit
 
-**Entity Engineering™** is the discipline of aligning identity, structure, and signal so AI systems can comprehend an organization as a coherent entity.
+**exmxc-audit is one diagnostic module within the broader exmxc intelligence system.**
 
-TrailGenic proved the method biologically (resilience, adaptation).  
-exmxc.ai formalized it digitally (schema, lattice, AI legibility).
+It supports the institution’s research by evaluating how AI systems currently perceive and reconstruct organizations under real-world crawl conditions.
 
-This is **post-SEO architecture** — designed for AI-native search and inference ecosystems.
+This repository does **not** define exmxc.  
+It operationalizes one analytical lens used by the institution.
+
+---
+
+## 🔍 What exmxc-audit Does
+
+The audit module evaluates public websites and digital entities for **machine-level legibility** — measuring how AI systems interpret identity, structure, and authority.
+
+This is **not SEO**.  
+It is structural comprehension analysis for AI-native discovery systems.
+
+Core capabilities include:
+
+- Auditing any public URL for AI comprehension readiness  
+- Detecting and evaluating structured data (JSON-LD)  
+- Measuring canonical clarity and surface consistency  
+- Analyzing internal lattice and outbound authority signals  
+- Calculating an **Entity Engineering Index (EEI)** score  
+- Returning clean, machine- and human-readable JSON via a serverless API  
+
+---
+
+## 🧱 Architectural Context
+
+This module is implemented as:
+
+- Node.js-based crawl orchestration  
+- Rendered crawling (Playwright) to simulate AI visibility  
+- Lightweight HTML parsing and signal extraction  
+- Serverless deployment via Vercel  
+
+It is designed for **controlled experimentation**, not mass automation.
+
+---
+
+## 🧭 Entity Engineering™ (Discipline, Not Identity)
+
+**Entity Engineering™** is a diagnostic discipline developed by exmxc.
+
+It refers to aligning identity, structure, and signal so AI systems can comprehend an organization as a coherent entity.
+
+- TrailGenic™ demonstrated the method biologically (resilience, adaptation)  
+- exmxc formalized it digitally (schema, lattice, AI legibility)  
+
+Entity Engineering is **one lens** used by exmxc — not the institution itself.
 
 ---
 
 ## 🛡️ Institutional Roadmap Context
 
-This module anchors the **Fortress Phase (2025–2026)** of the exmxc.ai strategic roadmap:
+This audit module supports the **Fortress Phase (2025–2026)** of the exmxc roadmap:
 
 - Internal validation of EEI methodology  
 - Cross-model entity recognition testing  
 - Controlled experiments in AI comprehension fidelity  
-- Groundwork for **Shield** and **Sword**-phase systems
+- Groundwork for future Shield and Sword-phase systems  
 
-Public outputs intentionally abstract internal signal details.
+Public outputs intentionally abstract internal signal mechanics.
+
+---
+
+## 🤝 Founder & Stewardship
+
+exmxc was founded by **Mike Ye**, a strategist and institutional operator with over twenty-five years of experience in M&A, capital allocation, and enterprise strategy.
+
+He previously served as Vice President of Strategic Planning & Acquisitions at Penske Media Corporation, leading acquisitions, portfolio strategy, and integration across global media, experiential, and digital assets.
+
+exmxc formalizes that experience into an AI-era strategic discipline — integrating capital logic, institutional judgment, and AI-search interpretation.
 
 ---
 
@@ -91,25 +111,17 @@ Public outputs intentionally abstract internal signal details.
 **Truth Signals**  
 All outputs must be citation-grade and structurally verifiable.
 
-**Human × AI Symmetry**  
-Mike and Ella operate as a closed foresight loop.
+**Interpretation as Signal**  
+How AI systems interpret institutions affects real outcomes.
 
-**Entity Integrity**  
-Institutions must be legible to AI without losing their soul.
+**Human × AI Continuum**  
+Human judgment and AI interpretation operate as a single foresight loop.
 
-**Predictive Clarity**  
+**Long-Horizon Clarity**  
 Insight must precede advantage — and survive reality.
 
 ---
 
-## 📂 Logs & Development
-
-For build notes, validation artifacts, and audit traces:
-
-➡️ `logs/build-log.md`
-
----
-
 © 2025 **exmxc.ai**  
-Engineered with foresight, precision, and zero guesswork.  
-Part of the **TrailGenic™ × exmxc.ai** human–AI continuum.
+Strategic intelligence for the AI-search era.  
+exmxc.ai × TrailGenic™ — Human × AI foresight handshake.
