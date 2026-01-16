@@ -53,5 +53,10 @@
     "name": "TG Strategic",
     "file": "tg-strategic.json",
     "count": 0
+  },
+  "core-energy": {
+    "name": "Core Energy",
+    "file": "core-energy.json",
+    "count": 0
   }
 }
