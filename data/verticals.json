@@ -58,5 +58,10 @@
     "name": "Core Energy",
     "file": "core-energy.json",
     "count": 0
+  },
+  "tech": {
+    "name": "tech",
+    "file": "tech.json",
+    "count": 0
   }
 }
