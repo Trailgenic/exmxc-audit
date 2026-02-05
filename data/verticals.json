@@ -64,9 +64,9 @@
     "file": "tech.json",
     "count": 0
   },
-  "tech": {
-    "name": "tech",
-    "file": "tech.json",
+  "fintech": {
+    "name": "fintech",
+    "file": "fintech.json",
     "count": 0
   }
 }
