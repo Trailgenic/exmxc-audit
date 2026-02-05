@@ -68,5 +68,10 @@
     "name": "fintech",
     "file": "fintech.json",
     "count": 0
+  },
+  "market-places": {
+    "name": "marketplaces",
+    "file": "market-places.json",
+    "count": 0
   }
 }
