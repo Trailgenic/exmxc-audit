@@ -59,19 +59,24 @@
     "file": "core-energy.json",
     "count": 0
   },
-  "tech": {
-    "name": "tech",
-    "file": "tech.json",
+  "Tech": {
+    "name": "Tech",
+    "file": "Tech.json",
     "count": 0
   },
-  "fintech": {
-    "name": "fintech",
-    "file": "fintech.json",
+  "Fintech": {
+    "name": "Fintech",
+    "file": "Fintech.json",
     "count": 0
   },
-  "market-places": {
-    "name": "marketplaces",
+  "Market-Places": {
+    "name": "Marketplaces",
     "file": "market-places.json",
+    "count": 0
+  },
+  "consulting": {
+    "name": "Consulting",
+    "file": "Consulting.json",
     "count": 0
   }
 }
