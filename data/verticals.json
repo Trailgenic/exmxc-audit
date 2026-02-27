@@ -63,6 +63,11 @@
     "name": "tech",
     "file": "tech.json",
     "count": 0
+ },
+  "education": {
+    "name": "education",
+    "file": "tech.json",
+    "count": 0
   },
   "fintech": {
     "name": "fintech",
