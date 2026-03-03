@@ -1,0 +1,25 @@
+{
+  "vertical": "tier-1-regulators",
+  "urls": [
+    "https://www.federalreserve.gov/",
+    "https://www.sec.gov/",
+    "https://home.treasury.gov/",
+    "https://www.defense.gov/",
+    "https://www.energy.gov/",
+    "https://www.ftc.gov/",
+
+    "https://commission.europa.eu/",
+    "https://www.ecb.europa.eu/",
+    "https://www.ema.europa.eu/",
+    "https://www.nato.int/",
+
+    "http://www.pbc.gov.cn/",
+    "https://en.ndrc.gov.cn/",
+    "https://www.miit.gov.cn/",
+
+    "https://www.imf.org/",
+    "https://www.worldbank.org/",
+    "https://www.wto.org/",
+    "https://www.bis.org/"
+  ]
+}
