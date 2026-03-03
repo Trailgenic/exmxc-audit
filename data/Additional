@@ -1,5 +1,6 @@
 {
-  "vertical": "additional",
+  "vertical": "Additional",
+  "description": "Additional entities spanning Defense & Aerospace, Nuclear Energy, AI Labs, Cloud Infrastructure, Sovereign Wealth Funds, Critical Minerals, Grid & Power Infrastructure, Financial Infrastructure, and Telecommunications.",
   "urls": [
     "https://www.lockheedmartin.com/",
     "https://www.rtx.com/",
@@ -11,7 +12,7 @@
     "https://www.airbus.com/",
     "https://www.leonardo.com/",
     "https://www.thalesgroup.com/",
-    "http://www.avic.com/",
+    "https://www.avic.com/",
     "https://www.hanwha.com/",
     "https://www.cameco.com/",
     "https://www.orano.group/",
