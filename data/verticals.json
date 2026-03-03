@@ -24,11 +24,6 @@
     "file": "ecommerce.json",
     "count": 0
   },
-  "Additional": {
-    "name": "Additional",
-    "file": "additional.json",
-    "count": 0
-  },
   "legal-services": {
     "name": "Legal Services",
     "file": "legal-services.json",
@@ -77,6 +72,11 @@
   "market-places": {
     "name": "marketplaces",
     "file": "market-places.json",
+    "count": 0
+  },
+  "additional": {
+    "name": "additional",
+    "file": "additional.json",
     "count": 0
   },
   "consulting": {
