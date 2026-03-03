@@ -24,9 +24,9 @@
     "file": "ecommerce.json",
     "count": 0
   },
-  "influencers-creators": {
-    "name": "Influencers & Creators",
-    "file": "influencers-creators.json",
+  "Additional": {
+    "name": "Additional",
+    "file": "additional.json",
     "count": 0
   },
   "legal-services": {
