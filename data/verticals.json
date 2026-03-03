@@ -74,6 +74,11 @@
     "file": "market-places.json",
     "count": 0
   },
+  "regulators": {
+    "name": "regulators",
+    "file": "regulators.json",
+    "count": 0
+  },
   "additional": {
     "name": "additional",
     "file": "additional.json",
