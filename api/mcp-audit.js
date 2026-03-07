@@ -68,8 +68,95 @@ function detectStructuredData(schemaObjects = []) {
   };
 }
 
-function deriveNotes({ score, primary, secondary }) {
+function extractDiscoveryEndpoint(registryData) {
+  if (!registryData || typeof registryData !== "object") return null;
+  const endpoint = registryData?.discovery?.endpoint;
+  return typeof endpoint === "string" && endpoint.trim() ? endpoint.trim() : null;
+}
+
+function asAbsoluteUrl(base, raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+
+  try {
+    return new URL(raw, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function collectRegistryDatasetUrls(registryData, fallbackOrigin) {
+  const hits = new Set();
+  const visited = new Set();
+  const queue = [registryData];
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== "object") continue;
+    if (visited.has(node)) continue;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) queue.push(item);
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === "string") {
+        const lowerKey = key.toLowerCase();
+        const lowerValue = value.toLowerCase();
+
+        const looksDataset =
+          /dataset|data|download|export/.test(lowerKey) ||
+          /\.(csv|jsonl|ndjson|parquet)(\?|$)/.test(lowerValue) ||
+          /\/data(sets)?\b|\/open-data\b/.test(lowerValue);
+
+        if (looksDataset) {
+          const absolute = asAbsoluteUrl(fallbackOrigin, value);
+          if (absolute) hits.add(absolute);
+        }
+      } else if (value && typeof value === "object") {
+        queue.push(value);
+      }
+    }
+  }
+
+  return Array.from(hits);
+}
+
+async function resolveMcpOrigin(rootOrigin) {
+  const rootRegistryUrl = makeAbsolute(rootOrigin, MCP_PRIMARY_SIGNALS.toolRegistry.path);
+  const rootRegistryProbe = await probeEndpoint(rootRegistryUrl, { expectJson: true });
+
+  const registryData = rootRegistryProbe?.data && typeof rootRegistryProbe.data === "object"
+    ? rootRegistryProbe.data
+    : null;
+
+  const discoveryEndpointRaw = extractDiscoveryEndpoint(registryData);
+  const discoveryEndpoint = asAbsoluteUrl(rootOrigin, discoveryEndpointRaw);
+
+  if (!discoveryEndpoint) {
+    return {
+      mcpOrigin: rootOrigin,
+      discoveryEndpoint: null,
+      rootRegistryProbe,
+      registryData
+    };
+  }
+
+  return {
+    mcpOrigin: baseOrigin(discoveryEndpoint),
+    discoveryEndpoint,
+    rootRegistryProbe,
+    registryData
+  };
+}
+
+function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin }) {
   const notes = [];
+
+  if (discoveryEndpoint && mcpOrigin !== rootOrigin) {
+    notes.push(`Discovery pointer found; MCP host resolved to ${mcpOrigin}.`);
+  }
 
   if (primary.toolRegistry?.detected && primary.openapi?.detected) {
     notes.push("Core machine interface signals detected (tool registry + OpenAPI).");
@@ -114,7 +201,13 @@ export default async function handler(req, res) {
       });
     }
 
-    const origin = baseOrigin(url);
+    const rootOrigin = baseOrigin(url);
+    const {
+      mcpOrigin,
+      discoveryEndpoint,
+      rootRegistryProbe,
+      registryData: rootRegistryData
+    } = await resolveMcpOrigin(rootOrigin);
 
     let homepage = {
       html: "",
@@ -123,7 +216,7 @@ export default async function handler(req, res) {
     };
 
     try {
-      homepage = await staticCrawl(url);
+      homepage = await staticCrawl(mcpOrigin);
     } catch {
       // Keep auditing endpoint readiness even if homepage fetch fails
     }
@@ -134,7 +227,7 @@ export default async function handler(req, res) {
     const primarySignals = {};
 
     for (const [key, cfg] of Object.entries(MCP_PRIMARY_SIGNALS)) {
-      const endpointUrl = makeAbsolute(origin, cfg.path);
+      const endpointUrl = makeAbsolute(mcpOrigin, cfg.path);
       const probe = await probeEndpoint(endpointUrl, { expectJson: true });
 
       primarySignals[key] = {
@@ -146,7 +239,7 @@ export default async function handler(req, res) {
       };
     }
 
-    const mcpManifestUrl = makeAbsolute(origin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
+    const mcpManifestUrl = makeAbsolute(mcpOrigin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
     const mcpManifestProbe = await probeEndpoint(mcpManifestUrl, { expectJson: true });
     primarySignals.mcpManifest = {
       detected: mcpManifestProbe.detected,
@@ -158,7 +251,7 @@ export default async function handler(req, res) {
 
     const apiDocsEvidence = collectLinkEvidence(pageLinks, MCP_SECONDARY_SIGNALS.apiDocs.paths);
     for (const path of MCP_SECONDARY_SIGNALS.apiDocs.paths) {
-      const probe = await probeEndpoint(makeAbsolute(origin, path), { expectJson: false });
+      const probe = await probeEndpoint(makeAbsolute(mcpOrigin, path), { expectJson: false });
       if (probe.detected) apiDocsEvidence.push(path);
     }
 
@@ -180,7 +273,7 @@ export default async function handler(req, res) {
     };
 
     for (const path of MCP_SECONDARY_SIGNALS.jsonEndpoints.paths) {
-      const endpointUrl = makeAbsolute(origin, path);
+      const endpointUrl = makeAbsolute(mcpOrigin, path);
       const probe = await probeEndpoint(endpointUrl, { expectJson: true });
       if (probe.detected && probe.valid) {
         secondarySignals.jsonEndpoints.evidence.push(endpointUrl);
@@ -197,9 +290,17 @@ export default async function handler(req, res) {
     );
 
     for (const path of MCP_SECONDARY_SIGNALS.datasets.paths) {
-      const endpointUrl = makeAbsolute(origin, path);
+      const endpointUrl = makeAbsolute(mcpOrigin, path);
       const probe = await probeEndpoint(endpointUrl, { expectJson: false });
       if (probe.detected) datasetEvidence.push(endpointUrl);
+    }
+
+    const activeRegistryData = primarySignals.toolRegistry.detected
+      ? (await probeEndpoint(primarySignals.toolRegistry.url, { expectJson: true })).data
+      : rootRegistryData;
+
+    for (const datasetUrl of collectRegistryDatasetUrls(activeRegistryData, mcpOrigin)) {
+      datasetEvidence.push(datasetUrl);
     }
 
     secondarySignals.datasets.evidence = Array.from(new Set(datasetEvidence)).slice(0, 10);
@@ -214,7 +315,10 @@ export default async function handler(req, res) {
     const notes = deriveNotes({
       score: scoring.score,
       primary: primarySignals,
-      secondary: secondarySignals
+      secondary: secondarySignals,
+      discoveryEndpoint,
+      mcpOrigin,
+      rootOrigin
     });
 
     const output = buildMcpAuditOutput({
@@ -225,6 +329,14 @@ export default async function handler(req, res) {
       breakdown: scoring.breakdown,
       notes
     });
+
+    output.discovery = {
+      rootOrigin,
+      mcpOrigin,
+      pointer: discoveryEndpoint,
+      pointerDetected: Boolean(discoveryEndpoint),
+      rootRegistryStatus: rootRegistryProbe?.status ?? 0
+    };
 
     return res.status(200).json(output);
   } catch (err) {
