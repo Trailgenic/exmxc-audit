@@ -170,6 +170,22 @@
     .status-partial { color: var(--amber); }
     .status-blocked { color: var(--red); }
 
+    .badge-mini {
+      display: inline-block;
+      margin-right: 4px;
+      margin-bottom: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .badge-mini.good { color: var(--green); }
+    .badge-mini.warn { color: var(--amber); }
+    .badge-mini.bad { color: var(--red); }
+
     .empty {
       color: var(--muted);
       padding: 16px 8px;
@@ -211,10 +227,11 @@
             <th>MCP Score</th>
             <th>Band</th>
             <th>Inspection Status</th>
+            <th>Badges</th>
           </tr>
         </thead>
         <tbody id="resultsBody">
-          <tr><td class="empty" colspan="4">Run a dataset to view MCP batch results.</td></tr>
+          <tr><td class="empty" colspan="5">Run a dataset to view MCP batch results.</td></tr>
         </tbody>
       </table>
     </section>
@@ -290,6 +307,20 @@
       return 'Reachable';
     }
 
+
+    function capabilityBadges(result) {
+      const capability = result?.capability || result?.mcp_capability || {};
+      const badges = [];
+
+      if (capability?.mcp_present) badges.push('<span class="badge-mini good">✅ MCP</span>');
+      if (capability?.mcp_exposure === 'public_manifest') badges.push('<span class="badge-mini good">🌐 Public</span>');
+      if (capability?.mcp_exposure === 'docs_led') badges.push('<span class="badge-mini warn">📄 Docs</span>');
+      if (capability?.mcp_exposure === 'runtime_only') badges.push('<span class="badge-mini warn">⚙️ Runtime</span>');
+      if (capability?.mcp_auth === 'gated') badges.push('<span class="badge-mini bad">🔒 Gated</span>');
+
+      return badges.length ? badges.join('') : '<span class="badge-mini bad">❓ Unknown</span>';
+    }
+
     function renderSummary(results, apiPayload) {
       let totalScore = 0;
       let scored = 0;
@@ -330,7 +361,7 @@
 
     function renderTable(results) {
       if (!results.length) {
-        els.resultsBody.innerHTML = '<tr><td class="empty" colspan="4">No results in this batch response.</td></tr>';
+        els.resultsBody.innerHTML = '<tr><td class="empty" colspan="5">No results in this batch response.</td></tr>';
         return;
       }
 
@@ -349,6 +380,7 @@
           <td>${score}</td>
           <td>${bandPill(band)}</td>
           <td>${statusPill(inspection)}</td>
+          <td>${capabilityBadges(r)}</td>
         </tr>`;
       }).join('');
     }

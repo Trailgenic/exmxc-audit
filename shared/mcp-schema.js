@@ -17,7 +17,8 @@ export function buildMcpAuditOutput({
   band,
   signals,
   breakdown,
-  notes = []
+  notes = [],
+  capability = null
 }) {
   const hostname = hostnameOf(url);
 
@@ -54,6 +55,12 @@ export function buildMcpAuditOutput({
     signals_missing: missing,
     breakdown,
     notes,
+    capability: capability || {
+      mcp_present: false,
+      mcp_exposure: "unknown",
+      mcp_auth: "unknown",
+      evidence: { items: [] }
+    },
     timestamp: new Date().toISOString()
   };
 }

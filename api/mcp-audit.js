@@ -11,6 +11,18 @@ import {
 import { calculateMcpScore } from "../shared/mcp-scoring.js";
 import { buildMcpAuditOutput } from "../shared/mcp-schema.js";
 
+const PRIMARY_KEYS = ["toolRegistry", "openapi", "aiPlugin"];
+const CAPABILITY_PROBE_TIMEOUT_MS = 7000;
+const CAPABILITY_MAX_REQUESTS = 3;
+const DOCS_KEYWORDS = [
+  "mcp.",
+  "model context protocol",
+  "tool-registry.json",
+  "openapi.json",
+  "ai-plugin.json",
+  "mcp server"
+];
+
 function normalizeUrl(input) {
   const raw = (input || "").trim();
   if (!raw) return null;
@@ -151,7 +163,6 @@ async function resolveMcpOrigin(rootOrigin) {
   };
 }
 
-
 function isStructuredSpecProbe(probe) {
   const statusOk = Number(probe?.status) === 200;
   const formatOk = probe?.format === "json" || probe?.format === "yaml";
@@ -185,7 +196,172 @@ function validatePrimarySignalSchema(key, data) {
   return true;
 }
 
-function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin }) {
+function hostWithoutWww(origin) {
+  try {
+    return new URL(origin).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function isAuthStatus(status) {
+  return [401, 403, 407].includes(Number(status));
+}
+
+function hasAuthWording(text) {
+  const lower = String(text || "").toLowerCase();
+  return /auth|required|unauthorized|forbidden|token|login|access denied|challenge/.test(lower);
+}
+
+function hasMcpishJson(data) {
+  if (!data || typeof data !== "object") return false;
+  const keys = Object.keys(data).map(k => k.toLowerCase());
+  return keys.some(k => ["tools", "registry", "capabilities", "mcp"].includes(k) || k.includes("mcp"));
+}
+
+function findKeywordSnippet(text, keywords) {
+  const lower = String(text || "").toLowerCase();
+  if (!lower) return null;
+
+  for (const keyword of keywords) {
+    const needle = keyword.toLowerCase();
+    const idx = lower.indexOf(needle);
+    if (idx === -1) continue;
+
+    const start = Math.max(0, idx - 40);
+    const end = Math.min(lower.length, idx + needle.length + 80);
+    return String(text).slice(start, end).replace(/\s+/g, " ").trim();
+  }
+
+  return null;
+}
+
+function formatProbeEvidence(url, probe, snippet = "") {
+  const status = Number(probe?.status || 0);
+  const contentType = probe?.contentType ? ` ${probe.contentType}` : "";
+  const details = snippet ? ` :: ${snippet}` : "";
+  return `${url} [${status}${contentType}]${details}`.slice(0, 240);
+}
+
+function collectAuthHints(primarySignals = {}, probes = []) {
+  for (const key of PRIMARY_KEYS) {
+    const signal = primarySignals[key];
+    if (isAuthStatus(signal?.status)) return true;
+    if (hasAuthWording(signal?.dataPreview)) return true;
+  }
+
+  for (const probe of probes) {
+    if (!probe) continue;
+    if (isAuthStatus(probe.status)) return true;
+    if (hasAuthWording(probe.textSample || probe.dataPreview)) return true;
+  }
+
+  return false;
+}
+
+async function detectCapabilityFlags({ rootOrigin, mcpOrigin, primarySignals }) {
+  const evidence = [];
+  const addEvidence = (line) => {
+    if (!line || evidence.length >= 3) return;
+    evidence.push(String(line).slice(0, 240));
+  };
+
+  const allPrimaryValid = PRIMARY_KEYS.every(key => primarySignals?.[key]?.valid === true);
+
+  if (allPrimaryValid) {
+    return {
+      mcp_present: true,
+      mcp_exposure: "public_manifest",
+      mcp_auth: collectAuthHints(primarySignals) ? "gated" : "open",
+      evidence: { items: [makeAbsolute(mcpOrigin, MCP_PRIMARY_SIGNALS.toolRegistry.path)] }
+    };
+  }
+
+  let requestCount = 0;
+  const extraProbes = [];
+  const canProbe = () => requestCount < CAPABILITY_MAX_REQUESTS;
+  const cappedProbe = async (url, options = {}) => {
+    if (!canProbe()) return null;
+    requestCount += 1;
+    const probe = await probeEndpoint(url, {
+      expectJson: false,
+      timeoutMs: CAPABILITY_PROBE_TIMEOUT_MS,
+      ...options
+    });
+    extraProbes.push(probe);
+    return probe;
+  };
+
+  const rootHost = hostWithoutWww(rootOrigin);
+  let exposure = "unknown";
+
+  // 1) Probe runtime MCP subdomain
+  const runtimeUrl = rootHost ? `https://mcp.${rootHost}/` : null;
+  if (runtimeUrl) {
+    const runtimeProbe = await cappedProbe(runtimeUrl, {
+      headers: { Accept: "application/json, text/plain;q=0.9, text/html;q=0.8, */*;q=0.7" }
+    });
+
+    if (runtimeProbe) {
+      if ((Number(runtimeProbe.status) === 200 && runtimeProbe.format === "json" && hasMcpishJson(runtimeProbe.data)) || isAuthStatus(runtimeProbe.status)) {
+        exposure = "runtime_only";
+        const snippet = hasMcpishJson(runtimeProbe.data) ? "mcp-like JSON response" : "auth required";
+        addEvidence(formatProbeEvidence(runtimeUrl, runtimeProbe, snippet));
+      }
+    }
+  }
+
+  // 2) Probe docs subdomain when still unknown
+  if (exposure === "unknown" && rootHost && canProbe()) {
+    const docsMcpUrl = `https://docs.${rootHost}/mcp`;
+    let docsProbe = await cappedProbe(docsMcpUrl, { headers: { Accept: "text/html, text/plain;q=0.9, */*;q=0.8" } });
+    let docsUrlUsed = docsMcpUrl;
+
+    if (docsProbe && Number(docsProbe.status) === 404 && canProbe()) {
+      docsUrlUsed = `https://docs.${rootHost}/`;
+      docsProbe = await cappedProbe(docsUrlUsed, { headers: { Accept: "text/html, text/plain;q=0.9, */*;q=0.8" } });
+    }
+
+    if (docsProbe) {
+      const snippet = findKeywordSnippet(docsProbe.textSample || docsProbe.dataPreview || "", DOCS_KEYWORDS);
+      if (snippet || isAuthStatus(docsProbe.status)) {
+        exposure = "docs_led";
+        addEvidence(formatProbeEvidence(docsUrlUsed, docsProbe, snippet || "auth required"));
+      }
+    }
+  }
+
+  // 3) Optional final probe on root host
+  if (exposure === "unknown" && rootHost && canProbe()) {
+    const fallbackDocsUrl = `https://${rootHost}/mcp`;
+    const fallbackProbe = await cappedProbe(fallbackDocsUrl, {
+      headers: { Accept: "text/html, text/plain;q=0.9, */*;q=0.8" }
+    });
+
+    if (fallbackProbe) {
+      const snippet = findKeywordSnippet(fallbackProbe.textSample || fallbackProbe.dataPreview || "", DOCS_KEYWORDS);
+      if (snippet || isAuthStatus(fallbackProbe.status)) {
+        exposure = "docs_led";
+        addEvidence(formatProbeEvidence(fallbackDocsUrl, fallbackProbe, snippet || "auth required"));
+      }
+    }
+  }
+
+  const authGated = collectAuthHints(primarySignals, extraProbes);
+
+  if (exposure === "unknown") {
+    addEvidence("No public manifests or capability evidence found in capped probes.");
+  }
+
+  return {
+    mcp_present: exposure !== "unknown",
+    mcp_exposure: exposure,
+    mcp_auth: authGated ? "gated" : "unknown",
+    evidence: { items: evidence.slice(0, 3) }
+  };
+}
+
+function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin, capability }) {
   const notes = [];
 
   if (discoveryEndpoint && mcpOrigin !== rootOrigin) {
@@ -202,6 +378,12 @@ function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, 
 
   if (!secondary.structuredData?.detected) {
     notes.push("No JSON-LD structured data detected on homepage.");
+  }
+
+  if (capability?.mcp_exposure === "docs_led") {
+    notes.push("Capability evidence suggests docs-led MCP onboarding despite missing public manifests.");
+  } else if (capability?.mcp_exposure === "runtime_only") {
+    notes.push("Capability evidence suggests runtime MCP host without public well-known manifests.");
   }
 
   if (score >= 80) {
@@ -286,6 +468,12 @@ export async function runMcpAudit(inputUrl) {
     dataPreview: mcpManifestProbe.dataPreview
   };
 
+  const capability = await detectCapabilityFlags({
+    rootOrigin,
+    mcpOrigin,
+    primarySignals
+  });
+
   const apiDocsEvidence = collectLinkEvidence(pageLinks, MCP_SECONDARY_SIGNALS.apiDocs.paths);
   for (const path of MCP_SECONDARY_SIGNALS.apiDocs.paths) {
     const probe = await probeEndpoint(makeAbsolute(mcpOrigin, path), { expectJson: false });
@@ -355,7 +543,8 @@ export async function runMcpAudit(inputUrl) {
     secondary: secondarySignals,
     discoveryEndpoint,
     mcpOrigin,
-    rootOrigin
+    rootOrigin,
+    capability
   });
 
   const output = buildMcpAuditOutput({
@@ -364,7 +553,8 @@ export async function runMcpAudit(inputUrl) {
     band: scoring.band,
     signals,
     breakdown: scoring.breakdown,
-    notes
+    notes,
+    capability
   });
 
   output.discovery = {
