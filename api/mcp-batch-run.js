@@ -5,10 +5,6 @@ import fs from "fs/promises";
 import path from "path";
 import { runMcpAudit } from "./mcp-audit.js";
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function normalizeDomain(url) {
   const raw = String(url || "").trim();
   if (!raw) return null;
@@ -101,6 +97,67 @@ function summarize(results, totalUrls) {
   return summary;
 }
 
+async function runSingleAudit(displayUrl) {
+  const scanUrl = normalizeDomain(displayUrl);
+
+  if (!scanUrl) {
+    const fail = {
+      success: false,
+      url: displayUrl,
+      display_url: displayUrl,
+      scan_url: null,
+      error: "Invalid URL in dataset"
+    };
+    fail.inspectionStatus = deriveInspectionStatus(fail);
+    return fail;
+  }
+
+  const out = await runMcpAudit(scanUrl);
+  if (!out || out.success !== true) {
+    throw new Error(out?.error || "MCP audit returned invalid payload");
+  }
+
+  out.url = displayUrl;
+  out.display_url = displayUrl;
+  out.scan_url = scanUrl;
+  out.inspectionStatus = deriveInspectionStatus(out);
+  return out;
+}
+
+async function runBatchAudits(urls, concurrency = 5) {
+  const results = [];
+  const errors = [];
+
+  for (let i = 0; i < urls.length; i += concurrency) {
+    const slice = urls.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(slice.map(displayUrl => runSingleAudit(displayUrl)));
+
+    settled.forEach((entry, idx) => {
+      if (entry.status === "fulfilled") {
+        const result = entry.value;
+        results.push(result);
+        if (result.success === false) errors.push(result);
+        return;
+      }
+
+      const displayUrl = slice[idx];
+      const scanUrl = normalizeDomain(displayUrl);
+      const fail = {
+        success: false,
+        url: displayUrl,
+        display_url: displayUrl,
+        scan_url: scanUrl || null,
+        error: entry.reason?.message || "Unhandled MCP batch exception"
+      };
+      fail.inspectionStatus = deriveInspectionStatus(fail);
+      errors.push(fail);
+      results.push(fail);
+    });
+  }
+
+  return { results, errors };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
@@ -114,46 +171,7 @@ export default async function handler(req, res) {
     const dataset = JSON.parse(raw);
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
-
-    const results = [];
-    const errors = [];
-
-    for (const url of urls) {
-      await sleep(400);
-
-      const displayUrl = url;
-      const scanUrl = normalizeDomain(url);
-
-      try {
-        if (!scanUrl) {
-          throw new Error("Invalid URL in dataset");
-        }
-
-        const out = await runMcpAudit(scanUrl);
-
-        if (!out || out.success !== true) {
-          throw new Error(out?.error || "MCP audit returned invalid payload");
-        }
-
-        out.url = displayUrl;
-        out.display_url = displayUrl;
-        out.scan_url = scanUrl;
-        out.inspectionStatus = deriveInspectionStatus(out);
-        results.push(out);
-      } catch (err) {
-        const fail = {
-          success: false,
-          url: displayUrl,
-          display_url: displayUrl,
-          scan_url: scanUrl || null,
-          error: err.message || "Unhandled MCP batch exception"
-        };
-
-        fail.inspectionStatus = deriveInspectionStatus(fail);
-        errors.push(fail);
-        results.push(fail);
-      }
-    }
+    const { results, errors } = await runBatchAudits(urls, 5);
 
     const summary = summarize(results, urls.length);
 
