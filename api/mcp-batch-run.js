@@ -9,6 +9,19 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function normalizeDomain(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const host = u.hostname.replace(/^www\./i, "");
+    return `https://${host}`;
+  } catch {
+    return null;
+  }
+}
+
 function deriveInspectionStatus(result) {
   const errorText = String(result?.error || "").toLowerCase();
   const deniedByError = /403|forbidden|challenge|access denied|blocked/.test(errorText);
@@ -108,19 +121,31 @@ export default async function handler(req, res) {
     for (const url of urls) {
       await sleep(400);
 
+      const displayUrl = url;
+      const scanUrl = normalizeDomain(url);
+
       try {
-        const out = await runMcpAudit(url);
+        if (!scanUrl) {
+          throw new Error("Invalid URL in dataset");
+        }
+
+        const out = await runMcpAudit(scanUrl);
 
         if (!out || out.success !== true) {
           throw new Error(out?.error || "MCP audit returned invalid payload");
         }
 
+        out.url = displayUrl;
+        out.display_url = displayUrl;
+        out.scan_url = scanUrl;
         out.inspectionStatus = deriveInspectionStatus(out);
         results.push(out);
       } catch (err) {
         const fail = {
           success: false,
-          url,
+          url: displayUrl,
+          display_url: displayUrl,
+          scan_url: scanUrl || null,
           error: err.message || "Unhandled MCP batch exception"
         };
 
