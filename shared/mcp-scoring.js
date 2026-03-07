@@ -39,17 +39,14 @@ export function calculateMcpScore(signals = {}) {
   for (const [key, cfg] of Object.entries(MCP_PRIMARY_SIGNALS)) {
     const sig = primary[key] || {};
     const detected = sig.detected === true;
-    const valid = sig.valid !== false;
+    const valid = sig.valid === true;
 
     let points = 0;
-    let notes = "Missing";
+    let notes = "Missing or invalid";
 
     if (detected && valid) {
       points = cfg.weight;
-      notes = "Detected and valid";
-    } else if (detected) {
-      points = Math.round(cfg.weight * 0.4);
-      notes = "Detected but invalid/partial";
+      notes = "Detected and schema-valid";
     }
 
     total += points;

@@ -151,6 +151,40 @@ async function resolveMcpOrigin(rootOrigin) {
   };
 }
 
+
+function isStructuredSpecProbe(probe) {
+  const statusOk = Number(probe?.status) === 200;
+  const formatOk = probe?.format === "json" || probe?.format === "yaml";
+  const parsedOk = Boolean(probe?.data && typeof probe.data === "object");
+  return statusOk && formatOk && parsedOk;
+}
+
+function validateOpenApiSchema(data) {
+  if (!data || typeof data !== "object") return false;
+  const hasVersion = typeof data.openapi === "string" || typeof data.swagger === "string";
+  const hasPaths = data.paths && typeof data.paths === "object" && !Array.isArray(data.paths);
+  return hasVersion && hasPaths;
+}
+
+function validateToolRegistrySchema(data) {
+  if (!data || typeof data !== "object") return false;
+  return Array.isArray(data.tools);
+}
+
+function validateAiPluginSchema(data) {
+  if (!data || typeof data !== "object") return false;
+  const hasSchemaVersion = typeof data.schema_version === "string" && data.schema_version.trim().length > 0;
+  const hasApi = data.api && typeof data.api === "object";
+  return hasSchemaVersion && hasApi;
+}
+
+function validatePrimarySignalSchema(key, data) {
+  if (key === "openapi") return validateOpenApiSchema(data);
+  if (key === "toolRegistry") return validateToolRegistrySchema(data);
+  if (key === "aiPlugin") return validateAiPluginSchema(data);
+  return true;
+}
+
 function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin }) {
   const notes = [];
 
@@ -217,27 +251,38 @@ export async function runMcpAudit(inputUrl) {
   const schemaObjects = Array.isArray(homepage.schemaObjects) ? homepage.schemaObjects : [];
 
   const primarySignals = {};
+  const primaryData = {};
 
   for (const [key, cfg] of Object.entries(MCP_PRIMARY_SIGNALS)) {
     const endpointUrl = makeAbsolute(mcpOrigin, cfg.path);
     const probe = await probeEndpoint(endpointUrl, { expectJson: true });
 
+    const structured = isStructuredSpecProbe(probe);
+    const schemaValid = structured && validatePrimarySignalSchema(key, probe.data);
+
+    primaryData[key] = probe.data;
     primarySignals[key] = {
-      detected: probe.detected,
+      detected: schemaValid,
       url: endpointUrl,
       status: probe.status,
-      valid: probe.valid,
+      valid: schemaValid,
+      schemaValid,
+      format: probe.format,
+      contentType: probe.contentType,
       dataPreview: probe.dataPreview
     };
   }
 
   const mcpManifestUrl = makeAbsolute(mcpOrigin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
   const mcpManifestProbe = await probeEndpoint(mcpManifestUrl, { expectJson: true });
+  const manifestValid = isStructuredSpecProbe(mcpManifestProbe);
   primarySignals.mcpManifest = {
-    detected: mcpManifestProbe.detected,
+    detected: manifestValid,
     url: mcpManifestUrl,
     status: mcpManifestProbe.status,
-    valid: mcpManifestProbe.valid,
+    valid: manifestValid,
+    format: mcpManifestProbe.format,
+    contentType: mcpManifestProbe.contentType,
     dataPreview: mcpManifestProbe.dataPreview
   };
 
@@ -288,7 +333,7 @@ export async function runMcpAudit(inputUrl) {
   }
 
   const activeRegistryData = primarySignals.toolRegistry.detected
-    ? (await probeEndpoint(primarySignals.toolRegistry.url, { expectJson: true })).data
+    ? primaryData.toolRegistry
     : rootRegistryData;
 
   for (const datasetUrl of collectRegistryDatasetUrls(activeRegistryData, mcpOrigin)) {
