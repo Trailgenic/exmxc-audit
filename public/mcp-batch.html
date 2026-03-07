@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MCP Batch Readiness Audit</title>
+  <style>
+    :root {
+      --bg:#050914;
+      --panel:#0b1224;
+      --border:#1e2a4a;
+      --text:#e6ebff;
+      --muted:#9aa4c7;
+      --accent:#4f7cff;
+      --green:#22c55e;
+      --amber:#fbbf24;
+      --red:#ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0a1024, #030611);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 34px auto;
+      padding: 0 20px 44px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .sub {
+      margin: 8px 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, #0b1224, #060b1c);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      font-weight: 600;
+    }
+
+    select {
+      min-width: 260px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    button {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #4f7cff, #6f9bff);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 140px;
+    }
+
+    button:disabled { opacity: .65; cursor: default; }
+
+    .status { min-height: 20px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      background: rgba(11, 18, 36, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .card .k {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .card .v {
+      font-size: 24px;
+      line-height: 1.1;
+      font-weight: 750;
+    }
+
+    .card .v.time { font-size: 13px; font-weight: 600; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    a { color: #9ac2ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      color: var(--text);
+    }
+
+    .band-ready { color: var(--green); }
+    .band-partial { color: var(--amber); }
+    .band-low { color: var(--red); }
+
+    .status-reachable { color: var(--green); }
+    .status-partial { color: var(--amber); }
+    .status-blocked { color: var(--red); }
+
+    .empty {
+      color: var(--muted);
+      padding: 16px 8px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>MCP Batch Readiness Audit</h1>
+    <p class="sub">Run MCP readiness scans across a dataset via <code>/api/mcp-batch-run</code>.</p>
+
+    <section class="panel">
+      <label for="datasetSelect">Dataset</label>
+      <div class="controls">
+        <select id="datasetSelect"></select>
+        <button id="runBtn">Run MCP Batch</button>
+      </div>
+      <div id="status" class="status">Loading dataset list...</div>
+    </section>
+
+    <section class="panel">
+      <div class="cards">
+        <div class="card"><div class="k">Sites Scanned</div><div id="sitesScanned" class="v">0</div></div>
+        <div class="card"><div class="k">Avg MCP Score</div><div id="avgScore" class="v">0.00</div></div>
+        <div class="card"><div class="k">Ready (80–100)</div><div id="countReady" class="v">0</div></div>
+        <div class="card"><div class="k">Partial (60–79)</div><div id="countPartial" class="v">0</div></div>
+        <div class="card"><div class="k">Emerging (40–59)</div><div id="countEmerging" class="v">0</div></div>
+        <div class="card"><div class="k">Not Ready (0–39)</div><div id="countNotReady" class="v">0</div></div>
+        <div class="card"><div class="k">Blocked</div><div id="countBlocked" class="v">0</div></div>
+        <div class="card"><div class="k">Last Run Timestamp</div><div id="lastRun" class="v time">—</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>URL</th>
+            <th>MCP Score</th>
+            <th>Band</th>
+            <th>Inspection Status</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td class="empty" colspan="4">Run a dataset to view MCP batch results.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      select: document.getElementById('datasetSelect'),
+      runBtn: document.getElementById('runBtn'),
+      status: document.getElementById('status'),
+      resultsBody: document.getElementById('resultsBody'),
+      sitesScanned: document.getElementById('sitesScanned'),
+      avgScore: document.getElementById('avgScore'),
+      countReady: document.getElementById('countReady'),
+      countPartial: document.getElementById('countPartial'),
+      countEmerging: document.getElementById('countEmerging'),
+      countNotReady: document.getElementById('countNotReady'),
+      countBlocked: document.getElementById('countBlocked'),
+      lastRun: document.getElementById('lastRun')
+    };
+
+    function setStatus(message, isError = false) {
+      els.status.textContent = message;
+      els.status.classList.toggle('error', isError);
+    }
+
+    function toBand(score) {
+      if (score >= 80) return 'mcp-ready';
+      if (score >= 60) return 'partially-ready';
+      if (score >= 40) return 'emerging';
+      return 'not-ready';
+    }
+
+    function bandPill(band) {
+      const b = String(band || 'not-ready').toLowerCase();
+      let cls = 'band-low';
+      if (b === 'mcp-ready') cls = 'band-ready';
+      else if (b === 'partially-ready') cls = 'band-partial';
+      const label = b.replace('-', ' ');
+      return `<span class="pill ${cls}">${label}</span>`;
+    }
+
+    function statusPill(status) {
+      const s = String(status || 'Blocked');
+      const lower = s.toLowerCase();
+      if (lower === 'reachable') return '<span class="pill status-reachable">Reachable</span>';
+      if (lower === 'partial') return '<span class="pill status-partial">Partial</span>';
+      return '<span class="pill status-blocked">Blocked</span>';
+    }
+
+    function statusFromResult(result) {
+      const errorText = String(result?.error || '').toLowerCase();
+      const accessDenied = /403|forbidden|challenge|access denied|blocked/.test(errorText);
+      if (result?.success === false) {
+        return accessDenied ? 'Blocked' : 'Blocked';
+      }
+
+      const primary = result?.signals?.primary || {};
+      const statuses = [
+        primary?.toolRegistry?.status,
+        primary?.openapi?.status,
+        primary?.aiPlugin?.status,
+        primary?.mcpManifest?.status
+      ].filter(v => Number.isFinite(v));
+
+      if (!statuses.length) return 'Blocked';
+
+      const blockedCount = statuses.filter(s => s === 403).length;
+      const nonBlockedCount = statuses.filter(s => s !== 403).length;
+
+      if (blockedCount > 0 && nonBlockedCount > 0) return 'Partial';
+      if (blockedCount > 0) return 'Blocked';
+      return 'Reachable';
+    }
+
+    function renderSummary(results, apiPayload) {
+      let totalScore = 0;
+      let scored = 0;
+      let ready = 0;
+      let partial = 0;
+      let emerging = 0;
+      let notReady = 0;
+      let blocked = 0;
+
+      for (const r of results) {
+        const inspection = statusFromResult(r);
+        if (inspection === 'Blocked') blocked++;
+
+        if (r?.success === true && Number.isFinite(Number(r?.mcp?.score))) {
+          const score = Number(r.mcp.score);
+          totalScore += score;
+          scored++;
+
+          const band = (r?.mcp?.band || toBand(score)).toLowerCase();
+          if (band === 'mcp-ready') ready++;
+          else if (band === 'partially-ready') partial++;
+          else if (band === 'emerging') emerging++;
+          else notReady++;
+        } else {
+          notReady++;
+        }
+      }
+
+      els.sitesScanned.textContent = String(results.length);
+      els.avgScore.textContent = scored ? (totalScore / scored).toFixed(2) : '0.00';
+      els.countReady.textContent = String(ready);
+      els.countPartial.textContent = String(partial);
+      els.countEmerging.textContent = String(emerging);
+      els.countNotReady.textContent = String(notReady);
+      els.countBlocked.textContent = String(blocked);
+      els.lastRun.textContent = apiPayload?.timestamp ? new Date(apiPayload.timestamp).toLocaleString() : '—';
+    }
+
+    function renderTable(results) {
+      if (!results.length) {
+        els.resultsBody.innerHTML = '<tr><td class="empty" colspan="4">No results in this batch response.</td></tr>';
+        return;
+      }
+
+      els.resultsBody.innerHTML = results.map(r => {
+        const url = r?.url || '—';
+        const score = r?.success === true && Number.isFinite(Number(r?.mcp?.score)) ? Number(r.mcp.score).toFixed(0) : '—';
+        const band = r?.success === true ? (r?.mcp?.band || toBand(Number(r?.mcp?.score || 0))) : 'not-ready';
+        const inspection = statusFromResult(r);
+
+        const link = url !== '—'
+          ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+          : '—';
+
+        return `<tr>
+          <td class="mono">${link}</td>
+          <td>${score}</td>
+          <td>${bandPill(band)}</td>
+          <td>${statusPill(inspection)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function loadDatasets() {
+      try {
+        const resp = await fetch('/api/verticals');
+        const data = await resp.json();
+
+        const verticals = Array.isArray(data?.verticals) ? data.verticals : [];
+        els.select.innerHTML = '';
+
+        if (!verticals.length) throw new Error('No dataset options from /api/verticals');
+
+        for (const v of verticals) {
+          const opt = document.createElement('option');
+          opt.value = v.value;
+          opt.textContent = v.label || v.value;
+          els.select.appendChild(opt);
+        }
+
+        const saved = localStorage.getItem('mcp:lastDataset');
+        if (saved && verticals.some(v => v.value === saved)) {
+          els.select.value = saved;
+        }
+
+        setStatus('Dataset list loaded.');
+      } catch (err) {
+        const fallback = ['core-web', 'tg-strategic', 'core-health', 'core-finance'];
+        els.select.innerHTML = fallback.map(v => `<option value="${v}">${v}</option>`).join('');
+        setStatus('Using fallback dataset list. Could not load /api/verticals.', true);
+      }
+    }
+
+    async function runBatch() {
+      const dataset = els.select.value || 'core-web';
+      localStorage.setItem('mcp:lastDataset', dataset);
+
+      els.runBtn.disabled = true;
+      setStatus(`Running MCP batch for ${dataset}...`);
+
+      try {
+        const resp = await fetch(`/api/mcp-batch-run?dataset=${encodeURIComponent(dataset)}`);
+        const data = await resp.json();
+
+        if (!resp.ok || !data?.success) {
+          throw new Error(data?.error || 'Batch request failed.');
+        }
+
+        const results = Array.isArray(data.results) ? data.results : [];
+        renderSummary(results, data);
+        renderTable(results);
+        setStatus(`Batch complete for ${data.dataset || dataset}.`);
+      } catch (err) {
+        setStatus(err.message || 'Failed to run MCP batch.', true);
+      } finally {
+        els.runBtn.disabled = false;
+      }
+    }
+
+    els.runBtn.addEventListener('click', runBatch);
+    loadDatasets();
+  </script>
+</body>
+</html>
