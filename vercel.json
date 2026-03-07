@@ -15,6 +15,9 @@
 
     { "src": "^/api/audit-batch$", "dest": "/api/audit-batch.js" },
 
+    { "src": "^/api/mcp-audit$", "dest": "/api/mcp-audit.js" },
+    { "src": "^/api/mcp-batch-run$", "dest": "/api/mcp-batch-run.js" },
+
     { "src": "^/batch$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run.html$", "dest": "/public/batch-run.html" },
@@ -27,6 +30,12 @@
 
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
     { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
+
+    { "src": "^/mcp-audit$", "dest": "/public/mcp-audit.html" },
+    { "src": "^/mcp-audit.html$", "dest": "/public/mcp-audit.html" },
+
+    { "src": "^/mcp-batch$", "dest": "/public/mcp-batch.html" },
+    { "src": "^/mcp-batch.html$", "dest": "/public/mcp-batch.html" },
 
     { "src": "^/(.*)$", "dest": "/public/index.html" }
   ]
