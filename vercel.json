@@ -10,6 +10,8 @@
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
     { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
     { "src": "^/api/verticals$", "dest": "/api/verticals.js" },
+    { "src": "^/api/mcp-audit$", "dest": "/api/mcp-audit.js" },
+    { "src": "^/api/mcp-batch-run$", "dest": "/api/mcp-batch-run.js" },
 
     { "src": "^/api/audit-batch$", "dest": "/api/audit-batch.js" },
 
