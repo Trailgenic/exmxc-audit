@@ -31,6 +31,9 @@
     { "src": "^/styles.css$", "dest": "/public/styles.css" },
     { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
 
+    { "src": "^/mcp-audit$", "dest": "/public/mcp-audit.html" },
+    { "src": "^/mcp-audit.html$", "dest": "/public/mcp-audit.html" },
+
     { "src": "^/(.*)$", "dest": "/public/index.html" }
   ]
 }
