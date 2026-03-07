@@ -165,6 +165,7 @@
     .band-ready { color: var(--green); }
     .band-partial { color: var(--amber); }
     .band-low { color: var(--red); }
+    .band-unobserved { color: var(--muted); }
 
     .status-reachable { color: var(--green); }
     .status-partial { color: var(--amber); }
@@ -270,6 +271,7 @@
       let cls = 'band-low';
       if (b === 'mcp-ready') cls = 'band-ready';
       else if (b === 'partially-ready') cls = 'band-partial';
+      else if (b === 'unobserved') cls = 'band-unobserved';
       const label = b.replace('-', ' ');
       return `<span class="pill ${cls}">${label}</span>`;
     }
@@ -368,8 +370,9 @@
       els.resultsBody.innerHTML = results.map(r => {
         const url = r?.url || '—';
         const score = r?.success === true && Number.isFinite(Number(r?.mcp?.score)) ? Number(r.mcp.score).toFixed(0) : '—';
-        const band = r?.success === true ? (r?.mcp?.band || toBand(Number(r?.mcp?.score || 0))) : 'not-ready';
         const inspection = statusFromResult(r);
+        const baseBand = r?.success === true ? (r?.mcp?.band || toBand(Number(r?.mcp?.score || 0))) : 'not-ready';
+        const band = inspection === 'Blocked' ? 'unobserved' : baseBand;
 
         const link = url !== '—'
           ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
