@@ -152,6 +152,12 @@ async function runSingleAudit(displayUrl, perDomainTimeoutMs) {
   out.display_url = displayUrl;
   out.scan_url = scanUrl;
   out.inspectionStatus = deriveInspectionStatus(out);
+
+  if (out.inspectionStatus === "Blocked" && out.mcp && typeof out.mcp === "object") {
+    out.mcp.score = null;
+    out.mcp.band = "unobserved";
+  }
+
   return out;
 }
 
