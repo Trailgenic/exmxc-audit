@@ -34,6 +34,9 @@
     { "src": "^/mcp-audit$", "dest": "/public/mcp-audit.html" },
     { "src": "^/mcp-audit.html$", "dest": "/public/mcp-audit.html" },
 
+    { "src": "^/mcp-batch$", "dest": "/public/mcp-batch.html" },
+    { "src": "^/mcp-batch.html$", "dest": "/public/mcp-batch.html" },
+
     { "src": "^/(.*)$", "dest": "/public/index.html" }
   ]
 }
