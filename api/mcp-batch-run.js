@@ -5,6 +5,11 @@ import fs from "fs/promises";
 import path from "path";
 import { runMcpAudit } from "./mcp-audit.js";
 
+const DEFAULT_CONCURRENCY = 5;
+const MAX_CONCURRENCY = 10;
+const DEFAULT_PER_DOMAIN_TIMEOUT_MS = 15000;
+const DEFAULT_DEADLINE_MS = 275000; // leave headroom under Vercel 300s hard limit
+
 function normalizeDomain(url) {
   const raw = String(url || "").trim();
   if (!raw) return null;
@@ -16,6 +21,27 @@ function normalizeDomain(url) {
   } catch {
     return null;
   }
+}
+
+function parsePositiveInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < 0) return fallback;
+  return Math.floor(n);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function withTimeout(promise, timeoutMs, onTimeout) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(onTimeout()), timeoutMs);
+    })
+  ]);
 }
 
 function deriveInspectionStatus(result) {
@@ -97,7 +123,7 @@ function summarize(results, totalUrls) {
   return summary;
 }
 
-async function runSingleAudit(displayUrl) {
+async function runSingleAudit(displayUrl, perDomainTimeoutMs) {
   const scanUrl = normalizeDomain(displayUrl);
 
   if (!scanUrl) {
@@ -112,7 +138,12 @@ async function runSingleAudit(displayUrl) {
     return fail;
   }
 
-  const out = await runMcpAudit(scanUrl);
+  const out = await withTimeout(
+    runMcpAudit(scanUrl),
+    perDomainTimeoutMs,
+    () => new Error(`MCP audit timed out after ${perDomainTimeoutMs}ms`)
+  );
+
   if (!out || out.success !== true) {
     throw new Error(out?.error || "MCP audit returned invalid payload");
   }
@@ -124,15 +155,31 @@ async function runSingleAudit(displayUrl) {
   return out;
 }
 
-async function runBatchAudits(urls, concurrency = 5) {
+async function runBatchAudits(urls, options = {}) {
   const results = [];
   const errors = [];
+  const concurrency = clamp(parsePositiveInt(options.concurrency, DEFAULT_CONCURRENCY), 1, MAX_CONCURRENCY);
+  const perDomainTimeoutMs = parsePositiveInt(options.perDomainTimeoutMs, DEFAULT_PER_DOMAIN_TIMEOUT_MS);
+  const deadlineMs = parsePositiveInt(options.deadlineMs, DEFAULT_DEADLINE_MS);
+  const startedAt = Date.now();
+
+  let processed = 0;
+  let timedOut = false;
 
   for (let i = 0; i < urls.length; i += concurrency) {
+    if (Date.now() - startedAt >= deadlineMs) {
+      timedOut = true;
+      break;
+    }
+
     const slice = urls.slice(i, i + concurrency);
-    const settled = await Promise.allSettled(slice.map(displayUrl => runSingleAudit(displayUrl)));
+    const settled = await Promise.allSettled(
+      slice.map(displayUrl => runSingleAudit(displayUrl, perDomainTimeoutMs))
+    );
 
     settled.forEach((entry, idx) => {
+      processed += 1;
+
       if (entry.status === "fulfilled") {
         const result = entry.value;
         results.push(result);
@@ -155,7 +202,19 @@ async function runBatchAudits(urls, concurrency = 5) {
     });
   }
 
-  return { results, errors };
+  return {
+    results,
+    errors,
+    meta: {
+      processed,
+      totalRequested: urls.length,
+      timedOut,
+      remaining: Math.max(urls.length - processed, 0),
+      concurrency,
+      perDomainTimeoutMs,
+      deadlineMs
+    }
+  };
 }
 
 export default async function handler(req, res) {
@@ -171,9 +230,19 @@ export default async function handler(req, res) {
     const dataset = JSON.parse(raw);
 
     const urls = Array.isArray(dataset.urls) ? dataset.urls : [];
-    const { results, errors } = await runBatchAudits(urls, 5);
 
-    const summary = summarize(results, urls.length);
+    const offset = clamp(parsePositiveInt(req.query.offset, 0), 0, urls.length);
+    const limit = parsePositiveInt(req.query.limit, urls.length - offset);
+    const boundedLimit = clamp(limit, 1, Math.max(urls.length - offset, 1));
+    const targetUrls = urls.slice(offset, offset + boundedLimit);
+
+    const { results, errors, meta } = await runBatchAudits(targetUrls, {
+      concurrency: req.query.concurrency,
+      perDomainTimeoutMs: req.query.perDomainTimeoutMs,
+      deadlineMs: req.query.deadlineMs
+    });
+
+    const summary = summarize(results, targetUrls.length);
 
     return res.status(200).json({
       success: true,
@@ -182,7 +251,15 @@ export default async function handler(req, res) {
       summary,
       results,
       errors,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      paging: {
+        offset,
+        limit: boundedLimit,
+        nextOffset: offset + meta.processed,
+        hasMore: offset + meta.processed < urls.length,
+        totalDatasetUrls: urls.length
+      },
+      runtime: meta
     });
   } catch (err) {
     return res.status(500).json({
