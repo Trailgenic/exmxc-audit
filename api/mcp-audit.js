@@ -183,6 +183,156 @@ function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, 
   return notes;
 }
 
+export async function runMcpAudit(inputUrl) {
+  const url = normalizeUrl(inputUrl);
+
+  if (!url) {
+    return {
+      success: false,
+      error: "Invalid or missing URL"
+    };
+  }
+
+  const rootOrigin = baseOrigin(url);
+  const {
+    mcpOrigin,
+    discoveryEndpoint,
+    rootRegistryProbe,
+    registryData: rootRegistryData
+  } = await resolveMcpOrigin(rootOrigin);
+
+  let homepage = {
+    html: "",
+    schemaObjects: [],
+    pageLinks: []
+  };
+
+  try {
+    homepage = await staticCrawl(mcpOrigin);
+  } catch {
+    // Keep auditing endpoint readiness even if homepage fetch fails
+  }
+
+  const pageLinks = Array.isArray(homepage.pageLinks) ? homepage.pageLinks : [];
+  const schemaObjects = Array.isArray(homepage.schemaObjects) ? homepage.schemaObjects : [];
+
+  const primarySignals = {};
+
+  for (const [key, cfg] of Object.entries(MCP_PRIMARY_SIGNALS)) {
+    const endpointUrl = makeAbsolute(mcpOrigin, cfg.path);
+    const probe = await probeEndpoint(endpointUrl, { expectJson: true });
+
+    primarySignals[key] = {
+      detected: probe.detected,
+      url: endpointUrl,
+      status: probe.status,
+      valid: probe.valid,
+      dataPreview: probe.dataPreview
+    };
+  }
+
+  const mcpManifestUrl = makeAbsolute(mcpOrigin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
+  const mcpManifestProbe = await probeEndpoint(mcpManifestUrl, { expectJson: true });
+  primarySignals.mcpManifest = {
+    detected: mcpManifestProbe.detected,
+    url: mcpManifestUrl,
+    status: mcpManifestProbe.status,
+    valid: mcpManifestProbe.valid,
+    dataPreview: mcpManifestProbe.dataPreview
+  };
+
+  const apiDocsEvidence = collectLinkEvidence(pageLinks, MCP_SECONDARY_SIGNALS.apiDocs.paths);
+  for (const path of MCP_SECONDARY_SIGNALS.apiDocs.paths) {
+    const probe = await probeEndpoint(makeAbsolute(mcpOrigin, path), { expectJson: false });
+    if (probe.detected) apiDocsEvidence.push(path);
+  }
+
+  const secondarySignals = {
+    apiDocs: {
+      detected: apiDocsEvidence.length > 0,
+      evidence: Array.from(new Set(apiDocsEvidence)).slice(0, 10)
+    },
+    jsonEndpoints: {
+      detected: false,
+      count: 0,
+      evidence: []
+    },
+    datasets: {
+      detected: false,
+      evidence: []
+    },
+    structuredData: detectStructuredData(schemaObjects)
+  };
+
+  for (const path of MCP_SECONDARY_SIGNALS.jsonEndpoints.paths) {
+    const endpointUrl = makeAbsolute(mcpOrigin, path);
+    const probe = await probeEndpoint(endpointUrl, { expectJson: true });
+    if (probe.detected && probe.valid) {
+      secondarySignals.jsonEndpoints.evidence.push(endpointUrl);
+    }
+  }
+
+  secondarySignals.jsonEndpoints.evidence = Array.from(new Set(secondarySignals.jsonEndpoints.evidence));
+  secondarySignals.jsonEndpoints.count = secondarySignals.jsonEndpoints.evidence.length;
+  secondarySignals.jsonEndpoints.detected = secondarySignals.jsonEndpoints.count > 0;
+
+  const datasetEvidence = collectLinkEvidence(
+    pageLinks,
+    [...MCP_SECONDARY_SIGNALS.datasets.paths, ...MCP_SECONDARY_SIGNALS.datasets.extensions]
+  );
+
+  for (const path of MCP_SECONDARY_SIGNALS.datasets.paths) {
+    const endpointUrl = makeAbsolute(mcpOrigin, path);
+    const probe = await probeEndpoint(endpointUrl, { expectJson: false });
+    if (probe.detected) datasetEvidence.push(endpointUrl);
+  }
+
+  const activeRegistryData = primarySignals.toolRegistry.detected
+    ? (await probeEndpoint(primarySignals.toolRegistry.url, { expectJson: true })).data
+    : rootRegistryData;
+
+  for (const datasetUrl of collectRegistryDatasetUrls(activeRegistryData, mcpOrigin)) {
+    datasetEvidence.push(datasetUrl);
+  }
+
+  secondarySignals.datasets.evidence = Array.from(new Set(datasetEvidence)).slice(0, 10);
+  secondarySignals.datasets.detected = secondarySignals.datasets.evidence.length > 0;
+
+  const signals = {
+    primary: primarySignals,
+    secondary: secondarySignals
+  };
+
+  const scoring = calculateMcpScore(signals);
+  const notes = deriveNotes({
+    score: scoring.score,
+    primary: primarySignals,
+    secondary: secondarySignals,
+    discoveryEndpoint,
+    mcpOrigin,
+    rootOrigin
+  });
+
+  const output = buildMcpAuditOutput({
+    url,
+    score: scoring.score,
+    band: scoring.band,
+    signals,
+    breakdown: scoring.breakdown,
+    notes
+  });
+
+  output.discovery = {
+    rootOrigin,
+    mcpOrigin,
+    pointer: discoveryEndpoint,
+    pointerDetected: Boolean(discoveryEndpoint),
+    rootRegistryStatus: rootRegistryProbe?.status ?? 0
+  };
+
+  return output;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -191,152 +341,11 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const input = req.query?.url;
-    const url = normalizeUrl(input);
+    const output = await runMcpAudit(req.query?.url);
 
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid or missing URL"
-      });
+    if (!output?.success) {
+      return res.status(400).json(output);
     }
-
-    const rootOrigin = baseOrigin(url);
-    const {
-      mcpOrigin,
-      discoveryEndpoint,
-      rootRegistryProbe,
-      registryData: rootRegistryData
-    } = await resolveMcpOrigin(rootOrigin);
-
-    let homepage = {
-      html: "",
-      schemaObjects: [],
-      pageLinks: []
-    };
-
-    try {
-      homepage = await staticCrawl(mcpOrigin);
-    } catch {
-      // Keep auditing endpoint readiness even if homepage fetch fails
-    }
-
-    const pageLinks = Array.isArray(homepage.pageLinks) ? homepage.pageLinks : [];
-    const schemaObjects = Array.isArray(homepage.schemaObjects) ? homepage.schemaObjects : [];
-
-    const primarySignals = {};
-
-    for (const [key, cfg] of Object.entries(MCP_PRIMARY_SIGNALS)) {
-      const endpointUrl = makeAbsolute(mcpOrigin, cfg.path);
-      const probe = await probeEndpoint(endpointUrl, { expectJson: true });
-
-      primarySignals[key] = {
-        detected: probe.detected,
-        url: endpointUrl,
-        status: probe.status,
-        valid: probe.valid,
-        dataPreview: probe.dataPreview
-      };
-    }
-
-    const mcpManifestUrl = makeAbsolute(mcpOrigin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
-    const mcpManifestProbe = await probeEndpoint(mcpManifestUrl, { expectJson: true });
-    primarySignals.mcpManifest = {
-      detected: mcpManifestProbe.detected,
-      url: mcpManifestUrl,
-      status: mcpManifestProbe.status,
-      valid: mcpManifestProbe.valid,
-      dataPreview: mcpManifestProbe.dataPreview
-    };
-
-    const apiDocsEvidence = collectLinkEvidence(pageLinks, MCP_SECONDARY_SIGNALS.apiDocs.paths);
-    for (const path of MCP_SECONDARY_SIGNALS.apiDocs.paths) {
-      const probe = await probeEndpoint(makeAbsolute(mcpOrigin, path), { expectJson: false });
-      if (probe.detected) apiDocsEvidence.push(path);
-    }
-
-    const secondarySignals = {
-      apiDocs: {
-        detected: apiDocsEvidence.length > 0,
-        evidence: Array.from(new Set(apiDocsEvidence)).slice(0, 10)
-      },
-      jsonEndpoints: {
-        detected: false,
-        count: 0,
-        evidence: []
-      },
-      datasets: {
-        detected: false,
-        evidence: []
-      },
-      structuredData: detectStructuredData(schemaObjects)
-    };
-
-    for (const path of MCP_SECONDARY_SIGNALS.jsonEndpoints.paths) {
-      const endpointUrl = makeAbsolute(mcpOrigin, path);
-      const probe = await probeEndpoint(endpointUrl, { expectJson: true });
-      if (probe.detected && probe.valid) {
-        secondarySignals.jsonEndpoints.evidence.push(endpointUrl);
-      }
-    }
-
-    secondarySignals.jsonEndpoints.evidence = Array.from(new Set(secondarySignals.jsonEndpoints.evidence));
-    secondarySignals.jsonEndpoints.count = secondarySignals.jsonEndpoints.evidence.length;
-    secondarySignals.jsonEndpoints.detected = secondarySignals.jsonEndpoints.count > 0;
-
-    const datasetEvidence = collectLinkEvidence(
-      pageLinks,
-      [...MCP_SECONDARY_SIGNALS.datasets.paths, ...MCP_SECONDARY_SIGNALS.datasets.extensions]
-    );
-
-    for (const path of MCP_SECONDARY_SIGNALS.datasets.paths) {
-      const endpointUrl = makeAbsolute(mcpOrigin, path);
-      const probe = await probeEndpoint(endpointUrl, { expectJson: false });
-      if (probe.detected) datasetEvidence.push(endpointUrl);
-    }
-
-    const activeRegistryData = primarySignals.toolRegistry.detected
-      ? (await probeEndpoint(primarySignals.toolRegistry.url, { expectJson: true })).data
-      : rootRegistryData;
-
-    for (const datasetUrl of collectRegistryDatasetUrls(activeRegistryData, mcpOrigin)) {
-      datasetEvidence.push(datasetUrl);
-    }
-
-    secondarySignals.datasets.evidence = Array.from(new Set(datasetEvidence)).slice(0, 10);
-    secondarySignals.datasets.detected = secondarySignals.datasets.evidence.length > 0;
-
-    const signals = {
-      primary: primarySignals,
-      secondary: secondarySignals
-    };
-
-    const scoring = calculateMcpScore(signals);
-    const notes = deriveNotes({
-      score: scoring.score,
-      primary: primarySignals,
-      secondary: secondarySignals,
-      discoveryEndpoint,
-      mcpOrigin,
-      rootOrigin
-    });
-
-    const output = buildMcpAuditOutput({
-      url,
-      score: scoring.score,
-      band: scoring.band,
-      signals,
-      breakdown: scoring.breakdown,
-      notes
-    });
-
-    output.discovery = {
-      rootOrigin,
-      mcpOrigin,
-      pointer: discoveryEndpoint,
-      pointerDetected: Boolean(discoveryEndpoint),
-      rootRegistryStatus: rootRegistryProbe?.status ?? 0
-    };
 
     return res.status(200).json(output);
   } catch (err) {

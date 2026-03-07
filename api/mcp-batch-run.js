@@ -3,10 +3,33 @@
 
 import fs from "fs/promises";
 import path from "path";
-import mcpAuditHandler from "./mcp-audit.js";
+import { runMcpAudit } from "./mcp-audit.js";
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function deriveInspectionStatus(result) {
+  const errorText = String(result?.error || "").toLowerCase();
+  const deniedByError = /403|forbidden|challenge|access denied|blocked/.test(errorText);
+
+  const primary = result?.signals?.primary || {};
+  const statuses = [
+    primary?.toolRegistry?.status,
+    primary?.openapi?.status,
+    primary?.aiPlugin?.status,
+    primary?.mcpManifest?.status
+  ].filter(v => Number.isFinite(v));
+
+  if (result?.success === false) return deniedByError ? "Blocked" : "Blocked";
+  if (!statuses.length) return "Blocked";
+
+  const blockedCount = statuses.filter(s => s === 403).length;
+  const nonBlockedCount = statuses.filter(s => s !== 403).length;
+
+  if (blockedCount > 0 && nonBlockedCount > 0) return "Partial";
+  if (blockedCount > 0) return "Blocked";
+  return "Reachable";
 }
 
 function emptySummary() {
@@ -24,6 +47,11 @@ function emptySummary() {
       toolRegistry: 0,
       openapi: 0,
       aiPlugin: 0
+    },
+    inspectionStatus: {
+      reachable: 0,
+      partial: 0,
+      blocked: 0
     }
   };
 }
@@ -50,6 +78,13 @@ function summarize(results, totalUrls) {
     if (r?.signals?.primary?.aiPlugin?.detected) summary.primarySignalCoverage.aiPlugin++;
   }
 
+  for (const result of results) {
+    const inspectionStatus = String(result?.inspectionStatus || deriveInspectionStatus(result)).toLowerCase();
+    if (inspectionStatus === "reachable") summary.inspectionStatus.reachable++;
+    else if (inspectionStatus === "partial") summary.inspectionStatus.partial++;
+    else summary.inspectionStatus.blocked++;
+  }
+
   return summary;
 }
 
@@ -73,27 +108,14 @@ export default async function handler(req, res) {
     for (const url of urls) {
       await sleep(400);
 
-      let out = null;
-
       try {
-        const fakeReq = {
-          query: { url },
-          method: "GET",
-          headers: { origin: "mcp-batch-runner" }
-        };
-
-        const fakeRes = {
-          status() { return this; },
-          json(obj) { out = obj; return obj; },
-          setHeader() {}
-        };
-
-        await mcpAuditHandler(fakeReq, fakeRes);
+        const out = await runMcpAudit(url);
 
         if (!out || out.success !== true) {
           throw new Error(out?.error || "MCP audit returned invalid payload");
         }
 
+        out.inspectionStatus = deriveInspectionStatus(out);
         results.push(out);
       } catch (err) {
         const fail = {
@@ -102,6 +124,7 @@ export default async function handler(req, res) {
           error: err.message || "Unhandled MCP batch exception"
         };
 
+        fail.inspectionStatus = deriveInspectionStatus(fail);
         errors.push(fail);
         results.push(fail);
       }
