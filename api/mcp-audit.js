@@ -136,30 +136,77 @@ function collectRegistryDatasetUrls(registryData, fallbackOrigin) {
 }
 
 async function resolveMcpOrigin(rootOrigin) {
-  const rootRegistryUrl = makeAbsolute(rootOrigin, MCP_PRIMARY_SIGNALS.toolRegistry.path);
-  const rootRegistryProbe = await probeEndpoint(rootRegistryUrl, { expectJson: true });
+  const rootUrl = new URL(rootOrigin);
+  const rootHost = rootUrl.hostname.replace(/^www\./i, "");
+  const protocol = rootUrl.protocol || "https:";
 
-  const registryData = rootRegistryProbe?.data && typeof rootRegistryProbe.data === "object"
+  const candidateOrigins = [
+    `${protocol}//${rootHost}`,
+    `${protocol}//mcp.${rootHost}`,
+    `${protocol}//discovery.${rootHost}`,
+    `${protocol}//api.${rootHost}`
+  ].filter((origin, idx, arr) => arr.indexOf(origin) === idx);
+
+  const scanOneOrigin = async (origin) => {
+    const entries = await Promise.all(Object.entries(MCP_PRIMARY_SIGNALS).map(async ([key, cfg]) => {
+      const url = makeAbsolute(origin, cfg.path);
+      const probe = await probeEndpoint(url, { expectJson: true });
+      const structured = isStructuredSpecProbe(probe);
+      const schemaValid = structured && validatePrimarySignalSchema(key, probe.data);
+      return [key, { url, probe, schemaValid }];
+    }));
+
+    const mcpManifestUrl = makeAbsolute(origin, MCP_ADDITIONAL_WELL_KNOWN.mcpManifest.path);
+    const mcpManifestProbe = await probeEndpoint(mcpManifestUrl, { expectJson: true });
+    const mcpManifestValid = isStructuredSpecProbe(mcpManifestProbe);
+
+    const probes = Object.fromEntries(entries);
+    probes.mcpManifest = {
+      url: mcpManifestUrl,
+      probe: mcpManifestProbe,
+      schemaValid: mcpManifestValid
+    };
+
+    const anyValidPrimary = Object.values(probes).some(item => item?.schemaValid === true);
+
+    return {
+      origin,
+      probes,
+      anyValidPrimary
+    };
+  };
+
+  const hostScans = await Promise.all(candidateOrigins.map(origin => scanOneOrigin(origin)));
+
+  const rootScan = hostScans.find(scan => scan.origin === `${protocol}//${rootHost}`) || hostScans[0];
+  const rootRegistryProbe = rootScan?.probes?.toolRegistry?.probe || {
+    status: 0,
+    data: null
+  };
+  const rootRegistryData = rootRegistryProbe?.data && typeof rootRegistryProbe.data === "object"
     ? rootRegistryProbe.data
     : null;
 
-  const discoveryEndpointRaw = extractDiscoveryEndpoint(registryData);
-  const discoveryEndpoint = asAbsoluteUrl(rootOrigin, discoveryEndpointRaw);
+  const discoveryHostScan = hostScans.find(scan => scan.origin === `${protocol}//discovery.${rootHost}`);
+  const discoveryPointerRaw = discoveryHostScan?.probes?.mcpManifest?.probe?.data?.endpoint;
+  const discoveryEndpoint = asAbsoluteUrl(discoveryHostScan?.origin || rootOrigin, discoveryPointerRaw);
 
-  if (!discoveryEndpoint) {
+  if (discoveryEndpoint) {
     return {
-      mcpOrigin: rootOrigin,
-      discoveryEndpoint: null,
+      mcpOrigin: baseOrigin(discoveryEndpoint),
+      discoveryEndpoint,
       rootRegistryProbe,
-      registryData
+      registryData: rootRegistryData
     };
   }
 
+  const firstValidHost = hostScans.find(scan => scan.anyValidPrimary);
+
   return {
-    mcpOrigin: baseOrigin(discoveryEndpoint),
-    discoveryEndpoint,
+    mcpOrigin: firstValidHost?.origin || rootOrigin,
+    discoveryEndpoint: null,
     rootRegistryProbe,
-    registryData
+    registryData: rootRegistryData
   };
 }
 
