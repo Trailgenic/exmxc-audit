@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MCP Agent Readiness Audit</title>
+  <style>
+    :root {
+      --bg:#050914;
+      --panel:#0b1224;
+      --border:#1e2a4a;
+      --text:#e6ebff;
+      --muted:#9aa4c7;
+      --accent:#4f7cff;
+      --green:#22c55e;
+      --amber:#fbbf24;
+      --red:#ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0a1024, #030611);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 36px auto;
+      padding: 0 20px 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    input[type="url"] {
+      flex: 1;
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    button {
+      padding: 14px 20px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #4f7cff, #6f9bff);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      min-width: 150px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .65;
+      cursor: default;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .error { color: var(--red); }
+
+    .hidden { display: none !important; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, #0b1224, #060b1c);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    .score {
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .band {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      background: #121a33;
+      border: 1px solid var(--border);
+    }
+
+    .band.mcp-ready { color: var(--green); }
+    .band.partially-ready { color: var(--amber); }
+    .band.emerging, .band.not-ready { color: var(--red); }
+
+    .badge-row {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .badge.good { color: var(--green); }
+    .badge.warn { color: var(--amber); }
+    .badge.bad { color: var(--red); }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 14px;
+    }
+
+    li { margin-bottom: 6px; }
+
+    .pill {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .pill.ok { color: var(--green); }
+    .pill.bad { color: var(--red); }
+
+    .breakdown-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .breakdown-table th,
+    .breakdown-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .breakdown-table th { color: var(--muted); font-weight: 600; }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #d5deff;
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      overflow: auto;
+      max-height: 380px;
+      white-space: pre-wrap;
+    }
+
+    details summary {
+      cursor: pointer;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>MCP Agent Readiness Audit</h1>
+    <p class="subtitle">Run a single-domain MCP readiness scan using the <code>/api/mcp-audit</code> endpoint.</p>
+
+    <div class="input-row">
+      <input id="urlInput" type="url" placeholder="https://trailgenic.com" value="https://trailgenic.com" />
+      <button id="runBtn">Run MCP Audit</button>
+    </div>
+
+    <p id="status" class="status">Enter a URL and run the audit.</p>
+
+    <section id="results" class="hidden">
+      <div class="grid">
+        <article class="panel">
+          <h2>Readiness Score</h2>
+          <div id="score" class="score">0</div>
+          <span id="band" class="band">not-ready</span>
+          <p id="target" class="subtitle" style="margin-top:10px;margin-bottom:0;"></p>
+          <div id="capabilityBadges" class="badge-row"></div>
+        </article>
+
+        <article class="panel">
+          <h2>Primary Signals</h2>
+          <ul id="primarySignals"></ul>
+        </article>
+
+        <article class="panel">
+          <h2>Secondary Signals</h2>
+          <ul id="secondarySignals"></ul>
+        </article>
+      </div>
+
+      <article class="panel" style="margin-bottom:16px;">
+        <h2>Signal Breakdown</h2>
+        <table class="breakdown-table">
+          <thead>
+            <tr>
+              <th>Signal</th>
+              <th>Points</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="breakdownBody"></tbody>
+        </table>
+      </article>
+
+      <article class="panel">
+        <h2>Audit Output</h2>
+        <details>
+          <summary>Show raw JSON</summary>
+          <pre id="rawJson" class="mono"></pre>
+        </details>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const urlInput = document.getElementById('urlInput');
+    const runBtn = document.getElementById('runBtn');
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const scoreEl = document.getElementById('score');
+    const bandEl = document.getElementById('band');
+    const targetEl = document.getElementById('target');
+    const primarySignalsEl = document.getElementById('primarySignals');
+    const secondarySignalsEl = document.getElementById('secondarySignals');
+    const breakdownBodyEl = document.getElementById('breakdownBody');
+    const rawJsonEl = document.getElementById('rawJson');
+    const capabilityBadgesEl = document.getElementById('capabilityBadges');
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle('error', isError);
+    }
+
+    function signalLine(label, signal) {
+      const detected = Boolean(signal && signal.detected);
+      const status = signal && typeof signal.status === 'number' ? `HTTP ${signal.status}` : '';
+      const suffix = status ? ` (${status})` : '';
+      return `<li>${label}${suffix}<span class="pill ${detected ? 'ok' : 'bad'}">${detected ? 'detected' : 'missing'}</span></li>`;
+    }
+
+    function renderList(el, htmlLines) {
+      el.innerHTML = htmlLines.join('');
+    }
+
+    function renderBreakdown(breakdown = []) {
+      breakdownBodyEl.innerHTML = breakdown.map(item => {
+        const points = `${item.points ?? 0}/${item.max ?? 0}`;
+        return `<tr>
+          <td>${item.key || '-'}</td>
+          <td>${points}</td>
+          <td>${item.notes || '-'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+
+    function renderCapabilityBadges(capability = {}) {
+      const badges = [];
+      const exposure = capability?.mcp_exposure || 'unknown';
+      const auth = capability?.mcp_auth || 'unknown';
+
+      if (capability?.mcp_present) badges.push('<span class="badge good">✅ MCP Present</span>');
+      if (exposure === 'public_manifest') badges.push('<span class="badge good">🌐 Public Manifest</span>');
+      if (exposure === 'docs_led') badges.push('<span class="badge warn">📄 Docs-Led</span>');
+      if (exposure === 'runtime_only') badges.push('<span class="badge warn">⚙️ Runtime Only</span>');
+      if (auth === 'gated') badges.push('<span class="badge bad">🔒 Auth-Gated</span>');
+
+      if (!badges.length) badges.push('<span class="badge bad">❓ Capability Unknown</span>');
+      capabilityBadgesEl.innerHTML = badges.join('');
+    }
+
+    async function runAudit() {
+      const value = (urlInput.value || '').trim();
+      if (!value) {
+        setStatus('Please enter a URL first.', true);
+        return;
+      }
+
+      runBtn.disabled = true;
+      setStatus('Running MCP audit...');
+      resultsEl.classList.add('hidden');
+
+      try {
+        const endpoint = `/api/mcp-audit?url=${encodeURIComponent(value)}`;
+        const response = await fetch(endpoint);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Audit request failed.');
+        }
+
+        scoreEl.textContent = String(data?.mcp?.score ?? 0);
+        const band = data?.mcp?.band || 'not-ready';
+        bandEl.textContent = band;
+        bandEl.className = `band ${band}`;
+        targetEl.textContent = `${data.hostname || ''} (${data.url || value})`;
+        renderCapabilityBadges(data.capability || data.mcp_capability || {});
+
+        const primary = data?.signals?.primary || {};
+        renderList(primarySignalsEl, [
+          signalLine('Tool Registry', primary.toolRegistry),
+          signalLine('OpenAPI', primary.openapi),
+          signalLine('AI Plugin', primary.aiPlugin),
+          signalLine('MCP Manifest', primary.mcpManifest || { detected: false })
+        ]);
+
+        const secondary = data?.signals?.secondary || {};
+        renderList(secondarySignalsEl, [
+          signalLine('API Docs', secondary.apiDocs),
+          signalLine('JSON Endpoints', secondary.jsonEndpoints),
+          signalLine('Datasets', secondary.datasets),
+          signalLine('Structured Data', secondary.structuredData)
+        ]);
+
+        renderBreakdown(data.breakdown || []);
+        rawJsonEl.textContent = JSON.stringify(data, null, 2);
+
+        resultsEl.classList.remove('hidden');
+        setStatus('Audit complete.');
+      } catch (error) {
+        setStatus(error.message || 'Failed to run MCP audit.', true);
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    runBtn.addEventListener('click', runAudit);
+    urlInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') runAudit();
+    });
+  </script>
+</body>
+</html>
