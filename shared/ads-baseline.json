@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "dataset": "ai-job-market-benchmark",
+  "period": "2026-03",
+  "generated_at": "2026-03-30T00:00:00Z",
+  "source": "indeed_us_remote",
+  "sample_size": 34,
+  "tier_distribution": {
+    "t1_awareness": 4,
+    "t2_experimentation": 3,
+    "t3_integration": 16,
+    "t4_agentic": 11,
+    "t5_sovereign": 0
+  },
+  "market_metrics": {
+    "deployment_exploration_ratio": 0.74,
+    "mcp_signal_count": 0,
+    "avg_ads_score": 51.2,
+    "center_of_gravity": "T3-T4"
+  },
+  "key_findings": [
+    "79% of postings classify at T3 or T4 — market has moved past experimentation",
+    "Zero MCP signals detected — MCP remains a leading discriminator ahead of market",
+    "0.74 DER validates 0.40 ARI inflation flag threshold",
+    "T5 sovereign roles absent from general job boards — career page scraping required for T5 detection"
+  ]
+}
