@@ -123,7 +123,7 @@ export default async function handler(req, res) {
     }
 
     /* ---------- Extract + sanitize ---------- */
-    const entityScore = clamp(audit.entityScore ?? 0, 0, 100);
+    const entityScore = clamp(audit.entityScore ?? audit.ecc?.score ?? 0, 0, 100);
     const tierScores = audit.tierScores || {};
 
     const structuralProfile = buildStructuralProfile({
@@ -136,6 +136,7 @@ export default async function handler(req, res) {
     /* ---------- Public payload ---------- */
     return res.status(200).json({
       success: true,
+      methodology: audit.methodologyVersion || "EEI v2.1",
 
       entity: {
         name: audit.entityName || audit.hostname || "Unknown entity",
@@ -151,6 +152,8 @@ export default async function handler(req, res) {
         tier2: { score: tierScores?.tier2?.normalized ?? 0 },
         tier3: { score: tierScores?.tier3?.normalized ?? 0 },
       },
+
+      signals: Array.isArray(audit.scoringBars) ? audit.scoringBars : [],
 
       crawlHealth: {
         score: typeof ch.score === "number" ? ch.score : null,
