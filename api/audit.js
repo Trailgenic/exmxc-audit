@@ -24,6 +24,7 @@ import {
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
+import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
 
 /* ---------------- Helpers ---------------- */
 
@@ -50,8 +51,8 @@ function hostnameOf(urlStr) {
 const SIGNAL_TIER = {
   "Title Precision": "tier3",
   "Meta Description Integrity": "tier3",
-  "Canonical Clarity": "tier3",
-  "Brand & Technical Consistency": "tier3",
+  "Canonical Integrity": "tier3",
+  "Brand-Technical Consistency": "tier3",
 
   "Schema Presence & Validity": "tier2",
   "Organization Schema": "tier2",
@@ -87,27 +88,22 @@ async function staticCrawl(url) {
   const html = resp.data || "";
   const $ = cheerio.load(html);
 
-  const schemaObjects = $('script[type="application/ld+json"]')
-    .map((_, el) => {
-      try {
-        const json = JSON.parse($(el).text());
-        if (Array.isArray(json)) return json;
-        if (json["@graph"]) return json["@graph"];
-        return [json];
-      } catch {
-        return [];
-      }
-    })
-    .get()
-    .flat();
+  const schemaObjects = parseJsonLdBlocks(
+    $('script[type="application/ld+json"]')
+      .map((_, el) => $(el).text())
+      .get()
+  );
 
   const pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
     .get()
     .filter(Boolean);
 
+  const finalUrl = resp.request?.res?.responseUrl || url;
+
   return {
     status: resp.status,
+    finalUrl,
     headers: resp.headers,
     html,
     $,
@@ -178,7 +174,7 @@ export default async function handler(req, res) {
     const results = [
       scoreTitle($),
       scoreMetaDescription($),
-      scoreCanonical($, url),
+      scoreCanonical($, crawl.finalUrl || url),
       scoreSchemaPresence(crawl.schemaObjects),
       scoreOrgSchema(crawl.schemaObjects),
       scoreBreadcrumbSchema(crawl.schemaObjects),
@@ -247,8 +243,10 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      url,
-      hostname: host,
+      url: crawl.finalUrl || url,
+      hostname: hostnameOf(crawl.finalUrl || url) || host,
+      methodologyVersion: "EEI v2.1",
+      entityScore: eccScore,
 
       state,              // <-- Blocked / Defensive / Open
       ecc: { score: eccScore, max: 100 },
