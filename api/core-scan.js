@@ -5,6 +5,7 @@
 
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
 
 /* ============================================================
    GLOBAL CONFIG
@@ -30,18 +31,6 @@ function randomAiUA() {
   ];
 }
 
-function parseJsonLd(blocks = []) {
-  const objects = [];
-  for (const raw of blocks) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) objects.push(...parsed);
-      else if (parsed["@graph"]) objects.push(...parsed["@graph"]);
-      else objects.push(parsed);
-    } catch {}
-  }
-  return objects;
-}
 
 /* ============================================================
    STATIC CRAWL (ECC SOURCE OF TRUTH)
@@ -61,7 +50,7 @@ export async function staticCrawl(url) {
   const html = typeof resp.data === "string" ? resp.data : "";
   const $ = cheerio.load(html);
 
-  const schemaObjects = parseJsonLd(
+  const schemaObjects = parseJsonLdBlocks(
     $('script[type="application/ld+json"]')
       .map((_, el) => $(el).text())
       .get()
@@ -115,7 +104,7 @@ export async function renderedIntentProbe(url) {
     const html = await page.content();
     const $ = cheerio.load(html);
 
-    const renderedSchemas = parseJsonLd(
+    const renderedSchemas = parseJsonLdBlocks(
       await page.$$eval(
         'script[type="application/ld+json"]',
         nodes => nodes.map(n => n.textContent || "")

@@ -24,6 +24,7 @@ import {
 } from "../shared/scoring.js";
 
 import { TOTAL_WEIGHT } from "../shared/weights.js";
+import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
 
 /* ---------------- Helpers ---------------- */
 
@@ -87,19 +88,11 @@ async function staticCrawl(url) {
   const html = resp.data || "";
   const $ = cheerio.load(html);
 
-  const schemaObjects = $('script[type="application/ld+json"]')
-    .map((_, el) => {
-      try {
-        const json = JSON.parse($(el).text());
-        if (Array.isArray(json)) return json;
-        if (json["@graph"]) return json["@graph"];
-        return [json];
-      } catch {
-        return [];
-      }
-    })
-    .get()
-    .flat();
+  const schemaObjects = parseJsonLdBlocks(
+    $('script[type="application/ld+json"]')
+      .map((_, el) => $(el).text())
+      .get()
+  );
 
   const pageLinks = $("a[href]")
     .map((_, el) => $(el).attr("href"))
