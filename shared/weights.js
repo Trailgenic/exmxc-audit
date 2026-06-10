@@ -6,7 +6,7 @@ export const WEIGHTS = {
   // ------------------------------------
   title: 3,                    // Title Precision
   metaDescription: 3,          // Meta Description Integrity
-  canonical: 2,                // Canonical Clarity
+  canonical: 2,                // Canonical Integrity
   schemaPresence: 8,           // Schema Presence & Validity
   orgSchema: 7,                // Organization Schema
   breadcrumbSchema: 5,         // Breadcrumb Schema
@@ -24,7 +24,7 @@ export const WEIGHTS = {
   // ------------------------------------
   // Tier 3 — Page-level hygiene (10)
   // ------------------------------------
-  faviconOg: 2                 // Brand & Technical Consistency
+  faviconOg: 2                 // Brand-Technical Consistency
 };
 
 // Total = 88

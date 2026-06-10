@@ -16,6 +16,27 @@ function pick(val, fallback) {
     : fallback;
 }
 
+function normalizeComparableUrl(input, base) {
+  if (!input) return null;
+
+  try {
+    const url = new URL(input, base || undefined);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const path = url.pathname.replace(/\/+$/, "");
+
+    return `${host}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+function canonicallyMatches(canonicalHref, auditedUrl) {
+  const normalizedCanonical = normalizeComparableUrl(canonicalHref, auditedUrl);
+  const normalizedAudited = normalizeComparableUrl(auditedUrl);
+
+  return Boolean(normalizedCanonical && normalizedAudited && normalizedCanonical === normalizedAudited);
+}
+
 /* ================================
    Tier 3 — Page Hygiene
    ================================ */
@@ -90,21 +111,13 @@ export function scoreCanonical($, normalizedUrl, fields = {}) {
   let points = 0, notes = "Missing";
 
   if (href) {
-    try {
-      const can = new URL(href, normalizedUrl);
-      const sameOrigin = can.origin === new URL(normalizedUrl).origin;
-      const clean = sameOrigin && !/[?#]/.test(can.href);
-
-      points = clean ? WEIGHTS.canonical : Math.round(WEIGHTS.canonical * 0.5);
-      notes = clean ? "Clean absolute canonical" : "Present but inconsistent";
-    } catch {
-      points = Math.round(WEIGHTS.canonical * 0.3);
-      notes = "Invalid canonical URL";
-    }
+    const consistent = canonicallyMatches(href, normalizedUrl);
+    points = consistent ? WEIGHTS.canonical : 1;
+    notes = consistent ? "Canonical consistent" : "Present but inconsistent";
   }
 
   return {
-    key: "Canonical Clarity",
+    key: "Canonical Integrity",
     points,
     max: WEIGHTS.canonical,
     notes,
@@ -123,7 +136,7 @@ export function scoreFaviconOg($) {
   const notes = favicon || ogImage ? "Branding consistent" : "Missing";
 
   return {
-    key: "Brand & Technical Consistency",
+    key: "Brand-Technical Consistency",
     points,
     max: WEIGHTS.faviconOg,
     notes,
