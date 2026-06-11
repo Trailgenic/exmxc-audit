@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "echo 'Build complete'"
+    "build": "echo 'Build complete'",
+    "test:mcp-reference": "node scripts/mcp-readiness-reference-test.js"
   },
   "dependencies": {
     "axios": "^1.7.9",

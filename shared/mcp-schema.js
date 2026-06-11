@@ -17,6 +17,7 @@ export function buildMcpAuditOutput({
   band,
   signals,
   breakdown,
+  dimensions = {},
   notes = [],
   capability = null
 }) {
@@ -45,8 +46,11 @@ export function buildMcpAuditOutput({
     mcp: {
       score,
       max: MCP_MAX_SCORE,
-      band
+      band,
+      dimensions
     },
+    dimensions,
+    methodologyVersion: "MCP-readiness v2",
     signals: {
       primary,
       secondary
