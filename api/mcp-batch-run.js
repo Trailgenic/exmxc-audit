@@ -132,7 +132,8 @@ async function runSingleAudit(displayUrl, perDomainTimeoutMs) {
       url: displayUrl,
       display_url: displayUrl,
       scan_url: null,
-      error: "Invalid URL in dataset"
+      error: "Invalid URL in dataset",
+      methodologyVersion: "MCP-readiness v2"
     };
     fail.inspectionStatus = deriveInspectionStatus(fail);
     return fail;
@@ -200,7 +201,8 @@ async function runBatchAudits(urls, options = {}) {
         url: displayUrl,
         display_url: displayUrl,
         scan_url: scanUrl || null,
-        error: entry.reason?.message || "Unhandled MCP batch exception"
+        error: entry.reason?.message || "Unhandled MCP batch exception",
+        methodologyVersion: "MCP-readiness v2"
       };
       fail.inspectionStatus = deriveInspectionStatus(fail);
       errors.push(fail);
@@ -255,6 +257,7 @@ export default async function handler(req, res) {
       dataset: safeDataset,
       vertical: dataset.vertical || safeDataset,
       summary,
+      methodologyVersion: "MCP-readiness v2",
       results,
       errors,
       timestamp: new Date().toISOString(),
@@ -271,6 +274,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       error: "MCP batch run failed",
+      methodologyVersion: "MCP-readiness v2",
       details: err.message || String(err)
     });
   }

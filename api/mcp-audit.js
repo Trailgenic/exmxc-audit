@@ -10,6 +10,7 @@ import {
 } from "../shared/mcp-signals.js";
 import { calculateMcpScore } from "../shared/mcp-scoring.js";
 import { buildMcpAuditOutput } from "../shared/mcp-schema.js";
+import { probeMcpTransport } from "../shared/mcp-transport-probe.js";
 
 const PRIMARY_KEYS = ["toolRegistry", "openapi", "aiPlugin"];
 const CAPABILITY_PROBE_TIMEOUT_MS = 7000;
@@ -167,11 +168,13 @@ async function resolveMcpOrigin(rootOrigin) {
       schemaValid: mcpManifestValid
     };
 
+    const transportProbe = await probeMcpTransport(origin);
     const anyValidPrimary = Object.values(probes).some(item => item?.schemaValid === true);
 
     return {
       origin,
       probes,
+      transportProbe,
       anyValidPrimary
     };
   };
@@ -186,27 +189,35 @@ async function resolveMcpOrigin(rootOrigin) {
   const rootRegistryData = rootRegistryProbe?.data && typeof rootRegistryProbe.data === "object"
     ? rootRegistryProbe.data
     : null;
+  const liveTransportHost = hostScans.find(scan => scan.transportProbe?.initialize?.ok === true);
 
   const discoveryHostScan = hostScans.find(scan => scan.origin === `${protocol}//discovery.${rootHost}`);
   const discoveryPointerRaw = discoveryHostScan?.probes?.mcpManifest?.probe?.data?.endpoint;
   const discoveryEndpoint = asAbsoluteUrl(discoveryHostScan?.origin || rootOrigin, discoveryPointerRaw);
 
   if (discoveryEndpoint) {
+    const discoveryOrigin = baseOrigin(discoveryEndpoint);
+    const discoveryScan = hostScans.find(scan => scan.origin === discoveryOrigin);
     return {
-      mcpOrigin: baseOrigin(discoveryEndpoint),
+      mcpOrigin: discoveryOrigin,
       discoveryEndpoint,
       rootRegistryProbe,
-      registryData: rootRegistryData
+      registryData: rootRegistryData,
+      transportProbe: discoveryScan?.transportProbe || null,
+      candidateOrigins: hostScans
     };
   }
 
   const firstValidHost = hostScans.find(scan => scan.anyValidPrimary);
+  const selectedHost = liveTransportHost || firstValidHost;
 
   return {
-    mcpOrigin: firstValidHost?.origin || rootOrigin,
+    mcpOrigin: selectedHost?.origin || rootOrigin,
     discoveryEndpoint: null,
     rootRegistryProbe,
-    registryData: rootRegistryData
+    registryData: rootRegistryData,
+    transportProbe: selectedHost?.transportProbe || null,
+    candidateOrigins: hostScans
   };
 }
 
@@ -408,7 +419,7 @@ async function detectCapabilityFlags({ rootOrigin, mcpOrigin, primarySignals }) 
   };
 }
 
-function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin, capability }) {
+function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, rootOrigin, capability, transport }) {
   const notes = [];
 
   if (discoveryEndpoint && mcpOrigin !== rootOrigin) {
@@ -420,7 +431,17 @@ function deriveNotes({ score, primary, secondary, discoveryEndpoint, mcpOrigin, 
   }
 
   if (!primary.aiPlugin?.detected) {
-    notes.push("AI plugin manifest not found at /.well-known/ai-plugin.json.");
+    notes.push("Legacy ai-plugin.json manifest not found (minor legacy signal only).");
+  }
+
+  if (transport?.initialize?.ok) {
+    notes.push(`Live MCP Streamable HTTP initialize succeeded at ${transport.endpoint}.`);
+  } else {
+    notes.push("No conformant live MCP Streamable HTTP initialize response observed at /mcp.");
+  }
+
+  if (transport?.toolsList?.ok) {
+    notes.push(`tools/list reported ${transport.toolsList.toolCount || 0} tools.`);
   }
 
   if (!secondary.structuredData?.detected) {
@@ -452,7 +473,8 @@ export async function runMcpAudit(inputUrl) {
   if (!url) {
     return {
       success: false,
-      error: "Invalid or missing URL"
+      error: "Invalid or missing URL",
+      methodologyVersion: "MCP-readiness v2"
     };
   }
 
@@ -461,7 +483,9 @@ export async function runMcpAudit(inputUrl) {
     mcpOrigin,
     discoveryEndpoint,
     rootRegistryProbe,
-    registryData: rootRegistryData
+    registryData: rootRegistryData,
+    transportProbe: resolvedTransportProbe,
+    candidateOrigins
   } = await resolveMcpOrigin(rootOrigin);
 
   let homepage = {
@@ -515,11 +539,28 @@ export async function runMcpAudit(inputUrl) {
     dataPreview: mcpManifestProbe.dataPreview
   };
 
+  let transportProbe = resolvedTransportProbe;
+  if (!transportProbe || transportProbe.origin !== mcpOrigin) {
+    transportProbe = await probeMcpTransport(mcpOrigin);
+  }
+
   const capability = await detectCapabilityFlags({
     rootOrigin,
     mcpOrigin,
     primarySignals
   });
+
+  if (transportProbe?.initialize?.ok) {
+    capability.mcp_present = true;
+    capability.mcp_exposure = transportProbe.toolsList?.ok ? "live_transport" : "runtime_only";
+    capability.mcp_auth = "open";
+    capability.evidence = {
+      items: [
+        ...(capability.evidence?.items || []),
+        `${transportProbe.endpoint} [initialize: ${transportProbe.initialize.status}, tools: ${transportProbe.toolsList?.toolCount || 0}]`
+      ].slice(0, 3)
+    };
+  }
 
   const apiDocsEvidence = collectLinkEvidence(pageLinks, MCP_SECONDARY_SIGNALS.apiDocs.paths);
   for (const path of MCP_SECONDARY_SIGNALS.apiDocs.paths) {
@@ -578,9 +619,15 @@ export async function runMcpAudit(inputUrl) {
   secondarySignals.datasets.evidence = Array.from(new Set(datasetEvidence)).slice(0, 10);
   secondarySignals.datasets.detected = secondarySignals.datasets.evidence.length > 0;
 
+  const registryForConsistency = primarySignals.toolRegistry.detected
+    ? primaryData.toolRegistry
+    : rootRegistryData;
+
   const signals = {
     primary: primarySignals,
-    secondary: secondarySignals
+    secondary: secondarySignals,
+    transport: transportProbe,
+    registryData: registryForConsistency
   };
 
   const scoring = calculateMcpScore(signals);
@@ -591,7 +638,8 @@ export async function runMcpAudit(inputUrl) {
     discoveryEndpoint,
     mcpOrigin,
     rootOrigin,
-    capability
+    capability,
+    transport: transportProbe
   });
 
   const output = buildMcpAuditOutput({
@@ -600,6 +648,7 @@ export async function runMcpAudit(inputUrl) {
     band: scoring.band,
     signals,
     breakdown: scoring.breakdown,
+    dimensions: scoring.dimensions,
     notes,
     capability
   });
@@ -609,8 +658,20 @@ export async function runMcpAudit(inputUrl) {
     mcpOrigin,
     pointer: discoveryEndpoint,
     pointerDetected: Boolean(discoveryEndpoint),
-    rootRegistryStatus: rootRegistryProbe?.status ?? 0
+    rootRegistryStatus: rootRegistryProbe?.status ?? 0,
+    candidateOrigins: Array.isArray(candidateOrigins) ? candidateOrigins.map(scan => ({
+      origin: scan.origin,
+      hasDiscovery: Object.values(scan.probes || {}).some(item => item?.schemaValid === true),
+      transport: {
+        endpoint: scan.transportProbe?.endpoint || `${scan.origin}/mcp`,
+        initializeOk: scan.transportProbe?.initialize?.ok === true,
+        tools: scan.transportProbe?.toolsList?.toolCount || 0,
+        getAllowsPost: scan.transportProbe?.getAllowsPost === true
+      }
+    })) : []
   };
+
+  output.transport = transportProbe;
 
   return output;
 }
@@ -633,7 +694,8 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({
       success: false,
-      error: err.message || "MCP audit failed"
+      error: err.message || "MCP audit failed",
+      methodologyVersion: "MCP-readiness v2"
     });
   }
 }

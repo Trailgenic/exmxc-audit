@@ -16,9 +16,9 @@ export const MCP_PRIMARY_SIGNALS = {
   },
   aiPlugin: {
     key: "aiPlugin",
-    label: "AI Plugin Manifest",
+    label: "AI Plugin Manifest (legacy)",
     path: "/.well-known/ai-plugin.json",
-    weight: 20
+    weight: 5
   }
 };
 
@@ -55,6 +55,14 @@ export const MCP_SECONDARY_SIGNALS = {
     label: "Structured Data for Agents",
     weight: 6
   }
+};
+
+export const MCP_DIMENSION_WEIGHTS = {
+  discovery: 20,
+  transport: 30,
+  tooling: 30,
+  consistency: 15,
+  legacyDiscovery: 5
 };
 
 export const MCP_MAX_SCORE = 100;
