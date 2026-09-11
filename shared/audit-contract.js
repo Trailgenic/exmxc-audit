@@ -83,6 +83,9 @@ export async function collectAuditEvidence(targetUrl, dependencies = {}) {
   if (page.fetch_status === "delivered" && page.body.trim()) {
     const $ = cheerio.load(page.body);
     const schemaObjects = parseJsonLdBlocks($('script[type="application/ld+json"]').map((_, element) => $(element).text()).get());
+    const visibleBody = $("body").clone();
+    visibleBody.find("script,style,noscript,template,svg").remove();
+    const visibleText = visibleBody.text().replace(/\s+/g, " ").trim();
     extracted = {
       $,
       schemaObjects,
@@ -99,7 +102,9 @@ export async function collectAuditEvidence(targetUrl, dependencies = {}) {
       html_lang: ($("html").attr("lang") || "").trim() || null,
       og_title: ($('meta[property="og:title"]').attr("content") || "").trim() || null,
       og_site_name: ($('meta[property="og:site_name"]').attr("content") || "").trim() || null,
-      og_url: ($('meta[property="og:url"]').attr("content") || "").trim() || null
+      og_url: ($('meta[property="og:url"]').attr("content") || "").trim() || null,
+      static_text_characters: visibleText.length,
+      link_count: $("a[href]").length
     };
   }
 
@@ -187,6 +192,10 @@ export function publicEvidence(evidence) {
         title: extracted.og_title,
         site_name: extracted.og_site_name,
         url: extracted.og_url
+      },
+      page_metrics: {
+        static_text_characters: extracted.static_text_characters,
+        link_count: extracted.link_count
       },
       schema: schemaSummary(extracted.schemaObjects)
     } : null

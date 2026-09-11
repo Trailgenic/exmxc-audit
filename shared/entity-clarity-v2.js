@@ -16,6 +16,11 @@ const DIMENSIONS = [
   { id: "machine_legibility", label: "Machine legibility", weight: 20 }
 ];
 
+const CONTENT_ADEQUACY_THRESHOLDS = {
+  static_text_characters: 500,
+  link_count: 5
+};
+
 function asArray(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
@@ -84,6 +89,52 @@ function dimension(definition, signals) {
   };
 }
 
+function contentAdequacy(extracted, fetchStatus) {
+  const boundary = "Static-content quality control only. This flag does not change the Entity Clarity v2.1 score.";
+  if (fetchStatus !== "delivered" || !extracted) {
+    return {
+      status: "unassessable",
+      passed: 0,
+      total: 3,
+      checks: [],
+      interpretation_boundary: boundary
+    };
+  }
+
+  const namedEntity = extracted.schemaObjects.some(node => isEntityNode(node) && Boolean(node?.name));
+  const checks = [
+    {
+      id: "identity_anchor",
+      label: "A title, primary heading, or named entity schema is present",
+      passed: Boolean(extracted.title || extracted.h1 || namedEntity),
+      observed: Boolean(extracted.title || extracted.h1 || namedEntity),
+      threshold: true
+    },
+    {
+      id: "static_body_text",
+      label: "Extractable static body text reaches the calibration floor",
+      passed: extracted.static_text_characters >= CONTENT_ADEQUACY_THRESHOLDS.static_text_characters,
+      observed: extracted.static_text_characters,
+      threshold: CONTENT_ADEQUACY_THRESHOLDS.static_text_characters
+    },
+    {
+      id: "navigable_links",
+      label: "Static HTML exposes a minimum navigable link set",
+      passed: extracted.link_count >= CONTENT_ADEQUACY_THRESHOLDS.link_count,
+      observed: extracted.link_count,
+      threshold: CONTENT_ADEQUACY_THRESHOLDS.link_count
+    }
+  ];
+  const passed = checks.filter(check => check.passed).length;
+  return {
+    status: passed === checks.length ? "adequate" : "limited",
+    passed,
+    total: checks.length,
+    checks,
+    interpretation_boundary: boundary
+  };
+}
+
 function unassessableAssessment(fetchStatus) {
   return {
     methodology: "Automated Entity Clarity v2.1 pilot",
@@ -94,6 +145,7 @@ function unassessableAssessment(fetchStatus) {
     score: null,
     comparable: false,
     coverage: { measured: 0, total: DIMENSIONS.length, percent: 0 },
+    content_adequacy: contentAdequacy(null, fetchStatus),
     dimensions: Object.fromEntries(DIMENSIONS.map(item => [item.id, {
       label: item.label, weight: item.weight, status: "unassessable", score: null,
       weighted_points: null, max_points: item.weight, signals: []
@@ -180,6 +232,7 @@ export function assessEntityClarityV2(evidence = {}) {
     score,
     comparable: true,
     coverage: { measured: DIMENSIONS.length, total: DIMENSIONS.length, percent: 100 },
+    content_adequacy: contentAdequacy(extracted, fetchStatus),
     dimensions,
     evidence_basis: {
       collection_status: fetchStatus,

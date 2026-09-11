@@ -3,6 +3,19 @@ import path from "node:path";
 import { runAudit } from "./audit.js";
 
 const MAX_BATCH_SIZE = 50;
+const CALIBRATION_MINIMUM_SAMPLE = 10;
+const CEILING_SCORE = 90;
+const CEILING_WATCH_PERCENT = 40;
+const SIGNAL_SATURATION_PERCENT = 85;
+const SCORE_BINS = [
+  { label: "0–19", minimum: 0, maximum: 19.999 },
+  { label: "20–39", minimum: 20, maximum: 39.999 },
+  { label: "40–59", minimum: 40, maximum: 59.999 },
+  { label: "60–79", minimum: 60, maximum: 79.999 },
+  { label: "80–89", minimum: 80, maximum: 89.999 },
+  { label: "90–94", minimum: 90, maximum: 94.999 },
+  { label: "95–100", minimum: 95, maximum: 100 }
+];
 
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Number.parseInt(value, 10);
@@ -20,6 +33,117 @@ export function normalizeResult(raw) {
     model_representation: raw.model_representation,
     legacy_diagnostic: raw.legacy_diagnostic,
     compatibility: { state: raw.state, legacy_ecc: raw.ecc?.score ?? null }
+  };
+}
+
+function percentage(numerator, denominator) {
+  return denominator ? Number((100 * numerator / denominator).toFixed(2)) : null;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2
+    ? ordered[middle]
+    : Number(((ordered[middle - 1] + ordered[middle]) / 2).toFixed(2));
+}
+
+function calibrationSummary(successful, scored) {
+  const scores = scored.map(result => result.assessment.score);
+  const dimensionRows = {};
+  const signalRows = new Map();
+  const adequacy = { adequate: 0, limited: 0, unassessable: 0 };
+
+  for (const result of successful) {
+    const status = result.assessment?.content_adequacy?.status || "unassessable";
+    adequacy[status] = (adequacy[status] || 0) + 1;
+  }
+
+  for (const result of scored) {
+    for (const [dimensionId, dimension] of Object.entries(result.assessment?.dimensions || {})) {
+      if (dimension?.status !== "measured" || typeof dimension.score !== "number") continue;
+      const row = dimensionRows[dimensionId] || {
+        label: dimension.label,
+        weight: dimension.weight,
+        measured_entities: 0,
+        total_score: 0
+      };
+      row.measured_entities++;
+      row.total_score += dimension.score;
+      dimensionRows[dimensionId] = row;
+
+      for (const signal of dimension.signals || []) {
+        const signalRow = signalRows.get(signal.id) || {
+          id: signal.id,
+          label: signal.label,
+          dimension: dimensionId,
+          observed: 0,
+          present: 0,
+          max_points: signal.max
+        };
+        signalRow.observed++;
+        if (signal.status === "present") signalRow.present++;
+        signalRows.set(signal.id, signalRow);
+      }
+    }
+  }
+
+  const dimensionAverages = Object.fromEntries(Object.entries(dimensionRows).map(([id, row]) => [id, {
+    label: row.label,
+    weight: row.weight,
+    measured_entities: row.measured_entities,
+    average_score: Number((row.total_score / row.measured_entities).toFixed(2))
+  }]));
+  const signalPrevalence = [...signalRows.values()].map(row => ({
+    id: row.id,
+    label: row.label,
+    dimension: row.dimension,
+    observed: row.observed,
+    present: row.present,
+    prevalence_percent: percentage(row.present, row.observed),
+    max_points: row.max_points
+  }));
+  const saturatedSignals = signalPrevalence
+    .filter(row => row.prevalence_percent >= SIGNAL_SATURATION_PERCENT)
+    .map(row => row.id);
+  const ceilingCount = scores.filter(score => score >= CEILING_SCORE).length;
+  const ceilingPercent = percentage(ceilingCount, scores.length);
+  const enoughData = scores.length >= CALIBRATION_MINIMUM_SAMPLE;
+
+  return {
+    version: "entity-clarity-calibration/1.0",
+    population: {
+      scored: scores.length,
+      minimum_for_flags: CALIBRATION_MINIMUM_SAMPLE
+    },
+    median_entity_clarity_score: median(scores),
+    score_distribution: SCORE_BINS.map(bin => {
+      const count = scores.filter(score => score >= bin.minimum && score <= bin.maximum).length;
+      return {
+        label: bin.label,
+        count,
+        percent_of_scored: percentage(count, scores.length)
+      };
+    }),
+    dimension_averages: dimensionAverages,
+    signal_prevalence: signalPrevalence,
+    content_adequacy: adequacy,
+    flags: {
+      ceiling_concentration: {
+        status: !enoughData ? "insufficient_sample" : ceilingPercent >= CEILING_WATCH_PERCENT ? "watch" : "not_triggered",
+        threshold_score: CEILING_SCORE,
+        trigger_percent: CEILING_WATCH_PERCENT,
+        observed_count: ceilingCount,
+        observed_percent: ceilingPercent
+      },
+      signal_saturation: {
+        status: !enoughData ? "insufficient_sample" : saturatedSignals.length ? "watch" : "not_triggered",
+        trigger_percent: SIGNAL_SATURATION_PERCENT,
+        signals: enoughData ? saturatedSignals : []
+      }
+    },
+    interpretation_boundary: "Calibration diagnostics identify concentration and common signals. They do not alter Entity Clarity v2.1 scores or create performance bands."
   };
 }
 
@@ -50,7 +174,8 @@ export function summarizeResults(results, totalUrls) {
       ? Number((legacyScored.reduce((sum, result) => sum + result.legacy_diagnostic.score, 0) / legacyScored.length).toFixed(2))
       : null,
     collection_status: collection,
-    declared_access_posture: access
+    declared_access_posture: access,
+    calibration: calibrationSummary(successful, scored)
   };
 }
 

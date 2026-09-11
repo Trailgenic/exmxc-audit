@@ -41,9 +41,11 @@ const RICH_ENTITY_HTML = `<!doctype html>
   }</script>
 </head><body>
   <h1>Fixture Corporation</h1>
+  <p>Fixture Corporation publishes clear institutional information for customers, partners, researchers, and the public. This calibration paragraph represents substantive static homepage text that is available without client-side rendering. It explains the organization, its work, its standards, and the evidence paths visitors can use to verify its identity. The same visible material remains present across ordinary collection runs so the adequacy flag can distinguish substantive HTML from a thin application shell. Additional context describes the institution's mission, operating scope, public responsibilities, and primary services.</p>
   <a href="/about">About us</a>
   <a href="/contact">Contact</a>
   <a href="/editorial-standards">Editorial standards</a>
+  <a href="/privacy">Privacy</a>
   <a href="https://www.linkedin.com/company/fixture">LinkedIn</a>
 </body></html>`;
 
@@ -116,6 +118,7 @@ test("network and HTTP failures never become blocking or zero clarity scores", a
   assert.equal(timeoutResult.state, "unknown");
   assert.equal(timeoutResult.ecc.score, null);
   assert.equal(timeoutResult.assessment.score, null);
+  assert.equal(timeoutResult.assessment.content_adequacy.status, "unassessable");
 
   for (const status of [403, 404, 429, 500]) {
     const result = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher({ pageStatus: status }) });
@@ -168,12 +171,15 @@ test("Automated Entity Clarity v2.1 computes five evidence-backed dimensions wit
   assert.equal(Object.keys(complete.assessment.dimensions).length, 5);
   assert.equal(complete.assessment.dimensions.identity_resolution.signals.length, 4);
   assert.equal(complete.assessment.dimensions.machine_legibility.signals.length, 5);
+  assert.equal(complete.assessment.content_adequacy.status, "adequate");
   assert.equal("review_provenance" in complete.assessment, false);
 
   const sparse = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher() });
   assert.equal(sparse.assessment.status, "scored");
   assert.equal(sparse.assessment.score, 14);
   assert.equal(sparse.assessment.coverage.percent, 100);
+  assert.equal(sparse.assessment.content_adequacy.status, "limited");
+  assert.equal(sparse.machine_evidence.page_metrics.link_count, 0);
 });
 
 test("single and batch contracts count the same observation honestly", async () => {
@@ -187,6 +193,38 @@ test("single and batch contracts count the same observation honestly", async () 
   assert.equal(summary.average_entity_clarity_score, raw.assessment.score);
   assert.equal(summary.legacy_scored, 1);
   assert.equal(summary.collection_status.delivered, 1);
+  assert.equal(summary.calibration.population.scored, 1);
+  assert.equal(summary.calibration.flags.ceiling_concentration.status, "insufficient_sample");
+});
+
+test("batch calibration reports distributions, dimension averages, signal prevalence, and static-content adequacy", async () => {
+  const complete = normalizeResult(await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageBody: RICH_ENTITY_HTML })
+  }));
+  const sparse = normalizeResult(await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher()
+  }));
+  const timeout = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+  const unscored = normalizeResult(await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageError: timeout })
+  }));
+  const results = [
+    ...Array.from({ length: 5 }, () => complete),
+    ...Array.from({ length: 5 }, () => sparse),
+    unscored
+  ];
+  const calibration = summarizeResults(results, results.length).calibration;
+
+  assert.equal(calibration.population.scored, 10);
+  assert.equal(calibration.median_entity_clarity_score, 57);
+  assert.deepEqual(calibration.content_adequacy, { adequate: 5, limited: 5, unassessable: 1 });
+  assert.equal(calibration.score_distribution.find(bin => bin.label === "0–19").count, 5);
+  assert.equal(calibration.score_distribution.find(bin => bin.label === "95–100").count, 5);
+  assert.equal(calibration.dimension_averages.identity_resolution.average_score, 70);
+  assert.equal(calibration.signal_prevalence.find(signal => signal.id === "title_present").prevalence_percent, 100);
+  assert.equal(calibration.flags.ceiling_concentration.status, "watch");
+  assert.equal(calibration.flags.ceiling_concentration.observed_percent, 50);
+  assert.equal(calibration.flags.signal_saturation.status, "watch");
 });
 
 test("public response exposes the versioned evidence contract without compatibility fields", async () => {
