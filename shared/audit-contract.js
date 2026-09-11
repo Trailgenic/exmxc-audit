@@ -4,7 +4,7 @@ import { fetchPublicUrl, networkErrorStatus } from "./target-policy.js";
 import { declaredAccessPosture, directiveTokens, providerPolicyMatrix } from "./robots-policy.js";
 import { parseJsonLdBlocks } from "./schema-extraction.js";
 
-export const AUDIT_CONTRACT_VERSION = "entity-clarity-evidence/2.0-pilot";
+export const AUDIT_CONTRACT_VERSION = "entity-clarity-evidence/2.1-pilot";
 
 function headerValue(headers, name) {
   if (!headers) return "";
@@ -87,11 +87,19 @@ export async function collectAuditEvidence(targetUrl, dependencies = {}) {
       $,
       schemaObjects,
       pageLinks: $("a[href]").map((_, element) => $(element).attr("href")).get().filter(Boolean),
+      linkDetails: $("a[href]").map((_, element) => ({
+        href: $(element).attr("href"),
+        text: $(element).text().replace(/\s+/g, " ").trim()
+      })).get().filter(link => link.href),
       title: $("title").first().text().trim(),
       description: ($('meta[name="description"]').attr("content") || $('meta[property="og:description"]').attr("content") || "").trim(),
       canonical_href: ($('link[rel="canonical"]').attr("href") || "").trim() || null,
       h1: $("h1").first().text().replace(/\s+/g, " ").trim() || null,
-      meta_robots: directiveTokens($('meta[name="robots"]').attr("content") || "")
+      meta_robots: directiveTokens($('meta[name="robots"]').attr("content") || ""),
+      html_lang: ($("html").attr("lang") || "").trim() || null,
+      og_title: ($('meta[property="og:title"]').attr("content") || "").trim() || null,
+      og_site_name: ($('meta[property="og:site_name"]').attr("content") || "").trim() || null,
+      og_url: ($('meta[property="og:url"]').attr("content") || "").trim() || null
     };
   }
 
@@ -174,6 +182,12 @@ export function publicEvidence(evidence) {
       h1: extracted.h1,
       canonical_href: extracted.canonical_href,
       meta_robots: extracted.meta_robots,
+      html_lang: extracted.html_lang,
+      open_graph: {
+        title: extracted.og_title,
+        site_name: extracted.og_site_name,
+        url: extracted.og_url
+      },
       schema: schemaSummary(extracted.schemaObjects)
     } : null
   };

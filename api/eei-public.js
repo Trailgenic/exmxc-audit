@@ -17,7 +17,7 @@ export function publicResponse(audit) {
     assessment: audit.assessment,
     model_representation: audit.model_representation,
     legacy_diagnostic: audit.legacy_diagnostic,
-    interpretation_boundary: "This response reports collected website evidence and an uncompleted review template. It does not establish model trust, citation, recommendation, or corporate intent.",
+    interpretation_boundary: "This response reports collected website evidence and a deterministic structural score. It does not establish model trust, citation, recommendation, factual correctness, or corporate intent.",
     timestamp: audit.collected_at
   };
 }
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   try {
     const response = await axios.get(`${INTERNAL_ORIGIN}/api/audit?url=${encodeURIComponent(input)}`, {
       timeout: INTERNAL_TIMEOUT_MS,
-      headers: { Accept: "application/json", "User-Agent": "exmxc-entity-clarity-public/2.0" },
+      headers: { Accept: "application/json", "User-Agent": "exmxc-entity-clarity-public/2.1" },
       validateStatus: status => status >= 200 && status < 500
     });
     const audit = response.data;

@@ -8,7 +8,7 @@
 
 1. **Collector delivery** — the requested/final URL, redirect chain, HTTP or network outcome, content type, and relevant response directives.
 2. **Declared access** — a provider-by-purpose interpretation of the observed robots document for training, search, user-requested retrieval, and other named uses.
-3. **Entity Clarity v2 review** — an experimental nine-check template. A single website fetch does not complete this review, so the automated response returns an unassessed score.
+3. **Automated Entity Clarity v2.1** — a deterministic five-dimension structural score computed from successfully delivered homepage evidence.
 4. **Model representation** — explicitly `not_tested` unless a separately governed model-answer test has been attached.
 
 The earlier EEI v2.1 structural score remains in `legacy_diagnostic` for migration and comparison. It is labeled as a website-structure proxy. It does not establish model comprehension, trust, citation, recommendation, or corporate intent.
@@ -28,17 +28,19 @@ Collection and interpretation are deliberately separate:
 
 Declared access posture is `permissive`, `selective`, `restrictive`, or `unknown`. It summarizes the observed provider-purpose robots matrix for compatibility; the matrix is the authoritative output. Corporate strategy requires additional evidence.
 
-Missing and unavailable evidence remains unknown. It is never silently converted into a zero score.
+When collection fails, unavailable page evidence remains unknown and never becomes a zero score. Once usable HTML is delivered, absence of a published structural signal is an observed absence and can contribute zero points.
 
-## Entity Clarity v2 pilot checks
+## Automated Entity Clarity v2.1
 
-The experimental reviewed assessment contains nine checks across three dimensions:
+The experimental score uses five deterministic dimensions:
 
-- Identity: entity/domain resolution, institutional scope, and entity relationships.
-- Consistency: cross-surface claims, canonical/structured-data agreement, and official-record agreement.
-- Evidence: claim traceability, source provenance, and appropriate independent corroboration.
+- Identity resolution — title, primary heading, named entity schema, and a discoverable About/company surface.
+- Entity consistency — same-origin canonical, Open Graph URL, schema identifier, and visible/structured name agreement.
+- Relationship clarity — explicit external identity references, organizational relationships, and recognized identity-profile links.
+- Evidence traceability — institutional description plus About, contact, and standards/governance/newsroom links.
+- Machine legibility — language declaration, canonical, valid JSON-LD, Open Graph identity, and indexability.
 
-Each applicable check is 0, 1, or 2 and requires evidence. A comparable pilot score is calculated only when all nine checks are assessed. The score is a transparent review convention, not a probability of model behavior. No High/Medium/Low bands are assigned during calibration.
+Every signal returns its points and observed evidence. Successfully delivered static HTML receives a complete automated measurement; missing signals score zero because their absence was observed. Failed, restricted, timed-out, or unsupported collection remains unassessable and receives no score. No human review is required. No High/Medium/Low bands are assigned during calibration.
 
 ## Collection controls
 
@@ -54,7 +56,7 @@ The prior rendered probe is disabled. A browser claiming to be GPTBot, ClaudeBot
 
 ## Batch behavior
 
-`GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, assessed/unassessed reviews, delivery outcomes, declared-access postures, and separately labeled legacy scores.
+`GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, scored/unassessable entities, delivery outcomes, declared-access postures, average automated Entity Clarity, and separately labeled legacy scores.
 
 GET is read-only. Drift persistence requires an explicit `POST` with `persist=true`, and persistence is awaited so a response cannot imply that an unfinished write succeeded.
 
@@ -66,7 +68,7 @@ npm test
 npm run test:mcp-reference
 ```
 
-The integrity tests use local fixtures. They do not crawl third-party sites or write production data. They cover target validation, unsafe redirects, robots rule precedence, provider-purpose separation, `noindex`, failure semantics, review completeness, single/batch consistency, and the repaired multi-surface import.
+The integrity tests use local fixtures. They do not crawl third-party sites or write production data. They cover target validation, unsafe redirects, robots rule precedence, provider-purpose separation, `noindex`, failure semantics, automated score evidence, single/batch consistency, and the repaired multi-surface import.
 
 ## Historical boundary
 
@@ -74,12 +76,6 @@ Published ECI/ECC snapshots and PDFs belong to their original methodology. This 
 
 The canonical public data/query layer is maintained in `Trailgenic/exmxc-workers`.
 
-To calculate a reviewed pilot assessment, copy `docs/entity-clarity-v2-review-template.json`, complete reviewer provenance and all nine checks with evidence, then run:
-
-```bash
-npm run assess:v2 -- path/to/completed-review.json
-```
-
 ## Stewardship
 
-exmxc was founded by Mike Ye. Human judgment governs methodology, review, and publication. AI supports collection, testing, and structured analysis.
+exmxc was founded by Mike Ye. Human judgment governs methodology and publication; production entity scoring is automated and evidence-backed.
