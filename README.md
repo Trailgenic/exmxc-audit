@@ -1,127 +1,85 @@
-# exmxc — Strategic Intelligence for the AI-Search Era
+# exmxc-audit
 
-**exmxc.ai is a strategic intelligence institution** focused on how AI-mediated discovery reshapes institutional value, competitive positioning, and decision leverage across modern markets.
+`exmxc-audit` is the evidence-collection and diagnostic module for exmxc Entity Clarity research. exmxc studies AI power, institutional perception, and capital allocation. This repository supports the Perception pillar; it does not define the institution.
 
-The institution studies how AI-search systems interpret entities, narratives, and categories — and how those interpretations affect strategy, acquisition logic, integration risk, and long-horizon advantage across the Four Forces of AI power:
+## Current contract
 
-- Compute  
-- Interface  
-- Alignment  
-- Energy  
+`GET /api/audit?url=https://example.com` returns four separate layers:
 
-exmxc is not a software company, consultancy, or SEO tool.  
-It is an institutional intelligence layer designed for the AI-search era.
+1. **Collector delivery** — the requested/final URL, redirect chain, HTTP or network outcome, content type, and relevant response directives.
+2. **Declared access** — a provider-by-purpose interpretation of the observed robots document for training, search, user-requested retrieval, and other named uses.
+3. **Entity Clarity v2 review** — an experimental nine-check template. A single website fetch does not complete this review, so the automated response returns an unassessed score.
+4. **Model representation** — explicitly `not_tested` unless a separately governed model-answer test has been attached.
 
----
+The earlier EEI v2.1 structural score remains in `legacy_diagnostic` for migration and comparison. It is labeled as a website-structure proxy. It does not establish model comprehension, trust, citation, recommendation, or corporate intent.
 
-## 🧠 Institutional Mandate
+## Evidence semantics
 
-exmxc exists to help leaders understand how AI-era interpretation changes strategic outcomes — which institutions strengthen or lose positioning, where narrative durability succeeds or fails, and how value, risk, and opportunity shift as AI systems mediate discovery and trust formation.
+Collection and interpretation are deliberately separate:
 
-The work centers on:
+- A timeout is `timeout`.
+- A DNS failure is `dns_error`.
+- A delivered non-HTML resource is `unsupported_content` and remains unscored.
+- HTTP 401/403 is `access_restricted` delivery.
+- HTTP 404/410 is `not_found`.
+- HTTP 429 is `rate_limited`.
+- HTTP 5xx is `server_error`.
+- None of those outcomes automatically becomes intentional AI blocking or an Entity Clarity score of zero.
 
-- Long-horizon strategy  
-- Institutional resilience  
-- Market and narrative architecture  
+Declared access posture is `permissive`, `selective`, `restrictive`, or `unknown`. It summarizes the observed provider-purpose robots matrix for compatibility; the matrix is the authoritative output. Corporate strategy requires additional evidence.
 
-Diagnostic tools and indices are used to **inform judgment**, not replace it.
+Missing and unavailable evidence remains unknown. It is never silently converted into a zero score.
 
----
+## Entity Clarity v2 pilot checks
 
-## 🧩 About This Repository: exmxc-audit
+The experimental reviewed assessment contains nine checks across three dimensions:
 
-**exmxc-audit is one diagnostic module within the broader exmxc intelligence system.**
+- Identity: entity/domain resolution, institutional scope, and entity relationships.
+- Consistency: cross-surface claims, canonical/structured-data agreement, and official-record agreement.
+- Evidence: claim traceability, source provenance, and appropriate independent corroboration.
 
-It supports the institution’s research by evaluating how AI systems currently perceive and reconstruct organizations under real-world crawl conditions.
+Each applicable check is 0, 1, or 2 and requires evidence. A comparable pilot score is calculated only when all nine checks are assessed. The score is a transparent review convention, not a probability of model behavior. No High/Medium/Low bands are assigned during calibration.
 
-This repository does **not** define exmxc.  
-It operationalizes one analytical lens used by the institution.
+## Collection controls
 
----
+The static collector:
 
-## 🔍 What exmxc-audit Does
+- Accepts public HTTPS targets on the standard port.
+- Rejects credentials, IP literals, local/reserved host suffixes, non-public DNS answers, and mixed public/private DNS answers.
+- Revalidates each redirect and uses the restricted DNS lookup on each request.
+- Limits redirects, response size, and request time.
+- Uses an identified exmxc collector user agent.
 
-The audit module evaluates public websites and digital entities for **machine-level legibility** — measuring how AI systems interpret identity, structure, and authority.
+The prior rendered probe is disabled. A browser claiming to be GPTBot, ClaudeBot, or Googlebot does not verify genuine provider behavior. Rendered collection can return only after network isolation and policy controls are implemented and reviewed.
 
-This is **not SEO**.  
-It is structural comprehension analysis for AI-native discovery systems.
+## Batch behavior
 
-Core capabilities include:
+`GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, assessed/unassessed reviews, delivery outcomes, declared-access postures, and separately labeled legacy scores.
 
-- Auditing any public URL for AI comprehension readiness  
-- Detecting and evaluating structured data (JSON-LD)  
-- Measuring canonical clarity and surface consistency  
-- Analyzing internal lattice and outbound authority signals  
-- Calculating an **Entity Engineering Index (EEI)** score  
-- Returning clean, machine- and human-readable JSON via a serverless API  
+GET is read-only. Drift persistence requires an explicit `POST` with `persist=true`, and persistence is awaited so a response cannot imply that an unfinished write succeeded.
 
----
+## Local verification
 
-## 🧱 Architectural Context
+```bash
+npm install
+npm test
+npm run test:mcp-reference
+```
 
-This module is implemented as:
+The integrity tests use local fixtures. They do not crawl third-party sites or write production data. They cover target validation, unsafe redirects, robots rule precedence, provider-purpose separation, `noindex`, failure semantics, review completeness, single/batch consistency, and the repaired multi-surface import.
 
-- Node.js-based crawl orchestration  
-- Rendered crawling (Playwright) to simulate AI visibility  
-- Lightweight HTML parsing and signal extraction  
-- Serverless deployment via Vercel  
+## Historical boundary
 
-It is designed for **controlled experimentation**, not mass automation.
+Published ECI/ECC snapshots and PDFs belong to their original methodology. This repository does not rewrite those observations. Entity Clarity v2 should be introduced as a new version with an explicit bridge panel so collector or methodology changes cannot appear as company movement.
 
----
+The canonical public data/query layer is maintained in `Trailgenic/exmxc-workers`.
 
-## 🧭 Entity Engineering™ (Discipline, Not Identity)
+To calculate a reviewed pilot assessment, copy `docs/entity-clarity-v2-review-template.json`, complete reviewer provenance and all nine checks with evidence, then run:
 
-**Entity Engineering™** is a diagnostic discipline developed by exmxc.
+```bash
+npm run assess:v2 -- path/to/completed-review.json
+```
 
-It refers to aligning identity, structure, and signal so AI systems can comprehend an organization as a coherent entity.
+## Stewardship
 
-- TrailGenic™ demonstrated the method biologically (resilience, adaptation)  
-- exmxc formalized it digitally (schema, lattice, AI legibility)  
-
-Entity Engineering is **one lens** used by exmxc — not the institution itself.
-
----
-
-## 🛡️ Institutional Roadmap Context
-
-This audit module supports the **Fortress Phase (2025–2026)** of the exmxc roadmap:
-
-- Internal validation of EEI methodology  
-- Cross-model entity recognition testing  
-- Controlled experiments in AI comprehension fidelity  
-- Groundwork for future Shield and Sword-phase systems  
-
-Public outputs intentionally abstract internal signal mechanics.
-
----
-
-## 🤝 Founder & Stewardship
-
-exmxc was founded by **Mike Ye**, a strategist and institutional operator with over twenty-five years of experience in M&A, capital allocation, and enterprise strategy.
-
-He previously served as Vice President of Strategic Planning & Acquisitions at Penske Media Corporation, leading acquisitions, portfolio strategy, and integration across global media, experiential, and digital assets.
-
-exmxc formalizes that experience into an AI-era strategic discipline — integrating capital logic, institutional judgment, and AI-search interpretation.
-
----
-
-## 📜 Operating Principles
-
-**Truth Signals**  
-All outputs must be citation-grade and structurally verifiable.
-
-**Interpretation as Signal**  
-How AI systems interpret institutions affects real outcomes.
-
-**Human × AI Continuum**  
-Human judgment and AI interpretation operate as a single foresight loop.
-
-**Long-Horizon Clarity**  
-Insight must precede advantage — and survive reality.
-
----
-
-© 2025 **exmxc.ai**  
-Strategic intelligence for the AI-search era.  
-exmxc.ai × TrailGenic™ — Human × AI foresight handshake.
+exmxc was founded by Mike Ye. Human judgment governs methodology, review, and publication. AI supports collection, testing, and structured analysis.

@@ -1,265 +1,131 @@
-// EEI v7 — Stable Merge Build
-// 1) State = blocked | defensive | open
-// 2) ECC Score (0–100)
-// 3) Tier1 / Tier2 / Tier3 scoring preserved
-
-import axios from "axios";
-import * as cheerio from "cheerio";
-
 import {
-  scoreTitle,
-  scoreMetaDescription,
-  scoreCanonical,
-  scoreSchemaPresence,
-  scoreOrgSchema,
-  scoreBreadcrumbSchema,
-  scoreAuthorPerson,
-  scoreSocialLinks,
-  scoreAICrawlSignals,
-  scoreContentDepth,
-  scoreInternalLinks,
-  scoreExternalLinks,
-  scoreFaviconOg,
-  tierFromScore
+  scoreTitle, scoreMetaDescription, scoreCanonical, scoreSchemaPresence,
+  scoreOrgSchema, scoreBreadcrumbSchema, scoreAuthorPerson, scoreSocialLinks,
+  scoreAICrawlSignals, scoreContentDepth, scoreInternalLinks,
+  scoreExternalLinks, scoreFaviconOg
 } from "../shared/scoring.js";
-
 import { TOTAL_WEIGHT } from "../shared/weights.js";
-import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
-
-/* ---------------- Helpers ---------------- */
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function normalizeUrl(input) {
-  let u = (input || "").trim();
-  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
-  return u;
-}
-
-function hostnameOf(urlStr) {
-  try {
-    return new URL(urlStr).hostname.replace(/^www\./i, "");
-  } catch {
-    return "";
-  }
-}
-
-/* ----------- Tier Mapping (unchanged) ----------- */
+import { collectAuditEvidence, publicEvidence } from "../shared/audit-contract.js";
+import { assessEntityClarityV2, emptyEcV2Template } from "../shared/entity-clarity-v2.js";
+import { validateTarget } from "../shared/target-policy.js";
 
 const SIGNAL_TIER = {
-  "Title Precision": "tier3",
-  "Meta Description Integrity": "tier3",
-  "Canonical Integrity": "tier3",
-  "Brand-Technical Consistency": "tier3",
-
-  "Schema Presence & Validity": "tier2",
-  "Organization Schema": "tier2",
-  "Breadcrumb Schema": "tier2",
-  "Author/Person Schema": "tier2",
-
-  "Social Entity Links": "tier1",
-  "Internal Lattice Integrity": "tier1",
-  "External Authority Signal": "tier1",
-  "AI Crawl Fidelity": "tier1",
+  "Title Precision": "tier3", "Meta Description Integrity": "tier3",
+  "Canonical Integrity": "tier3", "Brand-Technical Consistency": "tier3",
+  "Schema Presence & Validity": "tier2", "Organization Schema": "tier2",
+  "Breadcrumb Schema": "tier2", "Author/Person Schema": "tier2",
+  "Social Entity Links": "tier1", "Internal Lattice Integrity": "tier1",
+  "External Authority Signal": "tier1", "AI Crawl Fidelity": "tier1",
   "Inference Efficiency": "tier1"
 };
 
 const TIER_LABELS = {
-  tier1: "Entity comprehension & trust",
-  tier2: "Structural data fidelity",
-  tier3: "Page-level hygiene"
+  tier1: "Legacy graph and content proxies",
+  tier2: "Legacy structured-data proxies",
+  tier3: "Legacy page-hygiene proxies"
 };
 
-/* ----------- STATIC CRAWL ONLY (safe + fast) ----------- */
+const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+function hostnameOf(value) {
+  try { return new URL(value).hostname.replace(/^www\./i, ""); }
+  catch { return ""; }
+}
 
-async function staticCrawl(url) {
-  const resp = await axios.get(url, {
-    timeout: 7000,
-    maxRedirects: 5,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (compatible; exmxc-eei/7; +https://exmxc.ai)",
-      Accept: "text/html"
-    }
-  });
+function compatibilityState(collectionStatus, accessPosture) {
+  if (collectionStatus !== "delivered") return "unknown";
+  if (accessPosture === "restrictive") return "blocked";
+  if (accessPosture === "selective") return "defensive";
+  if (accessPosture === "permissive") return "open";
+  return "unknown";
+}
 
-  const html = resp.data || "";
-  const $ = cheerio.load(html);
+export function buildLegacyDiagnostic(evidence) {
+  const extracted = evidence.extracted;
+  if (!extracted || evidence.collection.fetch_status !== "delivered") return null;
+  const finalUrl = evidence.collection.final_url || evidence.collection.requested_url;
+  const host = hostnameOf(finalUrl);
+  const $ = extracted.$;
+  const results = [
+    scoreTitle($), scoreMetaDescription($), scoreCanonical($, finalUrl),
+    scoreSchemaPresence(extracted.schemaObjects), scoreOrgSchema(extracted.schemaObjects),
+    scoreBreadcrumbSchema(extracted.schemaObjects), scoreAuthorPerson(extracted.schemaObjects, $),
+    scoreSocialLinks(extracted.schemaObjects, extracted.pageLinks), scoreAICrawlSignals($),
+    scoreContentDepth($), scoreInternalLinks(extracted.pageLinks, host),
+    scoreExternalLinks(extracted.pageLinks, host), scoreFaviconOg($)
+  ];
 
-  const schemaObjects = parseJsonLdBlocks(
-    $('script[type="application/ld+json"]')
-      .map((_, el) => $(el).text())
-      .get()
-  );
-
-  const pageLinks = $("a[href]")
-    .map((_, el) => $(el).attr("href"))
-    .get()
-    .filter(Boolean);
-
-  const finalUrl = resp.request?.res?.responseUrl || url;
-
+  const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
+  const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
+  let totalRaw = 0;
+  for (const signal of results) {
+    const safe = clamp(Number(signal.points || 0), 0, signal.max);
+    const tier = SIGNAL_TIER[signal.key] || "tier3";
+    totalRaw += safe;
+    tierRaw[tier] += safe;
+    tierMax[tier] += signal.max;
+  }
+  const tiers = Object.fromEntries(Object.keys(tierRaw).map(tier => [tier, {
+    label: TIER_LABELS[tier], raw: tierRaw[tier], maxWeight: tierMax[tier],
+    normalized: tierMax[tier] ? Number((100 * tierRaw[tier] / tierMax[tier]).toFixed(2)) : null
+  }]));
   return {
-    status: resp.status,
-    finalUrl,
-    headers: resp.headers,
-    html,
-    $,
-    schemaObjects,
-    pageLinks
+    methodology: "EEI v2.1 legacy diagnostic (patched directives)",
+    status: "legacy",
+    interpretation_boundary: "Website-structure proxy. It does not establish model comprehension, trust, citation, recommendation, or corporate intent.",
+    score: clamp(Math.round((totalRaw * 100) / TOTAL_WEIGHT), 0, 100), max: 100,
+    tiers,
+    signals: results.map(signal => ({
+      key: signal.key, points: signal.points, max: signal.max,
+      percent: signal.max ? Math.round((100 * signal.points) / signal.max) : 0,
+      notes: signal.notes
+    }))
   };
 }
 
-/* --------------- CLASSIFY STATE ----------------
-   BLOCKED    = access denied / captcha / 401/403/429
-   DEFENSIVE  = bot protection / anti-scrape but content loads
-   OPEN       = normal crawlable site
--------------------------------------------------- */
+export async function runAudit(input, dependencies = {}) {
+  const validated = validateTarget(input);
+  if (!validated.ok) return { success: false, status: validated.status, error: validated.error };
 
-function classifyState(status, htmlTextLower) {
-  if ([401, 403].includes(status)) return "blocked";
+  const evidence = await collectAuditEvidence(validated.url, dependencies);
+  const legacyDiagnostic = buildLegacyDiagnostic(evidence);
+  const visibleEvidence = publicEvidence(evidence);
+  const assessment = assessEntityClarityV2({ checks: emptyEcV2Template() });
+  const state = compatibilityState(evidence.collection.fetch_status, evidence.declared_access.posture);
 
-  if (
-    status === 429 ||
-    htmlTextLower.includes("captcha") ||
-    htmlTextLower.includes("access denied") ||
-    htmlTextLower.includes("verify you are human") ||
-    htmlTextLower.includes("datadome") ||
-    htmlTextLower.includes("perimeterx") ||
-    htmlTextLower.includes("akamai")
-  ) {
-    return "defensive";
-  }
-
-  return "open";
+  return {
+    success: true,
+    url: evidence.collection.final_url || validated.url,
+    hostname: hostnameOf(evidence.collection.final_url || validated.url),
+    methodologyVersion: "Entity Clarity evidence v2.0-pilot",
+    ...visibleEvidence,
+    assessment,
+    model_representation: {
+      status: "not_tested", results: [],
+      note: "No independent model-answer test was performed by this website collection request."
+    },
+    legacy_diagnostic: legacyDiagnostic,
+    state,
+    stateReason: state === "unknown"
+      ? "Access posture or page delivery was not established."
+      : "Derived from declared robots policy; does not establish corporate intent.",
+    entityScore: legacyDiagnostic?.score ?? null,
+    ecc: { score: legacyDiagnostic?.score ?? null, max: 100, status: "legacy" },
+    tierScores: legacyDiagnostic?.tiers || null,
+    scoringBars: legacyDiagnostic?.signals || []
+  };
 }
-
-/* ----------------- MAIN HANDLER ----------------- */
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") return res.status(200).end();
-
+  if (req.method !== "GET") return res.status(405).json({ success: false, error: "Method not allowed." });
   try {
-    const input = req.query?.url;
-    if (!input) return res.status(400).json({ error: "Missing URL" });
-
-    const url = normalizeUrl(input);
-    const host = hostnameOf(url);
-
-    /* ---- STATIC FETCH ---- */
-    let crawl;
-    let blocked = false;
-
-    try {
-      crawl = await staticCrawl(url);
-    } catch {
-      blocked = true;
-      crawl = { html: "", schemaObjects: [], pageLinks: [], status: 0 };
-    }
-
-    const htmlLower = (crawl.html || "").toLowerCase();
-    const state = blocked
-      ? "blocked"
-      : classifyState(crawl.status, htmlLower);
-
-    /* ---- ECC SCORING (still works even if defensive) ---- */
-    const $ = crawl.$ || cheerio.load("");
-
-    const results = [
-      scoreTitle($),
-      scoreMetaDescription($),
-      scoreCanonical($, crawl.finalUrl || url),
-      scoreSchemaPresence(crawl.schemaObjects),
-      scoreOrgSchema(crawl.schemaObjects),
-      scoreBreadcrumbSchema(crawl.schemaObjects),
-      scoreAuthorPerson(crawl.schemaObjects, $),
-      scoreSocialLinks(crawl.schemaObjects, crawl.pageLinks),
-      scoreAICrawlSignals($),
-      scoreContentDepth($),
-      scoreInternalLinks(crawl.pageLinks, host),
-      scoreExternalLinks(crawl.pageLinks, host),
-      scoreFaviconOg($)
-    ];
-
-    let totalRaw = 0;
-    const tierRaw = { tier1: 0, tier2: 0, tier3: 0 };
-    const tierMax = { tier1: 0, tier2: 0, tier3: 0 };
-
-    for (const sig of results) {
-      const safe = clamp(sig.points || 0, 0, sig.max);
-      const tier = SIGNAL_TIER[sig.key] || "tier3";
-      totalRaw += safe;
-      tierRaw[tier] += safe;
-      tierMax[tier] += sig.max;
-    }
-
-    const eccScore = blocked
-      ? 0
-      : clamp(Math.round((totalRaw * 100) / TOTAL_WEIGHT), 0, 100);
-
-    const tierScores = {
-      tier1: {
-        label: TIER_LABELS.tier1,
-        raw: tierRaw.tier1,
-        maxWeight: tierMax.tier1,
-        normalized:
-          tierMax.tier1 > 0
-            ? Number(((tierRaw.tier1 / tierMax.tier1) * 100).toFixed(2))
-            : 0
-      },
-      tier2: {
-        label: TIER_LABELS.tier2,
-        raw: tierRaw.tier2,
-        maxWeight: tierMax.tier2,
-        normalized:
-          tierMax.tier2 > 0
-            ? Number(((tierRaw.tier2 / tierMax.tier2) * 100).toFixed(2))
-            : 0
-      },
-      tier3: {
-        label: TIER_LABELS.tier3,
-        raw: tierRaw.tier3,
-        maxWeight: tierMax.tier3,
-        normalized:
-          tierMax.tier3 > 0
-            ? Number(((tierRaw.tier3 / tierMax.tier3) * 100).toFixed(2))
-            : 0
-      }
-    };
-
-    const scoringBars = results.map(r => ({
-      key: r.key,
-      points: r.points,
-      max: r.max,
-      percent: r.max ? Math.round((r.points / r.max) * 100) : 0,
-      notes: r.notes
-    }));
-
-    return res.status(200).json({
-      success: true,
-      url: crawl.finalUrl || url,
-      hostname: hostnameOf(crawl.finalUrl || url) || host,
-      methodologyVersion: "EEI v2.1",
-      entityScore: eccScore,
-
-      state,              // <-- Blocked / Defensive / Open
-      ecc: { score: eccScore, max: 100 },
-
-      tierScores,         // <-- Tier1 / Tier2 / Tier3
-      scoringBars,        // <-- UX-safe breakdown
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: err.message || "Internal error"
-    });
+    const result = await runAudit(req.query?.url);
+    return res.status(result.success ? 200 : (result.status || 400)).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, error: "Audit failed.", details: String(error?.message || error).slice(0, 300) });
   }
 }

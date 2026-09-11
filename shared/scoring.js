@@ -350,22 +350,20 @@ export function scoreExternalLinks(pageLinks, originHost) {
 
 export function scoreAICrawlSignals($) {
   const robots = ($('meta[name="robots"]').attr("content") || "").toLowerCase();
+  const directives = new Set(robots.split(/[\s,]+/).filter(Boolean));
   const aiPing =
     $('img[src*="ai-crawl-ping"], img[src*="crawl-ping"]').length > 0;
 
-  const allowIndex = robots === "" || /index/.test(robots);
+  const allowIndex = !directives.has("noindex") && !directives.has("none");
 
   let points = 0, notes = "Blocked";
 
   if (!allowIndex) {
     points = 0;
     notes = "Robots block indexing";
-  } else if (aiPing) {
-    points = WEIGHTS.aiCrawl;
-    notes = "Explicit crawl ping";
   } else {
     points = Math.round(WEIGHTS.aiCrawl * 0.6);
-    notes = "Indexable, no explicit ping";
+    notes = "Page indexing is not prohibited by its meta robots directive";
   }
 
   return {
@@ -373,7 +371,7 @@ export function scoreAICrawlSignals($) {
     points,
     max: WEIGHTS.aiCrawl,
     notes,
-    raw: { robots, aiPing }
+    raw: { robots, directives: Array.from(directives), aiPing }
   };
 }
 

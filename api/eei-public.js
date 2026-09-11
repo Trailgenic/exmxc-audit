@@ -1,177 +1,48 @@
-// /api/eei-public.js
-// EEI Public Proxy — UX-safe, narrative-first, moat-protecting
-// FIXED: Hard-pinned internal origin to prevent HTML fallback
-
 import axios from "axios";
 
-/* ============================================================
-   CONFIG (FINAL — DO NOT AUTO-DETECT)
-   ============================================================ */
-
-// 🔒 HARD PIN — prevents Vercel HTML fallback
 const INTERNAL_ORIGIN = "https://exmxc-audit.vercel.app";
+const INTERNAL_TIMEOUT_MS = 25_000;
 
-const INTERNAL_TIMEOUT_MS = 25000;
-
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
-function normalizeUrl(input) {
-  let url = (input || "").trim();
-  if (!url) return null;
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-  try {
-    return new URL(url).toString();
-  } catch {
-    return null;
-  }
+export function publicResponse(audit) {
+  return {
+    success: true,
+    methodology: audit.methodologyVersion,
+    run_id: audit.run_id,
+    url: audit.url,
+    hostname: audit.hostname,
+    collection: audit.collection,
+    robots: audit.robots,
+    declared_access: audit.declared_access,
+    machine_evidence: audit.machine_evidence,
+    assessment: audit.assessment,
+    model_representation: audit.model_representation,
+    legacy_diagnostic: audit.legacy_diagnostic,
+    interpretation_boundary: "This response reports collected website evidence and an uncompleted review template. It does not establish model trust, citation, recommendation, or corporate intent.",
+    timestamp: audit.collected_at
+  };
 }
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
-
-/* ============================================================
-   STRUCTURAL PROFILE (Narrative Engine)
-   ============================================================ */
-
-function buildStructuralProfile({ entityScore, tierScores }) {
-  const t1 = tierScores?.tier1?.normalized ?? 0;
-  const t2 = tierScores?.tier2?.normalized ?? 0;
-  const t3 = tierScores?.tier3?.normalized ?? 0;
-
-  let headline = "Developing structural clarity";
-  let summary =
-    "This entity shows early AI visibility but lacks sufficient structural reinforcement.";
-  let risk = "medium";
-
-  if (t1 >= 75 && t3 >= 70 && t2 < 50) {
-    headline = "Strong present authority, weak structural durability";
-    summary =
-      "AI systems currently recognize and trust this entity, but internal structure and crawl integrity are insufficient.";
-    risk = "elevated";
-  } else if (t2 >= 70 && (t1 < 60 || t3 < 60)) {
-    headline = "Solid structural foundation, under-leveraged authority";
-    summary =
-      "This entity has strong internal structure and data fidelity, but surface signals limit AI elevation.";
-    risk = "contained";
-  } else if (t1 >= 75 && t2 >= 70 && t3 >= 70) {
-    headline = "Durable, trusted AI-facing entity";
-    summary =
-      "This entity demonstrates strong authority, structure, and surface hygiene.";
-    risk = "low";
-  } else if (entityScore < 60) {
-    headline = "Fragile AI interpretation";
-    summary =
-      "AI systems may interpret this entity inconsistently.";
-    risk = "high";
-  }
-
-  return { headline, summary, risk };
-}
-
-/* ============================================================
-   MAIN HANDLER
-   ============================================================ */
 
 export default async function handler(req, res) {
-  /* ---------- CORS ---------- */
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "GET") return res.status(405).json({ success: false, error: "Method not allowed." });
 
+  const input = String(req.query?.url || "").trim();
+  if (!input) return res.status(400).json({ success: false, error: "Invalid or missing URL." });
   try {
-    /* ---------- Input ---------- */
-    const input = req.query?.url;
-    const normalized = normalizeUrl(input);
-
-    if (!normalized) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid or missing URL",
-      });
-    }
-
-    /* ---------- Call INTERNAL audit ---------- */
-    const auditUrl = `${INTERNAL_ORIGIN}/api/audit?url=${encodeURIComponent(
-      normalized
-    )}`;
-
-    const auditResp = await axios.get(auditUrl, {
+    const response = await axios.get(`${INTERNAL_ORIGIN}/api/audit?url=${encodeURIComponent(input)}`, {
       timeout: INTERNAL_TIMEOUT_MS,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "exmxc-eei-public-proxy/1.0",
-      },
-      validateStatus: (s) => s >= 200 && s < 500,
+      headers: { Accept: "application/json", "User-Agent": "exmxc-entity-clarity-public/2.0" },
+      validateStatus: status => status >= 200 && status < 500
     });
-
-    if (!auditResp.data || typeof auditResp.data !== "object") {
-      throw new Error("Audit endpoint did not return JSON");
-    }
-
-    const audit = auditResp.data;
-
-    if (!audit.success) {
-      return res.status(500).json({
-        success: false,
-        error: audit.error || "EEI audit failed",
-      });
-    }
-
-    /* ---------- Extract + sanitize ---------- */
-    const entityScore = clamp(audit.entityScore ?? audit.ecc?.score ?? 0, 0, 100);
-    const tierScores = audit.tierScores || {};
-
-    const structuralProfile = buildStructuralProfile({
-      entityScore,
-      tierScores,
-    });
-
-    const ch = audit.crawlHealth || {};
-
-    /* ---------- Public payload ---------- */
-    return res.status(200).json({
-      success: true,
-      methodology: audit.methodologyVersion || "EEI v2.1",
-
-      entity: {
-        name: audit.entityName || audit.hostname || "Unknown entity",
-        score: entityScore,
-        stage: audit.entityStage || null,
-        verb: audit.entityVerb || null,
-        description: audit.entityDescription || null,
-        focus: audit.entityFocus || null,
-      },
-
-      tiers: {
-        tier1: { score: tierScores?.tier1?.normalized ?? 0 },
-        tier2: { score: tierScores?.tier2?.normalized ?? 0 },
-        tier3: { score: tierScores?.tier3?.normalized ?? 0 },
-      },
-
-      signals: Array.isArray(audit.scoringBars) ? audit.scoringBars : [],
-
-      crawlHealth: {
-        score: typeof ch.score === "number" ? ch.score : null,
-        category: ch.category || null,
-        note:
-          Array.isArray(ch.notes) && ch.notes.length
-            ? ch.notes[0]
-            : "Internal crawl diagnostics available.",
-      },
-
-      structuralProfile,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: "Public EEI proxy error",
-      details: err.message || String(err),
-    });
+    const audit = response.data;
+    if (!audit || typeof audit !== "object") throw new Error("Audit endpoint did not return JSON.");
+    if (!audit.success) return res.status(response.status || 400).json(audit);
+    return res.status(200).json(publicResponse(audit));
+  } catch (error) {
+    return res.status(502).json({ success: false, error: "Public Entity Clarity proxy failed.", details: String(error?.message || error).slice(0, 300) });
   }
 }
