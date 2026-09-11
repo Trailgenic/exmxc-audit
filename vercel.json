@@ -6,14 +6,11 @@
   ],
   "routes": [
     { "src": "^/api/audit$", "dest": "/api/audit.js" },
-    { "src": "^/api/scan$", "dest": "/api/scan.js" },
     { "src": "^/api/predictive-audit$", "dest": "/api/predictive-audit.js" },
     { "src": "^/api/batch-run$", "dest": "/api/batch-run.js" },
     { "src": "^/api/verticals$", "dest": "/api/verticals.js" },
     { "src": "^/api/mcp-audit$", "dest": "/api/mcp-audit.js" },
     { "src": "^/api/mcp-batch-run$", "dest": "/api/mcp-batch-run.js" },
-
-    { "src": "^/api/audit-batch$", "dest": "/api/audit-batch.js" },
 
     { "src": "^/batch$", "dest": "/public/batch-run.html" },
     { "src": "^/batch-run$", "dest": "/public/batch-run.html" },
@@ -21,12 +18,6 @@
 
     { "src": "^/predictive$", "dest": "/public/predictive.html" },
     { "src": "^/predictive.html$", "dest": "/public/predictive.html" },
-
-    { "src": "^/verticals$", "dest": "/public/verticals.html" },
-    { "src": "^/verticals.html$", "dest": "/public/verticals.html" },
-
-    { "src": "^/styles.css$", "dest": "/public/styles.css" },
-    { "src": "^/audit-public.html$", "dest": "/public/audit-public.html" },
 
     { "src": "^/mcp-audit$", "dest": "/public/mcp-audit.html" },
     { "src": "^/mcp-audit.html$", "dest": "/public/mcp-audit.html" },
@@ -36,8 +27,6 @@
     { "src": "/api/ai-jobs-signal", "dest": "/api/ai-jobs-signal.js" },
     { "src": "/api/ai-jobs-signal/(.*)", "dest": "/api/ai-jobs-signal.js" },
     { "src": "^/api/eei-public$", "dest": "/api/eei-public.js" },
-    { "src": "^/api/core-scan$", "dest": "/api/core-scan.js" },
-
     { "src": "^/(.*)$", "dest": "/public/index.html" }
   ]
 }

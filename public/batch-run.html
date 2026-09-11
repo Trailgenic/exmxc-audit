@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>EEI Batch Visibility Audit — v7 Strategic UI</title>
+<title>Entity Clarity Evidence Batch — v2 Pilot</title>
 
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;
@@ -36,8 +36,8 @@
 <body>
 <div class="wrap">
 
-<h1>EEI Batch Visibility Audit — v7</h1>
-<div class="sub">Static-first crawl posture • ECC capability banding</div>
+<h1>Entity Clarity Evidence Batch — v2 Pilot</h1>
+<div class="sub">Static collection • declared access • explicit review coverage</div>
 
 <div class="card" id="summaryBox">
   <div class="row">
@@ -50,23 +50,23 @@
       <div class="value" id="countSites">0</div>
     </div>
     <div class="cell">
-      <div class="label">OPEN</div>
+      <div class="label">PERMISSIVE</div>
       <div class="value" id="countOpen">0</div>
     </div>
     <div class="cell">
-      <div class="label">DEFENSIVE</div>
+      <div class="label">SELECTIVE</div>
       <div class="value" id="countDefensive">0</div>
     </div>
     <div class="cell">
-      <div class="label">BLOCKED</div>
+      <div class="label">RESTRICTIVE</div>
       <div class="value" id="countBlocked">0</div>
     </div>
     <div class="cell">
-      <div class="label">FAILED</div>
+      <div class="label">UNDELIVERED</div>
       <div class="value" id="countFailed">0</div>
     </div>
     <div class="cell">
-      <div class="label">AVG ECC</div>
+      <div class="label">AVG LEGACY</div>
       <div class="value" id="avgECC">0.00</div>
     </div>
     <div class="cell">
@@ -87,16 +87,16 @@
 </div>
 
 <div class="card">
-  <h3 style="margin:0 0 8px">Strategic Posture + Capability</h3>
+  <h3 style="margin:0 0 8px">Observed Delivery + Declared Access</h3>
 
   <table id="resultsTable">
     <thead>
       <tr>
         <th>URL</th>
-        <th>Posture</th>
-        <th>ECC</th>
-        <th>Capability</th>
-        <th>Mode</th>
+        <th>Declared access</th>
+        <th>Delivery</th>
+        <th>Legacy diagnostic</th>
+        <th>V2 review</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -119,23 +119,14 @@ const els={
 };
 
 /* ============================
-   Capability banding
-============================ */
-function capBand(score){
-  if(score>=80) return {label:"High", cls:"cap-high"};
-  if(score>=60) return {label:"Medium", cls:"cap-med"};
-  return {label:"Low", cls:"cap-low"};
-}
-
-/* ============================
    Posture badge
 ============================ */
 function postureTag(state){
   const s=(state||"").toLowerCase();
-  if(s==="open") return `<span class="tag open">Open</span>`;
-  if(s==="defensive") return `<span class="tag defensive">Defensive</span>`;
-  if(s==="blocked") return `<span class="tag blocked">Blocked</span>`;
-  return `<span class="tag blocked">Failed</span>`;
+  if(s==="permissive") return `<span class="tag open">Permissive</span>`;
+  if(s==="selective") return `<span class="tag defensive">Selective</span>`;
+  if(s==="restrictive") return `<span class="tag blocked">Restrictive</span>`;
+  return `<span class="tag defensive">Unknown</span>`;
 }
 
 /* ============================
@@ -193,24 +184,22 @@ async function runBatch(){
   (data.results||[]).forEach(r=>{
     if(r.success===false){ failed++; return; }
 
-    const ecc = Number(r.ecc ?? r?._raw?.ecc?.score ?? 0);
-    if(ecc>0){ totalECC+=ecc; scored++; }
-
-    const st=(r.state||"").toLowerCase();
-    if(st==="open") open++;
-    else if(st==="defensive") defensive++;
-    else if(st==="blocked") blocked++;
-    else failed++;
-
-    const cap=capBand(ecc);
+    const ecc = r.legacy_diagnostic?.score;
+    if(Number.isFinite(ecc)){ totalECC+=ecc; scored++; }
+    const st=(r.declared_access?.posture||"unknown").toLowerCase();
+    if(st==="permissive") open++;
+    else if(st==="selective") defensive++;
+    else if(st==="restrictive") blocked++;
+    if(r.collection?.fetch_status!=="delivered") failed++;
+    const coverage=r.assessment?.coverage;
 
     const row=document.createElement("tr");
     row.innerHTML=`
       <td class="mono"><a href="${r.url}" target="_blank">${r.url}</a></td>
       <td>${postureTag(st)}</td>
-      <td>${ecc.toFixed(0)}</td>
-      <td><span class="tag ${cap.cls}">${cap.label}</span></td>
-      <td>${r.mode||"static"}</td>
+      <td>${r.collection?.fetch_status||"unknown"}</td>
+      <td>${Number.isFinite(ecc)?ecc.toFixed(0):"—"}</td>
+      <td>${coverage?`${coverage.assessed}/${coverage.total}`:"—"}</td>
     `;
     els.tableBody.appendChild(row);
   });
@@ -219,7 +208,7 @@ async function runBatch(){
   els.countDefensive.textContent=defensive;
   els.countBlocked.textContent=blocked;
   els.countFailed.textContent=failed;
-  els.avgECC.textContent=scored? (totalECC/scored).toFixed(2) : "0.00";
+  els.avgECC.textContent=scored? (totalECC/scored).toFixed(2) : "—";
 
   els.runBtn.textContent="Run Batch";
   els.runBtn.disabled=false;

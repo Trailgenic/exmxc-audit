@@ -3,9 +3,9 @@
 // RENDERED = Intent detection ONLY
 // No scoring, no word counts, no schema credit from rendered
 
-import axios from "axios";
 import * as cheerio from "cheerio";
 import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
+import { fetchPublicUrl, validateTarget } from "../shared/target-policy.js";
 
 /* ============================================================
    GLOBAL CONFIG
@@ -13,41 +13,26 @@ import { parseJsonLdBlocks } from "../shared/schema-extraction.js";
 export const CRAWL_CONFIG = {
   TIMEOUT_MS: 20000,
   MAX_REDIRECTS: 5,
-  STATIC_UA:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) exmxc-static/3.0 Safari/537.36",
-  AI_UAS: [
-    "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
-    "ClaudeBot/1.0 (+https://www.anthropic.com/claudebot)",
-    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
-  ]
+  STATIC_UA: "Mozilla/5.0 (compatible; exmxc-evidence-collector/2.0; +https://exmxc.ai)"
 };
 
 /* ============================================================
    HELPERS
 ============================================================ */
-function randomAiUA() {
-  return CRAWL_CONFIG.AI_UAS[
-    Math.floor(Math.random() * CRAWL_CONFIG.AI_UAS.length)
-  ];
-}
-
-
 /* ============================================================
    STATIC CRAWL (ECC SOURCE OF TRUTH)
 ============================================================ */
 export async function staticCrawl(url) {
-  const resp = await axios.get(url, {
-    timeout: CRAWL_CONFIG.TIMEOUT_MS,
+  const validated = validateTarget(url);
+  if (!validated.ok) throw Object.assign(new Error(validated.error), { code: "ERR_INVALID_TARGET" });
+  const resp = await fetchPublicUrl(validated.url, {
+    timeoutMs: CRAWL_CONFIG.TIMEOUT_MS,
     maxRedirects: CRAWL_CONFIG.MAX_REDIRECTS,
-    headers: {
-      "User-Agent": CRAWL_CONFIG.STATIC_UA,
-      Accept: "text/html"
-    },
-    validateStatus: s => s >= 200 && s < 400
+    userAgent: CRAWL_CONFIG.STATIC_UA
   });
-
-  const finalUrl = resp.request?.res?.responseUrl || url;
-  const html = typeof resp.data === "string" ? resp.data : "";
+  if (resp.status < 200 || resp.status >= 300) throw Object.assign(new Error(`HTTP ${resp.status}`), { code: "ERR_HTTP_STATUS", status: resp.status });
+  const finalUrl = resp.finalUrl;
+  const html = resp.body;
   const $ = cheerio.load(html);
 
   const schemaObjects = parseJsonLdBlocks(
@@ -72,9 +57,7 @@ export async function staticCrawl(url) {
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
       "",
-    canonicalHref:
-      $('link[rel="canonical"]').attr("href") ||
-      finalUrl.replace(/\/$/, ""),
+    canonicalHref: $('link[rel="canonical"]').attr("href") || "",
     favicon:
       $('link[rel="icon"]').attr("href") ||
       $('link[rel="shortcut icon"]').attr("href") ||
@@ -85,7 +68,13 @@ export async function staticCrawl(url) {
     diagnostics: {
       wordCount: bodyText ? bodyText.split(" ").length : 0,
       schemaCount: schemaObjects.length,
-      linkCount: pageLinks.length
+      linkCount: pageLinks.length,
+      internalLinkCount: pageLinks.filter(href => {
+        try { return new URL(href, finalUrl).origin === new URL(finalUrl).origin; } catch { return false; }
+      }).length,
+      externalLinkCount: pageLinks.filter(href => {
+        try { return new URL(href, finalUrl).origin !== new URL(finalUrl).origin; } catch { return false; }
+      }).length
     }
   };
 }
@@ -94,41 +83,18 @@ export async function staticCrawl(url) {
    RENDERED CRAWL (INTENT ONLY — NO SCORING DATA)
 ============================================================ */
 export async function renderedIntentProbe(url) {
-  const { chromium } = await import("playwright-core");
-  const browser = await chromium.launch({ headless: true });
+  const validated = validateTarget(url);
+  if (!validated.ok) throw Object.assign(new Error(validated.error), { code: "ERR_INVALID_TARGET" });
+  return {
+    mode: "rendered",
+    status: "not_run",
+    reason: "Rendered collection is disabled until network isolation and policy controls are verified. User-agent imitation is not provider verification."
+  };
+}
 
-  try {
-    const page = await browser.newPage({ userAgent: randomAiUA() });
-    await page.goto(url, { timeout: CRAWL_CONFIG.TIMEOUT_MS, waitUntil: "networkidle" });
-
-    const html = await page.content();
-    const $ = cheerio.load(html);
-
-    const renderedSchemas = parseJsonLdBlocks(
-      await page.$$eval(
-        'script[type="application/ld+json"]',
-        nodes => nodes.map(n => n.textContent || "")
-      )
-    );
-
-    return {
-      mode: "rendered",
-      intentSignals: {
-        renderedSchemaCount: renderedSchemas.length,
-        jsOnlySchema: renderedSchemas.length > 0,
-        botAccessible: true
-      }
-    };
-  } catch {
-    return {
-      mode: "rendered",
-      intentSignals: {
-        botAccessible: false
-      }
-    };
-  } finally {
-    await browser.close();
-  }
+export async function crawlPage({ url, mode = "static" }) {
+  if (mode !== "static") return renderedIntentProbe(url);
+  return staticCrawl(url);
 }
 
 /* ============================================================

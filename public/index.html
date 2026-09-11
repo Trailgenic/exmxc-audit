@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>EEI Internal Audit — v7.0</title>
+  <title>Entity Clarity Evidence — v2 Pilot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     :root {
@@ -251,7 +251,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>EEI Internal Audit — v7.0</h1>
+    <h1>Entity Clarity Evidence — v2 Pilot</h1>
 
     <div class="input-row">
       <input id="urlInput" placeholder="example.com" />
@@ -260,9 +260,9 @@
 
     <div id="results" style="display:none;">
       <div class="grid">
-        <!-- Strategic Posture -->
+        <!-- Declared access -->
         <div class="panel">
-          <h2>Strategic Posture</h2>
+          <h2>Declared Access</h2>
           <div class="posture-header">
             <div id="postureLabel" class="posture-label">—</div>
             <div class="posture-bar">
@@ -274,23 +274,23 @@
             <div class="score-circle">
               <span id="scoreValue">—</span>
               <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-                Capability Score
+                Legacy Website Diagnostic
               </div>
             </div>
             <div class="score-meta">
-              <div class="score-meta-label">Capability Band</div>
+              <div class="score-meta-label">V2 Review Coverage</div>
               <div id="scoreBand">—</div>
             </div>
           </div>
         </div>
 
-        <!-- Tier Stability -->
+        <!-- Legacy proxy breakdown -->
         <div class="panel">
-          <h3>Tier Stability</h3>
+          <h3>Legacy Proxy Breakdown</h3>
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Entity comprehension &amp; trust (Tier 1)</span>
+              <span class="tier-name">Graph and content proxies</span>
               <span id="tier1Score" class="tier-score">0%</span>
             </div>
             <div class="tier-bar">
@@ -300,7 +300,7 @@
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Structural data fidelity (Tier 2)</span>
+              <span class="tier-name">Structured-data proxies</span>
               <span id="tier2Score" class="tier-score">0%</span>
             </div>
             <div class="tier-bar">
@@ -310,7 +310,7 @@
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Page-level hygiene (Tier 3)</span>
+              <span class="tier-name">Page-hygiene proxies</span>
               <span id="tier3Score" class="tier-score">0%</span>
             </div>
             <div class="tier-bar">
@@ -322,7 +322,7 @@
 
       <!-- Signal breakdown -->
       <div class="panel">
-        <h3>Signal Breakdown</h3>
+        <h3>Legacy Diagnostic Details</h3>
         <ul id="signalsList"></ul>
       </div>
 
@@ -364,13 +364,12 @@
         /* =========================
            CAPABILITY SCORE
         ==========================*/
-        const score = data.ecc?.score ?? 0;
-        document.getElementById("scoreValue").textContent = score;
-
-        let band = "Low";
-        if (score >= 70) band = "High";
-        else if (score >= 40) band = "Medium";
-        document.getElementById("scoreBand").textContent = band;
+        const score = data.legacy_diagnostic?.score;
+        document.getElementById("scoreValue").textContent = Number.isFinite(score) ? score : "—";
+        const coverage = data.assessment?.coverage;
+        document.getElementById("scoreBand").textContent = coverage
+          ? `${coverage.assessed}/${coverage.total} checks reviewed`
+          : "Not reviewed";
 
         /* =========================
            STRATEGIC POSTURE BAR
@@ -378,17 +377,25 @@
         const postureFill = document.getElementById("postureFill");
         const postureLabel = document.getElementById("postureLabel");
 
-        postureFill.style.width = score + "%";
+        const delivery = data.collection?.fetch_status || "unknown";
+        const access = data.declared_access?.posture || "unknown";
+        postureFill.style.width = access === "unknown" ? "0%" : "100%";
 
-        if (data.state === "blocked") {
+        if (delivery !== "delivered") {
+          postureFill.style.background = "var(--muted)";
+          postureLabel.textContent = `Delivery observation: ${delivery}`;
+        } else if (access === "restrictive") {
           postureFill.style.background = "var(--red)";
-          postureLabel.textContent = "Blocked — Hard Access Controls";
-        } else if (data.state === "defensive") {
+          postureLabel.textContent = "Declared policy: Restrictive";
+        } else if (access === "selective") {
           postureFill.style.background = "var(--amber)";
-          postureLabel.textContent = "Defensive — Partial Visibility / Bot Friction";
-        } else {
+          postureLabel.textContent = "Declared policy: Selective";
+        } else if (access === "permissive") {
           postureFill.style.background = "var(--green)";
-          postureLabel.textContent = "Open — AI-Forward Surface";
+          postureLabel.textContent = "Declared policy: Permissive";
+        } else {
+          postureFill.style.background = "var(--muted)";
+          postureLabel.textContent = "Declared policy: Unknown";
         }
 
         /* =========================
@@ -406,16 +413,16 @@
           labelEl.textContent = pct + "%";
         }
 
-        applyTier("tier1Bar", "tier1Score", data.tierScores?.tier1);
-        applyTier("tier2Bar", "tier2Score", data.tierScores?.tier2);
-        applyTier("tier3Bar", "tier3Score", data.tierScores?.tier3);
+        applyTier("tier1Bar", "tier1Score", data.legacy_diagnostic?.tiers?.tier1);
+        applyTier("tier2Bar", "tier2Score", data.legacy_diagnostic?.tiers?.tier2);
+        applyTier("tier3Bar", "tier3Score", data.legacy_diagnostic?.tiers?.tier3);
 
         /* =========================
            SIGNAL BREAKDOWN
         ==========================*/
         const signalsEl = document.getElementById("signalsList");
         if (signalsEl) {
-          signalsEl.innerHTML = (data.scoringBars || [])
+          signalsEl.innerHTML = (data.legacy_diagnostic?.signals || [])
             .map(r =>
               `<li><strong>${r.key}</strong> — ${r.percent}%` +
               (r.notes ? ` <em style="color:#9aa4c7">${r.notes}</em>` : "") +
