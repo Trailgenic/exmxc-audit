@@ -4,7 +4,6 @@ import fs from "node:fs";
 import * as cheerio from "cheerio";
 import { runAudit } from "../api/audit.js";
 import { normalizeResult, summarizeResults } from "../api/batch-run.js";
-import { assessEntityClarityV2, ECV2_CHECKS } from "../shared/entity-clarity-v2.js";
 import { evaluateRobots, parseRobots, providerPolicyMatrix } from "../shared/robots-policy.js";
 import { fetchPublicUrl, isPublicAddress, resolvePublicHost, validateTarget } from "../shared/target-policy.js";
 import { scoreAICrawlSignals } from "../shared/scoring.js";
@@ -25,6 +24,28 @@ function fixtureFetcher({ pageStatus = 200, pageBody = "<html><head><title>Fixtu
     });
   };
 }
+
+const RICH_ENTITY_HTML = `<!doctype html>
+<html lang="en"><head>
+  <title>Fixture Corporation</title>
+  <meta name="description" content="Fixture Corporation provides institutional testing services.">
+  <meta property="og:title" content="Fixture Corporation">
+  <meta property="og:site_name" content="Fixture Corporation">
+  <meta property="og:url" content="https://exmxc.ai/">
+  <link rel="canonical" href="https://exmxc.ai/">
+  <script type="application/ld+json">{
+    "@context":"https://schema.org","@type":"Organization","name":"Fixture Corporation",
+    "url":"https://exmxc.ai/","@id":"https://exmxc.ai/#organization",
+    "sameAs":["https://www.linkedin.com/company/fixture"],
+    "parentOrganization":{"@type":"Organization","name":"Fixture Parent"}
+  }</script>
+</head><body>
+  <h1>Fixture Corporation</h1>
+  <a href="/about">About us</a>
+  <a href="/contact">Contact</a>
+  <a href="/editorial-standards">Editorial standards</a>
+  <a href="https://www.linkedin.com/company/fixture">LinkedIn</a>
+</body></html>`;
 
 test("validates public HTTPS targets and rejects local or ambiguous destinations", () => {
   assert.equal(validateTarget("exmxc.ai").url, "https://exmxc.ai/");
@@ -116,7 +137,7 @@ test("non-HTML responses remain collected evidence but are not clarity-scored", 
   assert.equal(result.state, "unknown");
 });
 
-test("delivered content, declared access, review status, and model status remain separate", async () => {
+test("delivered content, declared access, automated clarity, and model status remain separate", async () => {
   const result = await runAudit("https://exmxc.ai", {
     fetchPublicUrl: fixtureFetcher({
       robotsStatus: 200,
@@ -127,7 +148,9 @@ test("delivered content, declared access, review status, and model status remain
   assert.equal(result.declared_access.posture, "selective");
   assert.equal(result.state, "defensive");
   assert.equal(typeof result.legacy_diagnostic.score, "number");
-  assert.equal(result.assessment.score, null);
+  assert.equal(typeof result.assessment.score, "number");
+  assert.equal(result.assessment.coverage.measured, 5);
+  assert.equal(result.assessment.assessment_mode, "automated_deterministic");
   assert.equal(result.model_representation.status, "not_tested");
   assert.equal("body" in result.collection, false);
   assert.match(result.run_id, /^[0-9a-f-]{36}$/);
@@ -135,41 +158,22 @@ test("delivered content, declared access, review status, and model status remain
   assert.equal(result.collection.collector_version, "exmxc-evidence-collector/2.0");
 });
 
-test("Entity Clarity v2 only computes a comparable score from nine evidenced checks", () => {
-  const incomplete = assessEntityClarityV2({ checks: {
-    entity_domain_resolution: { status: "assessed", points: 2, rationale: "Verified.", evidence: ["fixture://identity"] }
-  }});
-  assert.equal(incomplete.coverage.assessed, 1);
-  assert.equal(incomplete.score, null);
-  assert.equal(incomplete.comparable, false);
-
-  const invalidTarget = assessEntityClarityV2({
-    entity_id: "ent_fixture", target_url: "https://",
-    reviewer_id: "reviewer-1", reviewed_at: "2026-09-11T00:00:00.000Z", checks: {}
+test("Automated Entity Clarity v2.1 computes five evidence-backed dimensions without human review", async () => {
+  const complete = await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageBody: RICH_ENTITY_HTML })
   });
-  assert.equal(invalidTarget.review_provenance.target_url, null);
+  assert.equal(complete.assessment.score, 100);
+  assert.equal(complete.assessment.comparable, true);
+  assert.deepEqual(complete.assessment.coverage, { measured: 5, total: 5, percent: 100 });
+  assert.equal(Object.keys(complete.assessment.dimensions).length, 5);
+  assert.equal(complete.assessment.dimensions.identity_resolution.signals.length, 4);
+  assert.equal(complete.assessment.dimensions.machine_legibility.signals.length, 5);
+  assert.equal("review_provenance" in complete.assessment, false);
 
-  const checks = Object.fromEntries(ECV2_CHECKS.map((check, index) => [check.id, {
-    status: "assessed",
-    points: index < 6 ? 2 : 1,
-    rationale: "Reviewed fixture.",
-    evidence: [`fixture://${check.id}`]
-  }]));
-  const complete = assessEntityClarityV2({
-    entity_id: "ent_fixture", target_url: "https://exmxc.ai/",
-    reviewer_id: "reviewer-1", reviewed_at: "2026-09-11T00:00:00.000Z", checks
-  });
-  assert.equal(complete.coverage.assessed, 9);
-  assert.equal(complete.score, 83.33);
-  assert.equal(complete.comparable, true);
-
-  checks.entity_domain_resolution = { status: "assessed", points: 2, rationale: "Missing evidence.", evidence: [] };
-  const invalid = assessEntityClarityV2({
-    entity_id: "ent_fixture", target_url: "https://exmxc.ai/",
-    reviewer_id: "reviewer-1", reviewed_at: "2026-09-11T00:00:00.000Z", checks
-  });
-  assert.equal(invalid.checks[0].status, "unassessable");
-  assert.equal(invalid.score, null);
+  const sparse = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher() });
+  assert.equal(sparse.assessment.status, "scored");
+  assert.equal(sparse.assessment.score, 14);
+  assert.equal(sparse.assessment.coverage.percent, 100);
 });
 
 test("single and batch contracts count the same observation honestly", async () => {
@@ -178,7 +182,9 @@ test("single and batch contracts count the same observation honestly", async () 
   const summary = summarizeResults([normalized], 1);
   assert.equal(normalized.collection.fetch_status, raw.collection.fetch_status);
   assert.equal(summary.completed_observations, 1);
-  assert.equal(summary.unassessed, 1);
+  assert.equal(summary.scored, 1);
+  assert.equal(summary.unscored, 0);
+  assert.equal(summary.average_entity_clarity_score, raw.assessment.score);
   assert.equal(summary.legacy_scored, 1);
   assert.equal(summary.collection_status.delivered, 1);
 });
@@ -186,9 +192,10 @@ test("single and batch contracts count the same observation honestly", async () 
 test("public response exposes the versioned evidence contract without compatibility fields", async () => {
   const raw = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher() });
   const published = publicResponse(raw);
-  assert.equal(published.methodology, "Entity Clarity evidence v2.0-pilot");
+  assert.equal(published.methodology, "Entity Clarity evidence v2.1-pilot");
   assert.equal(published.timestamp, raw.collected_at);
-  assert.equal(published.assessment.review_provenance.complete, false);
+  assert.equal(published.assessment.assessment_mode, "automated_deterministic");
+  assert.equal(typeof published.assessment.score, "number");
   assert.equal("entityScore" in published, false);
   assert.equal("state" in published, false);
 });

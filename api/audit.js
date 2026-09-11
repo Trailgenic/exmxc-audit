@@ -6,7 +6,7 @@ import {
 } from "../shared/scoring.js";
 import { TOTAL_WEIGHT } from "../shared/weights.js";
 import { collectAuditEvidence, publicEvidence } from "../shared/audit-contract.js";
-import { assessEntityClarityV2, emptyEcV2Template } from "../shared/entity-clarity-v2.js";
+import { assessEntityClarityV2 } from "../shared/entity-clarity-v2.js";
 import { validateTarget } from "../shared/target-policy.js";
 
 const SIGNAL_TIER = {
@@ -89,14 +89,14 @@ export async function runAudit(input, dependencies = {}) {
   const evidence = await collectAuditEvidence(validated.url, dependencies);
   const legacyDiagnostic = buildLegacyDiagnostic(evidence);
   const visibleEvidence = publicEvidence(evidence);
-  const assessment = assessEntityClarityV2({ checks: emptyEcV2Template() });
+  const assessment = assessEntityClarityV2(evidence);
   const state = compatibilityState(evidence.collection.fetch_status, evidence.declared_access.posture);
 
   return {
     success: true,
     url: evidence.collection.final_url || validated.url,
     hostname: hostnameOf(evidence.collection.final_url || validated.url),
-    methodologyVersion: "Entity Clarity evidence v2.0-pilot",
+    methodologyVersion: "Entity Clarity evidence v2.1-pilot",
     ...visibleEvidence,
     assessment,
     model_representation: {

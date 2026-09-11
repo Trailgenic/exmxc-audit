@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Entity Clarity Evidence — v2 Pilot</title>
+  <title>Automated Entity Clarity — v2.1 Pilot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     :root {
@@ -251,7 +251,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>Entity Clarity Evidence — v2 Pilot</h1>
+    <h1>Automated Entity Clarity — v2.1 Pilot</h1>
 
     <div class="input-row">
       <input id="urlInput" placeholder="example.com" />
@@ -274,47 +274,67 @@
             <div class="score-circle">
               <span id="scoreValue">—</span>
               <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-                Legacy Website Diagnostic
+                Automated Entity Clarity
               </div>
             </div>
             <div class="score-meta">
-              <div class="score-meta-label">V2 Review Coverage</div>
+              <div class="score-meta-label">Automated Coverage</div>
               <div id="scoreBand">—</div>
             </div>
           </div>
         </div>
 
-        <!-- Legacy proxy breakdown -->
+        <!-- Automated dimension breakdown -->
         <div class="panel">
-          <h3>Legacy Proxy Breakdown</h3>
+          <h3>Automated Dimension Breakdown</h3>
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Graph and content proxies</span>
-              <span id="tier1Score" class="tier-score">0%</span>
+              <span class="tier-name">Identity resolution</span>
+              <span id="identityScore" class="tier-score">—</span>
             </div>
             <div class="tier-bar">
-              <div id="tier1Bar" class="tier-bar-fill"></div>
+              <div id="identityBar" class="tier-bar-fill"></div>
             </div>
           </div>
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Structured-data proxies</span>
-              <span id="tier2Score" class="tier-score">0%</span>
+              <span class="tier-name">Entity consistency</span>
+              <span id="consistencyScore" class="tier-score">—</span>
             </div>
             <div class="tier-bar">
-              <div id="tier2Bar" class="tier-bar-fill"></div>
+              <div id="consistencyBar" class="tier-bar-fill"></div>
             </div>
           </div>
 
           <div class="tier-row">
             <div class="tier-label-line">
-              <span class="tier-name">Page-hygiene proxies</span>
-              <span id="tier3Score" class="tier-score">0%</span>
+              <span class="tier-name">Relationship clarity</span>
+              <span id="relationshipScore" class="tier-score">—</span>
             </div>
             <div class="tier-bar">
-              <div id="tier3Bar" class="tier-bar-fill"></div>
+              <div id="relationshipBar" class="tier-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="tier-row">
+            <div class="tier-label-line">
+              <span class="tier-name">Evidence traceability</span>
+              <span id="evidenceScore" class="tier-score">—</span>
+            </div>
+            <div class="tier-bar">
+              <div id="evidenceBar" class="tier-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="tier-row">
+            <div class="tier-label-line">
+              <span class="tier-name">Machine legibility</span>
+              <span id="machineScore" class="tier-score">—</span>
+            </div>
+            <div class="tier-bar">
+              <div id="machineBar" class="tier-bar-fill"></div>
             </div>
           </div>
         </div>
@@ -322,7 +342,7 @@
 
       <!-- Signal breakdown -->
       <div class="panel">
-        <h3>Legacy Diagnostic Details</h3>
+        <h3>Legacy Structural Diagnostic — Migration Reference</h3>
         <ul id="signalsList"></ul>
       </div>
 
@@ -362,14 +382,14 @@
         results.style.display = "block";
 
         /* =========================
-           CAPABILITY SCORE
+           AUTOMATED ENTITY CLARITY
         ==========================*/
-        const score = data.legacy_diagnostic?.score;
+        const score = data.assessment?.score;
         document.getElementById("scoreValue").textContent = Number.isFinite(score) ? score : "—";
         const coverage = data.assessment?.coverage;
         document.getElementById("scoreBand").textContent = coverage
-          ? `${coverage.assessed}/${coverage.total} checks reviewed`
-          : "Not reviewed";
+          ? `${coverage.measured}/${coverage.total} dimensions measured`
+          : "Not measured";
 
         /* =========================
            STRATEGIC POSTURE BAR
@@ -399,23 +419,26 @@
         }
 
         /* =========================
-           TIER STABILITY (WITH SCORES)
+           AUTOMATED DIMENSIONS
         ==========================*/
-        function applyTier(barId, labelId, tierObj) {
+        function applyDimension(barId, labelId, dimension) {
           const barEl = document.getElementById(barId);
           const labelEl = document.getElementById(labelId);
 
-          if (!barEl || !labelEl || !tierObj) return;
+          if (!barEl || !labelEl) return;
 
-          const pct = Math.round(tierObj.normalized ?? 0);
+          const pct = Number.isFinite(dimension?.score) ? Math.round(dimension.score) : 0;
           barEl.style.width = pct + "%";
-          barEl.title = pct + "% stability";
-          labelEl.textContent = pct + "%";
+          barEl.title = dimension?.status === "measured" ? pct + "%" : "Not measured";
+          labelEl.textContent = dimension?.status === "measured" ? pct + "%" : "—";
         }
 
-        applyTier("tier1Bar", "tier1Score", data.legacy_diagnostic?.tiers?.tier1);
-        applyTier("tier2Bar", "tier2Score", data.legacy_diagnostic?.tiers?.tier2);
-        applyTier("tier3Bar", "tier3Score", data.legacy_diagnostic?.tiers?.tier3);
+        const dimensions = data.assessment?.dimensions || {};
+        applyDimension("identityBar", "identityScore", dimensions.identity_resolution);
+        applyDimension("consistencyBar", "consistencyScore", dimensions.entity_consistency);
+        applyDimension("relationshipBar", "relationshipScore", dimensions.relationship_clarity);
+        applyDimension("evidenceBar", "evidenceScore", dimensions.evidence_traceability);
+        applyDimension("machineBar", "machineScore", dimensions.machine_legibility);
 
         /* =========================
            SIGNAL BREAKDOWN

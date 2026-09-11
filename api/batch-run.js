@@ -25,7 +25,7 @@ export function normalizeResult(raw) {
 
 export function summarizeResults(results, totalUrls) {
   const successful = results.filter(result => result.success);
-  const assessed = successful.filter(result => typeof result.assessment?.score === "number");
+  const scored = successful.filter(result => typeof result.assessment?.score === "number");
   const legacyScored = successful.filter(result => typeof result.legacy_diagnostic?.score === "number");
   const collection = {};
   const access = {};
@@ -40,8 +40,11 @@ export function summarizeResults(results, totalUrls) {
     attempted: results.length,
     completed_observations: successful.length,
     request_errors: results.length - successful.length,
-    assessed: assessed.length,
-    unassessed: successful.length - assessed.length,
+    scored: scored.length,
+    unscored: successful.length - scored.length,
+    average_entity_clarity_score: scored.length
+      ? Number((scored.reduce((sum, result) => sum + result.assessment.score, 0) / scored.length).toFixed(2))
+      : null,
     legacy_scored: legacyScored.length,
     average_legacy_score: legacyScored.length
       ? Number((legacyScored.reduce((sum, result) => sum + result.legacy_diagnostic.score, 0) / legacyScored.length).toFixed(2))
@@ -64,7 +67,7 @@ export async function runBatch({ dataset, start = 0, limit = MAX_BATCH_SIZE, aud
   }
   return {
     success: true,
-    contract_version: "entity-clarity-batch/2.0-pilot",
+    contract_version: "entity-clarity-batch/2.1-pilot",
     vertical: parsed.vertical || safeDataset,
     dataset: safeDataset,
     window: { start, limit, returned: selected.length, next_start: start + selected.length < urls.length ? start + selected.length : null },

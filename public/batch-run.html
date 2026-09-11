@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Entity Clarity Evidence Batch — v2 Pilot</title>
+<title>Automated Entity Clarity Batch — v2.1 Pilot</title>
 
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;
@@ -36,8 +36,8 @@
 <body>
 <div class="wrap">
 
-<h1>Entity Clarity Evidence Batch — v2 Pilot</h1>
-<div class="sub">Static collection • declared access • explicit review coverage</div>
+<h1>Automated Entity Clarity Batch — v2.1 Pilot</h1>
+<div class="sub">Static collection • declared access • automated evidence-backed scoring</div>
 
 <div class="card" id="summaryBox">
   <div class="row">
@@ -66,7 +66,7 @@
       <div class="value" id="countFailed">0</div>
     </div>
     <div class="cell">
-      <div class="label">AVG LEGACY</div>
+      <div class="label">AVG ENTITY CLARITY</div>
       <div class="value" id="avgECC">0.00</div>
     </div>
     <div class="cell">
@@ -95,8 +95,8 @@
         <th>URL</th>
         <th>Declared access</th>
         <th>Delivery</th>
-        <th>Legacy diagnostic</th>
-        <th>V2 review</th>
+        <th>Entity Clarity</th>
+        <th>Coverage</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -184,7 +184,7 @@ async function runBatch(){
   (data.results||[]).forEach(r=>{
     if(r.success===false){ failed++; return; }
 
-    const ecc = r.legacy_diagnostic?.score;
+    const ecc = r.assessment?.score;
     if(Number.isFinite(ecc)){ totalECC+=ecc; scored++; }
     const st=(r.declared_access?.posture||"unknown").toLowerCase();
     if(st==="permissive") open++;
@@ -199,7 +199,7 @@ async function runBatch(){
       <td>${postureTag(st)}</td>
       <td>${r.collection?.fetch_status||"unknown"}</td>
       <td>${Number.isFinite(ecc)?ecc.toFixed(0):"—"}</td>
-      <td>${coverage?`${coverage.assessed}/${coverage.total}`:"—"}</td>
+      <td>${coverage?`${coverage.measured}/${coverage.total}`:"—"}</td>
     `;
     els.tableBody.appendChild(row);
   });
