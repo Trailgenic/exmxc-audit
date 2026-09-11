@@ -13,7 +13,7 @@
   .sub{color:#666;margin-bottom:24px}
   .card{background:#fff;border-radius:14px;padding:20px;
     box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:20px}
-  .row{display:flex;gap:14px}
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px}
   .cell{flex:1;background:#f9fafb;border:1px solid #eee;
     border-radius:10px;padding:14px;text-align:center}
   .label{font-size:12px;color:#666;margin-bottom:4px}
@@ -30,6 +30,19 @@
   .cap-high{background:#e6f1ff;color:#114c9a}
   .cap-med{background:#fff3da;color:#8a6200}
   .cap-low{background:#ffe6e6;color:#9a1a1a}
+  .adequate{background:#e5fbef;color:#076c3c}
+  .limited{background:#fff2c8;color:#8a5b00}
+  .unassessable{background:#eef0f4;color:#5f6673}
+  .cal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+  .cal-section{background:#f9fafb;border:1px solid #eee;border-radius:10px;padding:14px}
+  .cal-section h4{margin:0 0 12px;font-size:14px}
+  .metric{margin:10px 0}
+  .metric-line{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:5px}
+  .metric-track{height:8px;background:#e7e9ee;border-radius:99px;overflow:hidden}
+  .metric-fill{height:100%;background:#111;border-radius:99px}
+  .cal-note{font-size:13px;color:#666;line-height:1.5;margin-top:12px}
+  .watch{color:#8a5b00;font-weight:700}
+  @media(max-width:700px){body{padding:18px}.card{padding:14px;overflow-x:auto}}
 </style>
 </head>
 
@@ -70,6 +83,18 @@
       <div class="value" id="avgECC">0.00</div>
     </div>
     <div class="cell">
+      <div class="label">MEDIAN</div>
+      <div class="value" id="medianECC">—</div>
+    </div>
+    <div class="cell">
+      <div class="label">SCORES ≥90</div>
+      <div class="value" id="ceilingRate">—</div>
+    </div>
+    <div class="cell">
+      <div class="label">LIMITED STATIC HTML</div>
+      <div class="value" id="limitedStatic">0</div>
+    </div>
+    <div class="cell">
       <div class="label">LAST RUN</div>
       <div class="value" id="lastRun">—</div>
     </div>
@@ -96,11 +121,31 @@
         <th>Declared access</th>
         <th>Delivery</th>
         <th>Entity Clarity</th>
-        <th>Coverage</th>
+        <th>Static evidence</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
+</div>
+
+<div class="card" id="calibrationCard">
+  <h3 style="margin:0 0 4px">Automated Calibration</h3>
+  <div class="sub" style="margin-bottom:14px">Distribution and signal diagnostics only; v2.1 scores and weights are unchanged.</div>
+  <div class="cal-grid">
+    <div class="cal-section">
+      <h4>Score distribution</h4>
+      <div id="distributionGrid"></div>
+    </div>
+    <div class="cal-section">
+      <h4>Dimension averages</h4>
+      <div id="dimensionGrid"></div>
+    </div>
+    <div class="cal-section">
+      <h4>Calibration watch</h4>
+      <div id="calibrationStatus" class="cal-note">Run a batch to calculate diagnostics.</div>
+      <div id="saturatedSignals" class="cal-note"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -112,7 +157,14 @@ const els={
   countBlocked:document.getElementById("countBlocked"),
   countFailed:document.getElementById("countFailed"),
   avgECC:document.getElementById("avgECC"),
+  medianECC:document.getElementById("medianECC"),
+  ceilingRate:document.getElementById("ceilingRate"),
+  limitedStatic:document.getElementById("limitedStatic"),
   lastRun:document.getElementById("lastRun"),
+  distributionGrid:document.getElementById("distributionGrid"),
+  dimensionGrid:document.getElementById("dimensionGrid"),
+  calibrationStatus:document.getElementById("calibrationStatus"),
+  saturatedSignals:document.getElementById("saturatedSignals"),
   tableBody:document.querySelector("#resultsTable tbody"),
   runBtn:document.getElementById("runBtn"),
   sel:document.getElementById("datasetSelect")
@@ -127,6 +179,59 @@ function postureTag(state){
   if(s==="selective") return `<span class="tag defensive">Selective</span>`;
   if(s==="restrictive") return `<span class="tag blocked">Restrictive</span>`;
   return `<span class="tag defensive">Unknown</span>`;
+}
+
+function adequacyTag(state){
+  const s=(state||"unassessable").toLowerCase();
+  const label=s==="adequate"?"Adequate":s==="limited"?"Limited":"Unassessable";
+  return '<span class="tag '+s+'">'+label+'</span>';
+}
+
+function metricBar(label,value,suffix="%"){
+  const safe=Number.isFinite(value)?Math.max(0,Math.min(100,value)):0;
+  const shown=Number.isFinite(value)?value.toFixed(1)+suffix:"—";
+  return '<div class="metric"><div class="metric-line"><span>'+label+'</span><strong>'+shown+'</strong></div><div class="metric-track"><div class="metric-fill" style="width:'+safe+'%"></div></div></div>';
+}
+
+function renderCalibration(calibration){
+  if(!calibration){
+    els.distributionGrid.innerHTML="";
+    els.dimensionGrid.innerHTML="";
+    els.calibrationStatus.textContent="Calibration data unavailable.";
+    els.saturatedSignals.textContent="";
+    return;
+  }
+
+  els.medianECC.textContent=Number.isFinite(calibration.median_entity_clarity_score)
+    ? calibration.median_entity_clarity_score.toFixed(1):"—";
+  const ceiling=calibration.flags?.ceiling_concentration;
+  els.ceilingRate.textContent=Number.isFinite(ceiling?.observed_percent)
+    ? ceiling.observed_percent.toFixed(1)+"%":"—";
+  els.limitedStatic.textContent=calibration.content_adequacy?.limited||0;
+
+  els.distributionGrid.innerHTML=(calibration.score_distribution||[])
+    .map(bin=>metricBar(bin.label,bin.percent_of_scored))
+    .join("");
+  els.dimensionGrid.innerHTML=Object.values(calibration.dimension_averages||{})
+    .map(dimension=>metricBar(dimension.label,dimension.average_score))
+    .join("");
+
+  if(ceiling?.status==="watch"){
+    els.calibrationStatus.textContent="Ceiling concentration watch: "+ceiling.observed_count+" scored entities are at or above "+ceiling.threshold_score+".";
+    els.calibrationStatus.classList.add("watch");
+  }else if(ceiling?.status==="insufficient_sample"){
+    els.calibrationStatus.textContent="At least "+(calibration.population?.minimum_for_flags||10)+" scored entities are required before calibration flags activate.";
+    els.calibrationStatus.classList.remove("watch");
+  }else{
+    els.calibrationStatus.textContent="No score-ceiling concentration flag was triggered.";
+    els.calibrationStatus.classList.remove("watch");
+  }
+
+  const saturated=calibration.flags?.signal_saturation?.signals||[];
+  const labels=new Map((calibration.signal_prevalence||[]).map(signal=>[signal.id,signal.label]));
+  els.saturatedSignals.textContent=saturated.length
+    ? "Signals present in at least "+calibration.flags.signal_saturation.trigger_percent+"% of scored entities: "+saturated.map(id=>labels.get(id)||id).join("; ")+"."
+    : "No signal-saturation flag was triggered.";
 }
 
 /* ============================
@@ -178,20 +283,19 @@ async function runBatch(){
   els.lastRun.textContent =
     data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
 
-  let open=0,defensive=0,blocked=0,failed=0,totalECC=0,scored=0;
+  let open=0,defensive=0,blocked=0,failed=0;
   els.tableBody.innerHTML="";
 
   (data.results||[]).forEach(r=>{
     if(r.success===false){ failed++; return; }
 
     const ecc = r.assessment?.score;
-    if(Number.isFinite(ecc)){ totalECC+=ecc; scored++; }
     const st=(r.declared_access?.posture||"unknown").toLowerCase();
     if(st==="permissive") open++;
     else if(st==="selective") defensive++;
     else if(st==="restrictive") blocked++;
     if(r.collection?.fetch_status!=="delivered") failed++;
-    const coverage=r.assessment?.coverage;
+    const adequacy=r.assessment?.content_adequacy?.status;
 
     const row=document.createElement("tr");
     row.innerHTML=`
@@ -199,7 +303,7 @@ async function runBatch(){
       <td>${postureTag(st)}</td>
       <td>${r.collection?.fetch_status||"unknown"}</td>
       <td>${Number.isFinite(ecc)?ecc.toFixed(0):"—"}</td>
-      <td>${coverage?`${coverage.measured}/${coverage.total}`:"—"}</td>
+      <td>${adequacyTag(adequacy)}</td>
     `;
     els.tableBody.appendChild(row);
   });
@@ -208,7 +312,9 @@ async function runBatch(){
   els.countDefensive.textContent=defensive;
   els.countBlocked.textContent=blocked;
   els.countFailed.textContent=failed;
-  els.avgECC.textContent=scored? (totalECC/scored).toFixed(2) : "—";
+  els.avgECC.textContent=Number.isFinite(data.summary?.average_entity_clarity_score)
+    ? data.summary.average_entity_clarity_score.toFixed(2):"—";
+  renderCalibration(data.summary?.calibration);
 
   els.runBtn.textContent="Run Batch";
   els.runBtn.disabled=false;

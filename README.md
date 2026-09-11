@@ -42,6 +42,8 @@ The experimental score uses five deterministic dimensions:
 
 Every signal returns its points and observed evidence. Successfully delivered static HTML receives a complete automated measurement; missing signals score zero because their absence was observed. Failed, restricted, timed-out, or unsupported collection remains unassessable and receives no score. No human review is required. No High/Medium/Low bands are assigned during calibration.
 
+Each assessment also reports a non-scoring static-content adequacy flag. `adequate` means the delivered HTML includes an identity anchor, at least 500 visible body-text characters, and at least five navigable links. `limited` warns that the score may reflect a thin static or JavaScript application shell. The flag never changes the v2.1 score.
+
 ## Collection controls
 
 The static collector:
@@ -57,6 +59,8 @@ The prior rendered probe is disabled. A browser claiming to be GPTBot, ClaudeBot
 ## Batch behavior
 
 `GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, scored/unassessable entities, delivery outcomes, declared-access postures, average automated Entity Clarity, and separately labeled legacy scores.
+
+The batch calibration layer reports the median, score distribution, five dimension averages, all 20 signal prevalence rates, static-content adequacy counts, and two automated watch flags: at least 40% of a ten-or-more entity sample scoring 90 or above, and any signal appearing in at least 85% of scored entities. These diagnostics do not alter scores or create performance bands.
 
 GET is read-only. Drift persistence requires an explicit `POST` with `persist=true`, and persistence is awaited so a response cannot imply that an unfinished write succeeded.
 

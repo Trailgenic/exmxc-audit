@@ -278,7 +278,7 @@
               </div>
             </div>
             <div class="score-meta">
-              <div class="score-meta-label">Automated Coverage</div>
+              <div class="score-meta-label">Static Evidence</div>
               <div id="scoreBand">—</div>
             </div>
           </div>
@@ -386,10 +386,10 @@
         ==========================*/
         const score = data.assessment?.score;
         document.getElementById("scoreValue").textContent = Number.isFinite(score) ? score : "—";
-        const coverage = data.assessment?.coverage;
-        document.getElementById("scoreBand").textContent = coverage
-          ? `${coverage.measured}/${coverage.total} dimensions measured`
-          : "Not measured";
+        const adequacy = data.assessment?.content_adequacy?.status || "unassessable";
+        document.getElementById("scoreBand").textContent =
+          adequacy === "adequate" ? "Adequate" :
+          adequacy === "limited" ? "Limited static HTML" : "Unassessable";
 
         /* =========================
            STRATEGIC POSTURE BAR
