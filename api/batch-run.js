@@ -30,9 +30,7 @@ export function normalizeResult(raw) {
     collection: raw.collection,
     declared_access: raw.declared_access,
     assessment: raw.assessment,
-    model_representation: raw.model_representation,
-    legacy_diagnostic: raw.legacy_diagnostic,
-    compatibility: { state: raw.state, legacy_ecc: raw.ecc?.score ?? null }
+    model_representation: raw.model_representation
   };
 }
 
@@ -150,7 +148,6 @@ function calibrationSummary(successful, scored) {
 export function summarizeResults(results, totalUrls) {
   const successful = results.filter(result => result.success);
   const scored = successful.filter(result => typeof result.assessment?.score === "number");
-  const legacyScored = successful.filter(result => typeof result.legacy_diagnostic?.score === "number");
   const collection = {};
   const access = {};
   for (const result of successful) {
@@ -168,10 +165,6 @@ export function summarizeResults(results, totalUrls) {
     unscored: successful.length - scored.length,
     average_entity_clarity_score: scored.length
       ? Number((scored.reduce((sum, result) => sum + result.assessment.score, 0) / scored.length).toFixed(2))
-      : null,
-    legacy_scored: legacyScored.length,
-    average_legacy_score: legacyScored.length
-      ? Number((legacyScored.reduce((sum, result) => sum + result.legacy_diagnostic.score, 0) / legacyScored.length).toFixed(2))
       : null,
     collection_status: collection,
     declared_access_posture: access,
