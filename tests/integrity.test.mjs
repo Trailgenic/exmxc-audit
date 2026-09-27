@@ -1,12 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import * as cheerio from "cheerio";
 import { runAudit } from "../api/audit.js";
 import { normalizeResult, summarizeResults } from "../api/batch-run.js";
 import { evaluateRobots, parseRobots, providerPolicyMatrix } from "../shared/robots-policy.js";
 import { fetchPublicUrl, isPublicAddress, resolvePublicHost, validateTarget } from "../shared/target-policy.js";
-import { scoreAICrawlSignals } from "../shared/scoring.js";
 import predictiveHandler from "../api/predictive-audit.js";
 import { publicResponse } from "../api/eei-public.js";
 
@@ -104,10 +102,21 @@ test("provider-purpose policy remains disaggregated", () => {
   assert.equal(matrix.find(row => row.token === "ClaudeBot").decision, "allowed");
 });
 
-test("noindex and none receive no legacy crawl points; index is token-aware", () => {
-  assert.equal(scoreAICrawlSignals(cheerio.load('<meta name="robots" content="noindex,nofollow">')).points, 0);
-  assert.equal(scoreAICrawlSignals(cheerio.load('<meta name="robots" content="none">')).points, 0);
-  assert.equal(scoreAICrawlSignals(cheerio.load('<meta name="robots" content="index,follow">')).points, 4);
+test("machine-legibility indexability is token-aware", async () => {
+  const noindex = await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageBody: '<html lang="en"><head><title>Fixture</title><meta name="robots" content="noindex,nofollow"></head><body><h1>Fixture</h1></body></html>' })
+  });
+  const none = await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageBody: '<html lang="en"><head><title>Fixture</title><meta name="robots" content="none"></head><body><h1>Fixture</h1></body></html>' })
+  });
+  const index = await runAudit("https://exmxc.ai", {
+    fetchPublicUrl: fixtureFetcher({ pageBody: '<html lang="en"><head><title>Fixture</title><meta name="robots" content="index,follow"></head><body><h1>Fixture</h1></body></html>' })
+  });
+
+  const signalFor = result => result.assessment.dimensions.machine_legibility.signals.find(signal => signal.id === "indexable");
+  assert.equal(signalFor(noindex).status, "absent");
+  assert.equal(signalFor(none).status, "absent");
+  assert.equal(signalFor(index).status, "present");
 });
 
 test("network and HTTP failures never become blocking or zero clarity scores", async () => {
@@ -115,17 +124,13 @@ test("network and HTTP failures never become blocking or zero clarity scores", a
   const timeoutResult = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher({ pageError: timeout }) });
   assert.equal(timeoutResult.success, true);
   assert.equal(timeoutResult.collection.fetch_status, "timeout");
-  assert.equal(timeoutResult.state, "unknown");
-  assert.equal(timeoutResult.ecc.score, null);
   assert.equal(timeoutResult.assessment.score, null);
   assert.equal(timeoutResult.assessment.content_adequacy.status, "unassessable");
 
   for (const status of [403, 404, 429, 500]) {
     const result = await runAudit("https://exmxc.ai", { fetchPublicUrl: fixtureFetcher({ pageStatus: status }) });
     assert.equal(result.success, true);
-    assert.notEqual(result.state, "blocked", String(status));
-    assert.equal(result.ecc.score, null, String(status));
-    assert.equal(result.legacy_diagnostic, null, String(status));
+    assert.equal(result.assessment.score, null, String(status));
   }
 });
 
@@ -136,8 +141,7 @@ test("non-HTML responses remain collected evidence but are not clarity-scored", 
   };
   const result = await runAudit("https://exmxc.ai", { fetchPublicUrl });
   assert.equal(result.collection.fetch_status, "unsupported_content");
-  assert.equal(result.legacy_diagnostic, null);
-  assert.equal(result.state, "unknown");
+  assert.equal(result.assessment.score, null);
 });
 
 test("delivered content, declared access, automated clarity, and model status remain separate", async () => {
@@ -149,8 +153,6 @@ test("delivered content, declared access, automated clarity, and model status re
   });
   assert.equal(result.collection.fetch_status, "delivered");
   assert.equal(result.declared_access.posture, "selective");
-  assert.equal(result.state, "defensive");
-  assert.equal(typeof result.legacy_diagnostic.score, "number");
   assert.equal(typeof result.assessment.score, "number");
   assert.equal(result.assessment.coverage.measured, 5);
   assert.equal(result.assessment.assessment_mode, "automated_deterministic");
@@ -191,7 +193,6 @@ test("single and batch contracts count the same observation honestly", async () 
   assert.equal(summary.scored, 1);
   assert.equal(summary.unscored, 0);
   assert.equal(summary.average_entity_clarity_score, raw.assessment.score);
-  assert.equal(summary.legacy_scored, 1);
   assert.equal(summary.collection_status.delivered, 1);
   assert.equal(summary.calibration.population.scored, 1);
   assert.equal(summary.calibration.flags.ceiling_concentration.status, "insufficient_sample");
@@ -234,8 +235,7 @@ test("public response exposes the versioned evidence contract without compatibil
   assert.equal(published.timestamp, raw.collected_at);
   assert.equal(published.assessment.assessment_mode, "automated_deterministic");
   assert.equal(typeof published.assessment.score, "number");
-  assert.equal("entityScore" in published, false);
-  assert.equal("state" in published, false);
+  assert.equal("legacy_diagnostic" in published, false);
 });
 
 test("multi-surface module imports after the crawl contract repair", async () => {
