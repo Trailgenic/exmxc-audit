@@ -11,8 +11,6 @@
 3. **Automated Entity Clarity v2.1** — a deterministic five-dimension structural score computed from successfully delivered homepage evidence.
 4. **Model representation** — explicitly `not_tested` unless a separately governed model-answer test has been attached.
 
-The earlier EEI v2.1 structural score remains in `legacy_diagnostic` for migration and comparison. It is labeled as a website-structure proxy. It does not establish model comprehension, trust, citation, recommendation, or corporate intent.
-
 ## Evidence semantics
 
 Collection and interpretation are deliberately separate:
@@ -58,7 +56,7 @@ The prior rendered probe is disabled. A browser claiming to be GPTBot, ClaudeBot
 
 ## Batch behavior
 
-`GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, scored/unassessable entities, delivery outcomes, declared-access postures, average automated Entity Clarity, and separately labeled legacy scores.
+`GET /api/batch-run?dataset=core-web&start=0&limit=25` processes a bounded window of at most 50 URLs and returns the same evidence/result contract as the single audit. It reports completed observations, request errors, scored/unassessable entities, delivery outcomes, declared-access postures, and average automated Entity Clarity.
 
 The batch calibration layer reports the median, score distribution, five dimension averages, all 20 signal prevalence rates, static-content adequacy counts, and two automated watch flags: at least 40% of a ten-or-more entity sample scoring 90 or above, and any signal appearing in at least 85% of scored entities. These diagnostics do not alter scores or create performance bands.
 
@@ -76,7 +74,7 @@ The integrity tests use local fixtures. They do not crawl third-party sites or w
 
 ## Historical boundary
 
-Published ECI/ECC snapshots and PDFs belong to their original methodology. This repository does not rewrite those observations. Entity Clarity v2 should be introduced as a new version with an explicit bridge panel so collector or methodology changes cannot appear as company movement.
+Published ECI/ECC snapshots and PDFs belong to their original methodology. This repository does not rewrite those observations. The production audit now exposes only the current Entity Clarity v2.1 structural assessment; historical methodologies remain historical records rather than active compatibility scores.
 
 The canonical public data/query layer is maintained in `Trailgenic/exmxc-workers`.
 
