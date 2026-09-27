@@ -16,7 +16,6 @@ export function publicResponse(audit) {
     machine_evidence: audit.machine_evidence,
     assessment: audit.assessment,
     model_representation: audit.model_representation,
-    legacy_diagnostic: audit.legacy_diagnostic,
     interpretation_boundary: "This response reports collected website evidence and a deterministic structural score. It does not establish model trust, citation, recommendation, factual correctness, or corporate intent.",
     timestamp: audit.collected_at
   };
