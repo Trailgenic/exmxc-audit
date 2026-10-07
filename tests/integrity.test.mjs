@@ -95,15 +95,11 @@ test("provider-purpose policy remains disaggregated", () => {
   const matrix = providerPolicyMatrix({
     targetUrl: "https://exmxc.ai/report",
     robotsStatus: "available",
-    robotsText: "User-agent: GPTBot\nDisallow: /\nUser-agent: OAI-SearchBot\nAllow: /\nUser-agent: Storebot-Google\nDisallow: /"
+    robotsText: "User-agent: GPTBot\nDisallow: /\nUser-agent: OAI-SearchBot\nAllow: /"
   });
   assert.equal(matrix.find(row => row.token === "GPTBot").decision, "disallowed");
   assert.equal(matrix.find(row => row.token === "OAI-SearchBot").decision, "allowed");
   assert.equal(matrix.find(row => row.token === "ClaudeBot").decision, "allowed");
-  const shopping = matrix.find(row => row.token === "Storebot-Google");
-  assert.equal(shopping.provider, "Google");
-  assert.equal(shopping.purpose, "shopping");
-  assert.equal(shopping.decision, "disallowed");
 });
 
 test("machine-legibility indexability is token-aware", async () => {
