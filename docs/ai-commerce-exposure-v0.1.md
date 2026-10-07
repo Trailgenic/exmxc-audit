@@ -190,11 +190,17 @@ Reasons:
 
 The frozen population lives in `data/commerce-retail-2026-top30.json`.
 
+Wave 1 recommendation coding uses a separate frozen retailer alias and eligibility registry:
+
+`data/commerce-retailer-coding-registry-v0.1.json`
+
+The raw consumer banner named by a model is always preserved. Parent-company rollups use only aliases frozen before collection. Unlisted aliases are not retroactively added after Wave 1 outcomes are visible.
+
 ### Surface selection rule
 
 NRF ranks companies, but some companies operate multiple consumer banners. Do not automatically substitute a corporate homepage or a single banner.
 
-Before collection, create a separate versioned surface registry. Each company must be classified as one of:
+Before product-legibility or structural commerce collection, create a separate versioned surface registry. Recommendation testing may proceed once the population, prompt set, runner protocol, and retailer coding/eligibility registry are frozen. Each company must be classified as one of:
 
 - single primary U.S. consumer commerce surface;
 - multiple banners with an explicit sampling rule;
