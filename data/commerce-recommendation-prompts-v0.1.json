@@ -65,6 +65,11 @@
       "id": "P12",
       "category": "auto_parts",
       "text": "Where should I buy a replacement car battery, brake pads, and basic maintenance parts if I want good availability, fair prices, and pickup options?"
+    },
+    {
+      "id": "P13",
+      "category": "convenience",
+      "text": "Where should I stop for snacks, drinks, prepared food, and a few basic convenience items while traveling in the United States?"
     }
   ],
   "execution": {
@@ -77,7 +82,7 @@
     "runner": "Grok bot",
     "runner_is_target_model": false,
     "replicates_per_prompt_per_platform": 3,
-    "expected_valid_runs": 144,
+    "expected_valid_runs": 156,
     "fresh_conversation_per_run": true,
     "followups_per_run": 0,
     "platform_order_by_replicate": {
@@ -113,10 +118,12 @@
         "P09",
         "P10",
         "P11",
-        "P12"
+        "P12",
+        "P13"
       ],
       "2": [
         "P07",
+        "P13",
         "P12",
         "P04",
         "P09",
@@ -133,6 +140,7 @@
         "P10",
         "P05",
         "P02",
+        "P13",
         "P08",
         "P12",
         "P03",
