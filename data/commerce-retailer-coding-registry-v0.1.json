@@ -1,0 +1,537 @@
+{
+  "dataset": "commerce-retailer-coding-registry-v0.1",
+  "version": "0.1.0",
+  "status": "frozen_for_wave_1_recommendation_coding",
+  "snapshot_date": "2026-10-07",
+  "rollup_rule": "Preserve raw consumer banner mention. Parent rollup uses exact frozen aliases only. Unlisted banners are not retroactively added to Wave 1 after outcomes are viewed.",
+  "surface_boundary": "This registry governs recommendation coding, not product-page sampling. A separate verified surface registry is required before product-legibility crawling.",
+  "entities": [
+    {
+      "rank": 1,
+      "parent": "Walmart",
+      "aliases": [
+        "Walmart",
+        "Walmart.com",
+        "Sam's Club",
+        "Sams Club"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12"
+      ],
+      "primary_consumer_domain": "walmart.com"
+    },
+    {
+      "rank": 2,
+      "parent": "Amazon.com",
+      "aliases": [
+        "Amazon",
+        "Amazon.com",
+        "Amazon Fresh",
+        "Whole Foods",
+        "Whole Foods Market"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P12"
+      ],
+      "primary_consumer_domain": "amazon.com"
+    },
+    {
+      "rank": 3,
+      "parent": "Costco Wholesale",
+      "aliases": [
+        "Costco",
+        "Costco Wholesale"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11"
+      ],
+      "primary_consumer_domain": "costco.com"
+    },
+    {
+      "rank": 4,
+      "parent": "The Kroger Co.",
+      "aliases": [
+        "Kroger",
+        "Baker's",
+        "Bakers",
+        "City Market",
+        "Dillons",
+        "Dillons Food Stores",
+        "Food 4 Less",
+        "Foods Co",
+        "Fred Meyer",
+        "Fry's",
+        "Fry's Food Stores",
+        "Gerbes",
+        "Harris Teeter",
+        "Jay C",
+        "King Soopers",
+        "Mariano's",
+        "Marianos",
+        "Metro Market",
+        "Pay Less Super Markets",
+        "Pick 'n Save",
+        "Pick n Save",
+        "QFC",
+        "Ralphs",
+        "Ruler Foods",
+        "Smith's",
+        "Smiths"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": null
+    },
+    {
+      "rank": 5,
+      "parent": "The Home Depot",
+      "aliases": [
+        "Home Depot",
+        "The Home Depot"
+      ],
+      "eligible_prompt_ids": [
+        "P06"
+      ],
+      "primary_consumer_domain": "homedepot.com"
+    },
+    {
+      "rank": 6,
+      "parent": "CVS Health Corporation",
+      "aliases": [
+        "CVS",
+        "CVS Pharmacy"
+      ],
+      "eligible_prompt_ids": [
+        "P07"
+      ],
+      "primary_consumer_domain": "cvs.com"
+    },
+    {
+      "rank": 7,
+      "parent": "Walgreens Boots Alliance",
+      "aliases": [
+        "Walgreens",
+        "Duane Reade"
+      ],
+      "eligible_prompt_ids": [
+        "P07"
+      ],
+      "primary_consumer_domain": "walgreens.com"
+    },
+    {
+      "rank": 8,
+      "parent": "Target",
+      "aliases": [
+        "Target",
+        "Target.com"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P04",
+        "P05",
+        "P07",
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "primary_consumer_domain": "target.com"
+    },
+    {
+      "rank": 9,
+      "parent": "Lowe's Companies",
+      "aliases": [
+        "Lowe's",
+        "Lowes",
+        "Lowe's Home Improvement"
+      ],
+      "eligible_prompt_ids": [
+        "P06"
+      ],
+      "primary_consumer_domain": "lowes.com"
+    },
+    {
+      "rank": 10,
+      "parent": "Albertsons Companies",
+      "aliases": [
+        "Albertsons",
+        "ACME",
+        "ACME Markets",
+        "Amigos",
+        "Andronico's",
+        "Andronicos",
+        "Carrs",
+        "Haggen",
+        "Randalls",
+        "Jewel-Osco",
+        "Jewel Osco",
+        "United Supermarkets",
+        "Shaw's",
+        "Shaws",
+        "Safeway",
+        "Pavilions",
+        "Albertsons Market",
+        "Vons",
+        "Kings Food Markets",
+        "Star Market",
+        "Balducci's",
+        "Balduccis",
+        "Market Street",
+        "Lucky",
+        "Tom Thumb"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": null
+    },
+    {
+      "rank": 11,
+      "parent": "Apple Stores / iTunes",
+      "aliases": [
+        "Apple",
+        "Apple Store"
+      ],
+      "eligible_prompt_ids": [
+        "P05",
+        "P11"
+      ],
+      "primary_consumer_domain": "apple.com"
+    },
+    {
+      "rank": 12,
+      "parent": "Publix Super Markets",
+      "aliases": [
+        "Publix",
+        "Publix Super Markets"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": "publix.com"
+    },
+    {
+      "rank": 13,
+      "parent": "Royal Ahold Delhaize USA",
+      "aliases": [
+        "Food Lion",
+        "Giant Food",
+        "The GIANT Company",
+        "GIANT",
+        "Hannaford",
+        "Stop & Shop",
+        "Stop and Shop"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": null
+    },
+    {
+      "rank": 14,
+      "parent": "Aldi",
+      "aliases": [
+        "ALDI",
+        "Aldi"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": "aldi.us",
+      "note": "NRF source aggregates additional operations including Trader Joe's and acquired banners. Wave 1 parent rollup intentionally counts only the ALDI consumer banner to avoid post-outcome ownership/grouping ambiguity."
+    },
+    {
+      "rank": 15,
+      "parent": "TJX Companies",
+      "aliases": [
+        "TJ Maxx",
+        "T.J. Maxx",
+        "Marshalls",
+        "HomeGoods",
+        "Home Goods",
+        "Homesense",
+        "Sierra"
+      ],
+      "eligible_prompt_ids": [
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "primary_consumer_domain": null
+    },
+    {
+      "rank": 16,
+      "parent": "H.E. Butt Grocery",
+      "aliases": [
+        "H-E-B",
+        "HEB",
+        "Central Market",
+        "Joe V's Smart Shop",
+        "Joe Vs Smart Shop",
+        "Mi Tienda"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": "heb.com"
+    },
+    {
+      "rank": 17,
+      "parent": "Dollar General",
+      "aliases": [
+        "Dollar General"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P07"
+      ],
+      "primary_consumer_domain": "dollargeneral.com"
+    },
+    {
+      "rank": 18,
+      "parent": "Best Buy",
+      "aliases": [
+        "Best Buy",
+        "BestBuy"
+      ],
+      "eligible_prompt_ids": [
+        "P04",
+        "P05",
+        "P11"
+      ],
+      "primary_consumer_domain": "bestbuy.com"
+    },
+    {
+      "rank": 19,
+      "parent": "Ace Hardware",
+      "aliases": [
+        "Ace",
+        "Ace Hardware"
+      ],
+      "eligible_prompt_ids": [
+        "P06"
+      ],
+      "primary_consumer_domain": "acehardware.com"
+    },
+    {
+      "rank": 20,
+      "parent": "7-Eleven",
+      "aliases": [
+        "7-Eleven",
+        "7 Eleven"
+      ],
+      "eligible_prompt_ids": [
+        "P13"
+      ],
+      "primary_consumer_domain": "7-eleven.com"
+    },
+    {
+      "rank": 21,
+      "parent": "Meijer",
+      "aliases": [
+        "Meijer"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P04",
+        "P05",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P12"
+      ],
+      "primary_consumer_domain": "meijer.com"
+    },
+    {
+      "rank": 22,
+      "parent": "Ross Stores",
+      "aliases": [
+        "Ross",
+        "Ross Dress for Less",
+        "dd's DISCOUNTS",
+        "dds DISCOUNTS"
+      ],
+      "eligible_prompt_ids": [
+        "P08",
+        "P09"
+      ],
+      "primary_consumer_domain": "rossstores.com"
+    },
+    {
+      "rank": 23,
+      "parent": "AT&T Wireless",
+      "aliases": [
+        "AT&T",
+        "AT&T Wireless"
+      ],
+      "eligible_prompt_ids": [
+        "P11"
+      ],
+      "primary_consumer_domain": "att.com"
+    },
+    {
+      "rank": 24,
+      "parent": "Verizon Wireless",
+      "aliases": [
+        "Verizon",
+        "Verizon Wireless"
+      ],
+      "eligible_prompt_ids": [
+        "P11"
+      ],
+      "primary_consumer_domain": "verizon.com"
+    },
+    {
+      "rank": 25,
+      "parent": "Macy's",
+      "aliases": [
+        "Macy's",
+        "Macys",
+        "Bloomingdale's",
+        "Bloomingdales",
+        "Bluemercury"
+      ],
+      "eligible_prompt_ids": [
+        "P08",
+        "P09"
+      ],
+      "primary_consumer_domain": "macys.com"
+    },
+    {
+      "rank": 26,
+      "parent": "BJ's Wholesale Club",
+      "aliases": [
+        "BJ's",
+        "BJs",
+        "BJ's Wholesale Club",
+        "BJs Wholesale Club"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P07",
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "primary_consumer_domain": "bjs.com"
+    },
+    {
+      "rank": 27,
+      "parent": "Dicks Sporting Goods",
+      "aliases": [
+        "Dick's Sporting Goods",
+        "Dicks Sporting Goods",
+        "Dick's",
+        "Dicks",
+        "Golf Galaxy",
+        "Public Lands",
+        "Foot Locker",
+        "Champs Sports"
+      ],
+      "eligible_prompt_ids": [
+        "P10"
+      ],
+      "primary_consumer_domain": "dickssportinggoods.com",
+      "note": "NRF 2026 source notes the fiscal-year-2025 Foot Locker acquisition; raw banner mentions remain preserved."
+    },
+    {
+      "rank": 28,
+      "parent": "Wakefern / ShopRite",
+      "aliases": [
+        "ShopRite",
+        "Shop Rite",
+        "Price Rite Marketplace",
+        "The Fresh Grocer",
+        "Dearborn Market",
+        "Gourmet Garage",
+        "Fairway Market",
+        "Di Bruno Bros.",
+        "Di Bruno Bros",
+        "Morton Williams"
+      ],
+      "eligible_prompt_ids": [
+        "P02",
+        "P07"
+      ],
+      "primary_consumer_domain": "shoprite.com"
+    },
+    {
+      "rank": 29,
+      "parent": "Dollar Tree",
+      "aliases": [
+        "Dollar Tree"
+      ],
+      "eligible_prompt_ids": [
+        "P01",
+        "P07",
+        "P09"
+      ],
+      "primary_consumer_domain": "dollartree.com",
+      "note": "Family Dollar is excluded because NRF 2026 treats it as a separate retailer after the 2025 sale."
+    },
+    {
+      "rank": 30,
+      "parent": "O’Reilly Auto Parts",
+      "aliases": [
+        "O'Reilly Auto Parts",
+        "O’Reilly Auto Parts",
+        "O'Reilly",
+        "O’Reilly"
+      ],
+      "eligible_prompt_ids": [
+        "P12"
+      ],
+      "primary_consumer_domain": "oreillyauto.com"
+    }
+  ],
+  "provenance_notes": [
+    "NRF 2026 Top 100 Retailers supplies the frozen parent population and rank.",
+    "Kroger banner aliases follow Kroger's current family-of-companies disclosures.",
+    "Albertsons banner aliases follow Albertsons Companies' current banner disclosures.",
+    "Ahold Delhaize USA aliases follow its five current U.S. omnichannel brands.",
+    "TJX aliases follow its current U.S. businesses.",
+    "Wakefern aliases follow its current supermarket banner disclosures."
+  ]
+}

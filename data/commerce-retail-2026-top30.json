@@ -1,0 +1,166 @@
+{
+  "dataset": "commerce-retail-2026-top30",
+  "version": "0.1.0",
+  "status": "population_frozen_surface_registry_pending",
+  "snapshot_date": "2026-10-07",
+  "description": "Independent benchmark population for exmxc AI Commerce Exposure research. Rankings and 2025 U.S. retail sales are from NRF's 2026 Top 100 Retailers list, compiled by Kantar. This file intentionally does not assign audit URLs; multi-banner and nonstandard commerce surfaces require a prespecified surface-selection protocol before collection.",
+  "source": {
+    "publisher": "National Retail Federation",
+    "title": "NRF Top 100 Retailers 2026 List",
+    "source_url": "https://nrf.com/research-insights/top-retailers/top-100-retailers/top-100-retailers-2026-list",
+    "ranking_basis": "2025 USA retail sales",
+    "sales_unit": "USD billions"
+  },
+  "population": [
+    {
+      "rank": 1,
+      "company": "Walmart",
+      "us_retail_sales_2025_billion": 575.99
+    },
+    {
+      "rank": 2,
+      "company": "Amazon.com",
+      "us_retail_sales_2025_billion": 293.85
+    },
+    {
+      "rank": 3,
+      "company": "Costco Wholesale",
+      "us_retail_sales_2025_billion": 198.73
+    },
+    {
+      "rank": 4,
+      "company": "The Kroger Co.",
+      "us_retail_sales_2025_billion": 154.74
+    },
+    {
+      "rank": 5,
+      "company": "The Home Depot",
+      "us_retail_sales_2025_billion": 141.12
+    },
+    {
+      "rank": 6,
+      "company": "CVS Health Corporation",
+      "us_retail_sales_2025_billion": 139.37
+    },
+    {
+      "rank": 7,
+      "company": "Walgreens Boots Alliance",
+      "us_retail_sales_2025_billion": 112.05
+    },
+    {
+      "rank": 8,
+      "company": "Target",
+      "us_retail_sales_2025_billion": 102.72
+    },
+    {
+      "rank": 9,
+      "company": "Lowe's Companies",
+      "us_retail_sales_2025_billion": 83.96
+    },
+    {
+      "rank": 10,
+      "company": "Albertsons Companies",
+      "us_retail_sales_2025_billion": 81.77
+    },
+    {
+      "rank": 11,
+      "company": "Apple Stores / iTunes",
+      "us_retail_sales_2025_billion": 75.9
+    },
+    {
+      "rank": 12,
+      "company": "Publix Super Markets",
+      "us_retail_sales_2025_billion": 62.75
+    },
+    {
+      "rank": 13,
+      "company": "Royal Ahold Delhaize USA",
+      "us_retail_sales_2025_billion": 59.83
+    },
+    {
+      "rank": 14,
+      "company": "Aldi",
+      "us_retail_sales_2025_billion": 58.36
+    },
+    {
+      "rank": 15,
+      "company": "TJX Companies",
+      "us_retail_sales_2025_billion": 46.3
+    },
+    {
+      "rank": 16,
+      "company": "H.E. Butt Grocery",
+      "us_retail_sales_2025_billion": 44.16
+    },
+    {
+      "rank": 17,
+      "company": "Dollar General",
+      "us_retail_sales_2025_billion": 43.13
+    },
+    {
+      "rank": 18,
+      "company": "Best Buy",
+      "us_retail_sales_2025_billion": 38.23
+    },
+    {
+      "rank": 19,
+      "company": "Ace Hardware",
+      "us_retail_sales_2025_billion": 27.55
+    },
+    {
+      "rank": 20,
+      "company": "7-Eleven",
+      "us_retail_sales_2025_billion": 25.3
+    },
+    {
+      "rank": 21,
+      "company": "Meijer",
+      "us_retail_sales_2025_billion": 22.82
+    },
+    {
+      "rank": 22,
+      "company": "Ross Stores",
+      "us_retail_sales_2025_billion": 22.7
+    },
+    {
+      "rank": 23,
+      "company": "AT&T Wireless",
+      "us_retail_sales_2025_billion": 22.1
+    },
+    {
+      "rank": 24,
+      "company": "Verizon Wireless",
+      "us_retail_sales_2025_billion": 21.78
+    },
+    {
+      "rank": 25,
+      "company": "Macy's",
+      "us_retail_sales_2025_billion": 21.68
+    },
+    {
+      "rank": 26,
+      "company": "BJ's Wholesale Club",
+      "us_retail_sales_2025_billion": 21.05
+    },
+    {
+      "rank": 27,
+      "company": "Dicks Sporting Goods",
+      "us_retail_sales_2025_billion": 20.2
+    },
+    {
+      "rank": 28,
+      "company": "Wakefern / ShopRite",
+      "us_retail_sales_2025_billion": 19.57
+    },
+    {
+      "rank": 29,
+      "company": "Dollar Tree",
+      "us_retail_sales_2025_billion": 18.93
+    },
+    {
+      "rank": 30,
+      "company": "O’Reilly Auto Parts",
+      "us_retail_sales_2025_billion": 17.07
+    }
+  ]
+}

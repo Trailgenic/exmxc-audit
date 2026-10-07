@@ -1,0 +1,156 @@
+{
+  "dataset": "commerce-recommendation-prompts-v0.1",
+  "version": "0.1.0",
+  "status": "frozen_for_wave_1",
+  "snapshot_date": "2026-10-07",
+  "geography_instruction": "Assume I am in the continental United States. Ignore my current location and any saved preferences or prior conversations.",
+  "response_instruction": "Recommend up to five retailers, ranked, with one short reason for each. Do not ask me a follow-up question.",
+  "prompts": [
+    {
+      "id": "P01",
+      "category": "mass_market_household",
+      "text": "I want one retailer for everyday household essentials, basic groceries, and general merchandise with consistently good value. Where should I shop?"
+    },
+    {
+      "id": "P02",
+      "category": "grocery",
+      "text": "Where are the best places to buy a weekly grocery basket for a family, balancing price, selection, and quality?"
+    },
+    {
+      "id": "P03",
+      "category": "warehouse_club",
+      "text": "Where are the best places to buy groceries and household staples in bulk if I am willing to pay for a membership?"
+    },
+    {
+      "id": "P04",
+      "category": "electronics_tv",
+      "text": "Where should I buy a 65-inch OLED TV if I care about price, returns, warranty support, and reliable delivery or pickup?"
+    },
+    {
+      "id": "P05",
+      "category": "electronics_computer",
+      "text": "Where should I buy a laptop for college if I care about competitive pricing, returns, warranty support, and convenient pickup or delivery?"
+    },
+    {
+      "id": "P06",
+      "category": "home_improvement",
+      "text": "Where should I shop for power tools, paint, hardware, and materials for a do-it-yourself home renovation?"
+    },
+    {
+      "id": "P07",
+      "category": "personal_care_household",
+      "text": "Where should I buy toothpaste, shampoo, over-the-counter personal-care items, paper goods, and cleaning supplies at good everyday prices?"
+    },
+    {
+      "id": "P08",
+      "category": "apparel_value",
+      "text": "Where should I shop for affordable clothing and shoes for a family if I care about value, selection, and easy returns?"
+    },
+    {
+      "id": "P09",
+      "category": "home_goods",
+      "text": "Where should I shop for kitchenware, bedding, small home furnishings, and home decor if I care about value and selection?"
+    },
+    {
+      "id": "P10",
+      "category": "sporting_goods",
+      "text": "Where should I buy running shoes, workout clothing, and general sporting goods if I want good selection and knowledgeable support?"
+    },
+    {
+      "id": "P11",
+      "category": "wireless",
+      "text": "Where should I shop for a new smartphone together with a wireless service plan if I care about device deals, coverage options, and support?"
+    },
+    {
+      "id": "P12",
+      "category": "auto_parts",
+      "text": "Where should I buy a replacement car battery, brake pads, and basic maintenance parts if I want good availability, fair prices, and pickup options?"
+    },
+    {
+      "id": "P13",
+      "category": "convenience",
+      "text": "Where should I stop for snacks, drinks, prepared food, and a few basic convenience items while traveling in the United States?"
+    }
+  ],
+  "execution": {
+    "target_platforms_wave_1": [
+      "ChatGPT",
+      "Perplexity",
+      "Gemini",
+      "Claude"
+    ],
+    "runner": "Grok bot",
+    "runner_is_target_model": false,
+    "replicates_per_prompt_per_platform": 3,
+    "expected_valid_runs": 156,
+    "fresh_conversation_per_run": true,
+    "followups_per_run": 0,
+    "platform_order_by_replicate": {
+      "1": [
+        "ChatGPT",
+        "Gemini",
+        "Claude",
+        "Perplexity"
+      ],
+      "2": [
+        "Perplexity",
+        "Claude",
+        "ChatGPT",
+        "Gemini"
+      ],
+      "3": [
+        "Gemini",
+        "ChatGPT",
+        "Perplexity",
+        "Claude"
+      ]
+    },
+    "prompt_order_by_replicate": {
+      "1": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "2": [
+        "P07",
+        "P13",
+        "P12",
+        "P04",
+        "P09",
+        "P02",
+        "P11",
+        "P05",
+        "P01",
+        "P10",
+        "P03",
+        "P08",
+        "P06"
+      ],
+      "3": [
+        "P10",
+        "P05",
+        "P02",
+        "P13",
+        "P08",
+        "P12",
+        "P03",
+        "P06",
+        "P11",
+        "P01",
+        "P09",
+        "P04",
+        "P07"
+      ]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "schema_name": "commerce-recommendation-run-schema-v0.1",
+  "version": "0.1.0",
+  "required": [
+    "run_id",
+    "timestamp_utc",
+    "platform",
+    "visible_model_label",
+    "replicate",
+    "prompt_id",
+    "submitted_message",
+    "session_mode",
+    "account_state",
+    "raw_answer",
+    "status"
+  ],
+  "status_values": [
+    "valid",
+    "clarification_required",
+    "refusal",
+    "technical_error",
+    "rate_limited",
+    "captcha",
+    "human_action_required",
+    "invalid_protocol"
+  ],
+  "fields": {
+    "run_id": "string",
+    "timestamp_utc": "ISO-8601 string",
+    "platform": [
+      "ChatGPT",
+      "Perplexity",
+      "Gemini",
+      "Claude"
+    ],
+    "visible_model_label": "string|null",
+    "replicate": "integer 1-3",
+    "prompt_id": "P01-P13",
+    "submitted_message": "string",
+    "session_mode": "temporary|private|fresh_standard|other",
+    "account_state": "logged_in",
+    "visible_personalization_state": "string|null",
+    "visible_search_state": "string|null",
+    "raw_answer": "string|null",
+    "retailer_mentions": [
+      {
+        "banner_name": "string",
+        "mention_order": "integer",
+        "explicit_rank": "integer|null",
+        "recommendation_polarity": "positive|negative|neutral",
+        "merchant_links": [
+          "string"
+        ],
+        "notes": "string|null"
+      }
+    ],
+    "citations": [
+      {
+        "label": "string|null",
+        "url": "string|null"
+      }
+    ],
+    "sponsored_items": [
+      {
+        "sponsor_or_retailer": "string|null",
+        "label_seen": "string|null",
+        "counted_as_organic": false
+      }
+    ],
+    "searched_or_browsed": "boolean|null",
+    "clarification_requested": "boolean",
+    "refused": "boolean",
+    "technical_error": "string|null",
+    "screenshot_reference": "string|null",
+    "status": "enum status_values",
+    "retry_of_run_id": "string|null"
+  },
+  "coding_boundary": "Raw banner-level observations are preserved. Parent-company mapping and category eligibility are applied after collection and never replace the raw response."
+}
