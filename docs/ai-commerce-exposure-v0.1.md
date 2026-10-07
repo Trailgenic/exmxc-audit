@@ -250,7 +250,7 @@ The frozen Wave 1 artifacts are:
 - `docs/grok-commerce-runner-v0.1.md`
 - `data/commerce-recommendation-run-schema-v0.1.json`
 
-Wave 1 consists of 12 prompts × 4 target platforms × 3 replicates = **144 expected valid responses**. Every run uses a fresh conversation, a single exact prompt, no follow-up, the ordinary default consumer model presented by the account, and the platform's default search/browsing behavior. Raw answers are preserved verbatim before coding.
+Wave 1 consists of 13 prompts × 4 target platforms × 3 replicates = **156 expected valid responses**. Every run uses a fresh conversation, a single exact prompt, no follow-up, the ordinary default consumer model presented by the account, and the platform's default search/browsing behavior. Raw answers are preserved verbatim before coding.
 
 The runner must not bypass CAPTCHAs, anti-bot controls, rate limits, or access restrictions. Authentication or security interruptions are recorded as missing/blocked observations rather than worked around.
 
