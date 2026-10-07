@@ -59,7 +59,7 @@ The frozen prompt file is:
 
 `data/commerce-recommendation-prompts-v0.1.json`
 
-Run all 12 prompts on all 4 target platforms for 3 replicates: **144 expected valid responses**.
+Run all 13 prompts on all 4 target platforms for 3 replicates: **156 expected valid responses**.
 
 Follow the platform and prompt order specified in that file. A fresh chat prevents carryover; the rotated ordering spreads time-of-day and platform drift.
 
