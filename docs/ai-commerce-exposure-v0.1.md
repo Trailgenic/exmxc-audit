@@ -238,6 +238,22 @@ The experiment should include both generic retailer-discovery prompts and produc
 
 Do not reuse published third-party recommendation rankings as exmxc observations. They are external evidence and comparison data only.
 
+### Wave 1 execution harness
+
+Wave 1 uses Grok bot as the browser/execution harness to operate the researcher's authorized consumer accounts for ChatGPT, Perplexity, Gemini, and Claude.
+
+Grok is deliberately **not** a target model in Wave 1. Separating runner from target prevents the execution agent from also generating one of the measured recommendation outcomes. A Grok consumer-interface test can be added later as a separately collected wave using the same frozen prompt set.
+
+The frozen Wave 1 artifacts are:
+
+- `data/commerce-recommendation-prompts-v0.1.json`
+- `docs/grok-commerce-runner-v0.1.md`
+- `data/commerce-recommendation-run-schema-v0.1.json`
+
+Wave 1 consists of 12 prompts × 4 target platforms × 3 replicates = **144 expected valid responses**. Every run uses a fresh conversation, a single exact prompt, no follow-up, the ordinary default consumer model presented by the account, and the platform's default search/browsing behavior. Raw answers are preserved verbatim before coding.
+
+The runner must not bypass CAPTCHAs, anti-bot controls, rate limits, or access restrictions. Authentication or security interruptions are recorded as missing/blocked observations rather than worked around.
+
 ## Analysis plan
 
 Do not publish a composite "AI Commerce Readiness" score in v0.1.
