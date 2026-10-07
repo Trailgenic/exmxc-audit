@@ -6,7 +6,6 @@ export const PROVIDER_PURPOSES = [
   { provider: "Anthropic", purpose: "search", token: "Claude-SearchBot" },
   { provider: "Anthropic", purpose: "user_request", token: "Claude-User" },
   { provider: "Google", purpose: "search", token: "Googlebot" },
-  { provider: "Google", purpose: "shopping", token: "Storebot-Google" },
   { provider: "Google", purpose: "ai_use", token: "Google-Extended" },
   { provider: "Perplexity", purpose: "search", token: "PerplexityBot" },
   { provider: "Perplexity", purpose: "user_request", token: "Perplexity-User" }
@@ -52,7 +51,7 @@ function matchingGroups(groups, token) {
 function ruleRegex(pattern) {
   const anchored = pattern.endsWith("$");
   const source = (anchored ? pattern.slice(0, -1) : pattern)
-    .replace(/[.+?^$\{\}()|[\]\\]/g, "\\$&")
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\*/g, ".*");
   return new RegExp(`^${source}${anchored ? "$" : ""}`);
 }
