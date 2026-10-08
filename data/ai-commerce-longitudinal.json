@@ -1,0 +1,24 @@
+{
+  "dataset": "ai-commerce-exposure-longitudinal",
+  "version": "1.0.0",
+  "cadence": "biweekly",
+  "metric_definition": "Recommendation Share = eligible valid runs in which the retailer appears as a positive ranked recommendation / all category-eligible valid runs.",
+  "waves": [
+    {
+      "wave": "W1",
+      "snapshot_date": "2026-10-07",
+      "analysis_runs": 156,
+      "run_log_sha256": "c54c7687b19188e5aa389953a397944f817521ed6f1f0f9055eb74e5067a4a92",
+      "common_eight_prompt_recommendation_share": {
+        "Walmart banner": 0.697917,
+        "Walmart parent": 0.71875,
+        "Costco Wholesale": 0.614583,
+        "Target": 0.510417,
+        "Amazon.com": 0.375
+      },
+      "amazon_all_eligible_recommendation_share": 0.3,
+      "amazon_first_position_share": 0,
+      "amazon_mean_rank_when_recommended": 4.3333
+    }
+  ]
+}
