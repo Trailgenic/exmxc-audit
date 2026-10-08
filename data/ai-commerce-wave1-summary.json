@@ -1,0 +1,327 @@
+{
+  "dataset": "ai-commerce-exposure-wave1-summary",
+  "version": "1.0.0",
+  "wave": "W1",
+  "snapshot_date": "2026-10-07",
+  "collection_closed_utc": "2026-10-08T00:56:22Z",
+  "protocol_commit": "63ef358555c02db6f46d6f7325a6e0e29e63cca5",
+  "frozen_run_log": {
+    "sha256": "c54c7687b19188e5aa389953a397944f817521ed6f1f0f9055eb74e5067a4a92",
+    "attempts": 167,
+    "analysis_runs": 156,
+    "valid_analysis_runs": 156
+  },
+  "raw_package_sha256": {
+    "part1": "61b76338ba1c107d619a104086e79d59f275cb86336e7910cf264886c72bc9fe",
+    "part2": "ef0785a73814160c16c530088db22299af208448d872b20e569ddaa23e62e1e9"
+  },
+  "design": {
+    "prompts": 13,
+    "platforms": [
+      "ChatGPT",
+      "Perplexity",
+      "Gemini",
+      "Claude"
+    ],
+    "replicates": 3,
+    "planned_slots": 156
+  },
+  "full_eligibility_metrics": {
+    "Walmart banner": {
+      "eligible_runs": 144,
+      "recommended_runs": 86,
+      "recommendation_share": 0.597222,
+      "first_position_runs": 27,
+      "first_position_share": 0.1875,
+      "rank_distribution": {
+        "1": 27,
+        "2": 9,
+        "3": 16,
+        "4": 11,
+        "5": 23
+      },
+      "mean_rank_when_recommended": 2.9302
+    },
+    "Walmart parent": {
+      "eligible_runs": 144,
+      "recommended_runs": 98,
+      "recommendation_share": 0.680556,
+      "first_position_runs": 30,
+      "first_position_share": 0.208333,
+      "rank_distribution": {
+        "1": 30,
+        "2": 18,
+        "3": 22,
+        "4": 12,
+        "5": 16
+      },
+      "mean_rank_when_recommended": 2.6531
+    },
+    "Amazon.com": {
+      "eligible_runs": 120,
+      "recommended_runs": 36,
+      "recommendation_share": 0.3,
+      "first_position_runs": 0,
+      "first_position_share": 0,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 6,
+        "4": 12,
+        "5": 18
+      },
+      "mean_rank_when_recommended": 4.3333
+    },
+    "Costco Wholesale": {
+      "eligible_runs": 120,
+      "recommended_runs": 79,
+      "recommendation_share": 0.658333,
+      "first_position_runs": 28,
+      "first_position_share": 0.233333,
+      "rank_distribution": {
+        "1": 28,
+        "2": 28,
+        "3": 20,
+        "4": 1,
+        "5": 2
+      },
+      "mean_rank_when_recommended": 2
+    },
+    "Target": {
+      "eligible_runs": 96,
+      "recommended_runs": 49,
+      "recommendation_share": 0.510417,
+      "first_position_runs": 14,
+      "first_position_share": 0.145833,
+      "rank_distribution": {
+        "1": 14,
+        "2": 13,
+        "3": 6,
+        "4": 11,
+        "5": 5
+      },
+      "mean_rank_when_recommended": 2.5918
+    }
+  },
+  "common_eight_prompt_metrics": {
+    "prompt_ids": [
+      "P01",
+      "P02",
+      "P04",
+      "P05",
+      "P07",
+      "P08",
+      "P09",
+      "P10"
+    ],
+    "Walmart banner": {
+      "eligible_runs": 96,
+      "recommended_runs": 67,
+      "recommendation_share": 0.697917,
+      "first_position_runs": 27,
+      "first_position_share": 0.28125,
+      "rank_distribution": {
+        "1": 27,
+        "2": 9,
+        "3": 10,
+        "4": 9,
+        "5": 12
+      },
+      "mean_rank_when_recommended": 2.5522
+    },
+    "Walmart parent": {
+      "eligible_runs": 96,
+      "recommended_runs": 69,
+      "recommendation_share": 0.71875,
+      "first_position_runs": 27,
+      "first_position_share": 0.28125,
+      "rank_distribution": {
+        "1": 27,
+        "2": 9,
+        "3": 16,
+        "4": 10,
+        "5": 7
+      },
+      "mean_rank_when_recommended": 2.4348
+    },
+    "Amazon.com": {
+      "eligible_runs": 96,
+      "recommended_runs": 36,
+      "recommendation_share": 0.375,
+      "first_position_runs": 0,
+      "first_position_share": 0,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 6,
+        "4": 12,
+        "5": 18
+      },
+      "mean_rank_when_recommended": 4.3333
+    },
+    "Costco Wholesale": {
+      "eligible_runs": 96,
+      "recommended_runs": 59,
+      "recommendation_share": 0.614583,
+      "first_position_runs": 19,
+      "first_position_share": 0.197917,
+      "rank_distribution": {
+        "1": 19,
+        "2": 18,
+        "3": 20,
+        "4": 1,
+        "5": 1
+      },
+      "mean_rank_when_recommended": 2.1017
+    },
+    "Target": {
+      "eligible_runs": 96,
+      "recommended_runs": 49,
+      "recommendation_share": 0.510417,
+      "first_position_runs": 14,
+      "first_position_share": 0.145833,
+      "rank_distribution": {
+        "1": 14,
+        "2": 13,
+        "3": 6,
+        "4": 11,
+        "5": 5
+      },
+      "mean_rank_when_recommended": 2.5918
+    }
+  },
+  "amazon_by_platform": {
+    "ChatGPT": {
+      "eligible_runs": 30,
+      "recommended_runs": 7,
+      "recommendation_share": 0.233333,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 2,
+        "5": 5
+      }
+    },
+    "Perplexity": {
+      "eligible_runs": 30,
+      "recommended_runs": 1,
+      "recommendation_share": 0.033333,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 1
+      }
+    },
+    "Gemini": {
+      "eligible_runs": 30,
+      "recommended_runs": 12,
+      "recommendation_share": 0.4,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 1,
+        "4": 4,
+        "5": 7
+      }
+    },
+    "Claude": {
+      "eligible_runs": 30,
+      "recommended_runs": 16,
+      "recommendation_share": 0.533333,
+      "rank_distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 5,
+        "4": 6,
+        "5": 5
+      }
+    }
+  },
+  "category_first_position_winners": {
+    "P01": {
+      "Walmart": 12
+    },
+    "P02": {
+      "ALDI": 6,
+      "Costco": 3,
+      "Walmart": 3
+    },
+    "P03": {
+      "Costco": 9,
+      "Sam's Club": 3
+    },
+    "P04": {
+      "Costco": 12
+    },
+    "P05": {
+      "Best Buy": 8,
+      "Costco": 4
+    },
+    "P06": {
+      "Home Depot": 12
+    },
+    "P07": {
+      "Walmart": 12
+    },
+    "P08": {
+      "Target": 9,
+      "Old Navy": 3
+    },
+    "P09": {
+      "HomeGoods": 6,
+      "Target": 5,
+      "IKEA": 1
+    },
+    "P10": {
+      "Fleet Feet": 5,
+      "Dick's Sporting Goods": 3,
+      "REI": 3,
+      "SCHEELS": 1
+    },
+    "P11": {
+      "Best Buy": 10,
+      "T-Mobile": 2
+    },
+    "P12": {
+      "AutoZone": 7,
+      "O'Reilly Auto Parts": 5
+    },
+    "P13": {
+      "Buc-ee's": 7,
+      "Wawa": 2,
+      "Love's Travel Stops": 2,
+      "QuikTrip": 1
+    }
+  },
+  "sensitivity_excluding_gemini_common_eight": {
+    "Walmart banner": {
+      "eligible_runs": 72,
+      "recommended_runs": 56,
+      "recommendation_share": 0.777778
+    },
+    "Walmart parent": {
+      "eligible_runs": 72,
+      "recommended_runs": 58,
+      "recommendation_share": 0.805556
+    },
+    "Costco Wholesale": {
+      "eligible_runs": 72,
+      "recommended_runs": 44,
+      "recommendation_share": 0.611111
+    },
+    "Target": {
+      "eligible_runs": 72,
+      "recommended_runs": 37,
+      "recommendation_share": 0.513889
+    },
+    "Amazon.com": {
+      "eligible_runs": 72,
+      "recommended_runs": 24,
+      "recommendation_share": 0.333333
+    }
+  },
+  "interpretation_boundary": "Recommendation presence is an observed outcome. It does not establish that crawler policy, product-data access, model training, retailer quality, or any single mechanism caused the result."
+}
