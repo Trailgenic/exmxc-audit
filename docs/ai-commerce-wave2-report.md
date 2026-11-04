@@ -74,7 +74,7 @@ Therefore changes across Wave 1 and Wave 2 may reflect interface/model/geographi
 
 ## Next wave: separate recurrence from within-period replication
 
-The user reports Grokbot has already begun a third wave while Wave 2 just closed. The data should be retained, but if Wave 3 is collected immediately after November 4 it is best labeled an **within-period replication** (robustness sample) rather than a new biweekly longitudinal interval. Keep its true collection timestamps; do not backdate or reassign the results.
+The user reports Grokbot has already begun a third wave while Wave 2 just closed. The data should be retained, but if Wave 3 is collected immediately after November 4 it is best labeled a **within-period replication** (robustness sample) rather than a new biweekly longitudinal interval. Keep its true collection timestamps; do not backdate or reassign the results.
 
 The original biweekly calendar can resume with a subsequent properly spaced observation while continuing to store all collected waves. This distinction is important for future longitudinal analysis.
 
