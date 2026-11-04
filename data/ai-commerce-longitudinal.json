@@ -1,6 +1,6 @@
 {
   "dataset": "ai-commerce-exposure-longitudinal",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "cadence": "biweekly",
   "metric_definition": "Recommendation Share = eligible valid runs in which the retailer appears as a positive ranked recommendation / all category-eligible valid runs.",
   "waves": [
@@ -19,6 +19,34 @@
       "amazon_all_eligible_recommendation_share": 0.3,
       "amazon_first_position_share": 0,
       "amazon_mean_rank_when_recommended": 4.3333
+    },
+    {
+      "wave": "W2",
+      "snapshot_date": "2026-11-04",
+      "collection_window_pacific": "2026-11-03 to 2026-11-04",
+      "status": "mechanically_coded_with_deviations",
+      "analysis_runs": 156,
+      "valid_answers": 155,
+      "refusal_count": 1,
+      "source_workbook_sha256": "ff029e35ea488970d7ce6597b9c4de2c9905160b16ffc3ed3b1ab5f4b67e2cac",
+      "common_eight_prompt_recommendation_share": {
+        "Walmart banner": 0.71875,
+        "Walmart parent": 0.729167,
+        "Costco Wholesale": 0.614583,
+        "Target": 0.458333,
+        "Amazon.com": 0.322917
+      },
+      "common_eight_prompt_denominator_per_retailer": 96,
+      "amazon_all_eligible_recommendation_share": 0.268908,
+      "amazon_all_eligible_denominator": 119,
+      "amazon_first_position_share": 0,
+      "amazon_mean_rank_when_recommended": 3.656,
+      "protocol_deviations": [
+        "Gemini Auto substituted for Wave 1 Flash",
+        "runner location/network changed mid-run",
+        "Oct 21 partial aborted/restarted"
+      ],
+      "note": "Difference from Wave 1 is descriptive, not an identified causal or controlled temporal effect."
     }
   ]
 }
