@@ -1,0 +1,164 @@
+{
+  "dataset": "ai-commerce-exposure-wave2-summary",
+  "version": "1.0.0",
+  "wave": "W2",
+  "collection_window_pacific": "2026-11-03 to 2026-11-04",
+  "notes": "Oct 21 partial attempt aborted; Nov 3-4 restart was completed and frozen. Uploaded PDF and XLSX reviewed; original raw captures are not part of this public GitHub release.",
+  "source_files_sha256": {
+    "wave2_runs.xlsx": "ff029e35ea488970d7ce6597b9c4de2c9905160b16ffc3ed3b1ab5f4b67e2cac",
+    "wave2_summary.pdf": "539924ccd437ee46bfa414950e3537ec27e16deb672c4ffdd57597bc7585c15c"
+  },
+  "derived_codebook_file_sha256": "2c60c296ffa49aa23836a20552629c7960aaf7a6e50a2297dff334e5504a8fd3",
+  "protocol_commit": "63ef358555c02db6f46d6f7325a6e0e29e63cca5",
+  "completion": {
+    "planned_slots": 156,
+    "completed_slots": 156,
+    "valid_answers": 155,
+    "refusals": 1,
+    "refusal_run_id": "W2-R3-P12-Gemini",
+    "attempt_log_rows": 179,
+    "aborted_oct21_attempts": 22,
+    "blocked_attempts": 1
+  },
+  "comparison_prompt_ids": [
+    "P01",
+    "P02",
+    "P04",
+    "P05",
+    "P07",
+    "P08",
+    "P09",
+    "P10"
+  ],
+  "comparison_denominator": 96,
+  "coding_method": "First positive retailer recommendation in each ranked list is placed at #1; subsequent numbered retailer-headline entries follow ranks 2-5. Recognize frozen registry banner aliases in ranked entry headlines, not free-text explanations, source titles, or ads; rolled up using Wave 1 frozen parent mappings. No imputations for refusals.",
+  "common_eight_prompt_metrics": {
+    "Walmart banner": {
+      "wave1_hits": 67,
+      "wave2_hits": 69,
+      "eligible_runs_per_wave": 96,
+      "wave1_share": 0.697917,
+      "wave2_share": 0.71875,
+      "change_pp": 2.083,
+      "first_position_w2": 31,
+      "mean_rank_w2": 2.391
+    },
+    "Walmart parent": {
+      "wave1_hits": 69,
+      "wave2_hits": 70,
+      "eligible_runs_per_wave": 96,
+      "wave1_share": 0.71875,
+      "wave2_share": 0.729167,
+      "change_pp": 1.042,
+      "first_position_w2": 31,
+      "mean_rank_w2": 2.357
+    },
+    "Costco Wholesale": {
+      "wave1_hits": 59,
+      "wave2_hits": 59,
+      "eligible_runs_per_wave": 96,
+      "wave1_share": 0.614583,
+      "wave2_share": 0.614583,
+      "change_pp": 0,
+      "first_position_w2": 15,
+      "mean_rank_w2": 2.203
+    },
+    "Target": {
+      "wave1_hits": 49,
+      "wave2_hits": 44,
+      "eligible_runs_per_wave": 96,
+      "wave1_share": 0.510417,
+      "wave2_share": 0.458333,
+      "change_pp": -5.208,
+      "first_position_w2": 15,
+      "mean_rank_w2": 2.295
+    },
+    "Amazon.com": {
+      "wave1_hits": 36,
+      "wave2_hits": 31,
+      "eligible_runs_per_wave": 96,
+      "wave1_share": 0.375,
+      "wave2_share": 0.322917,
+      "change_pp": -5.208,
+      "first_position_w2": 0,
+      "rank_distribution_w2": {
+        "2": 2,
+        "3": 14,
+        "4": 9,
+        "5": 6
+      },
+      "mean_rank_w2": 3.613
+    }
+  },
+  "full_eligibility_wave2": {
+    "Walmart banner": {
+      "eligible_runs": 143,
+      "recommended_runs": 88,
+      "share": 0.615385,
+      "first_position_runs": 31
+    },
+    "Walmart parent": {
+      "eligible_runs": 143,
+      "recommended_runs": 101,
+      "share": 0.706294,
+      "first_position_runs": 31
+    },
+    "Costco Wholesale": {
+      "eligible_runs": 120,
+      "recommended_runs": 76,
+      "share": 0.633333,
+      "first_position_runs": 27
+    },
+    "Target": {
+      "eligible_runs": 96,
+      "recommended_runs": 44,
+      "share": 0.458333,
+      "first_position_runs": 15
+    },
+    "Amazon.com": {
+      "eligible_runs": 119,
+      "recommended_runs": 32,
+      "share": 0.268908,
+      "first_position_runs": 0,
+      "rank_distribution": {
+        "2": 2,
+        "3": 14,
+        "4": 9,
+        "5": 7
+      },
+      "mean_rank_when_recommended": 3.656
+    }
+  },
+  "amazon_by_platform_w2": {
+    "ChatGPT": {
+      "recommended_runs": 5,
+      "eligible_runs": 30,
+      "share": 0.166667
+    },
+    "Gemini": {
+      "recommended_runs": 8,
+      "eligible_runs": 29,
+      "share": 0.275862
+    },
+    "Claude": {
+      "recommended_runs": 15,
+      "eligible_runs": 30,
+      "share": 0.5
+    },
+    "Perplexity": {
+      "recommended_runs": 4,
+      "eligible_runs": 30,
+      "share": 0.133333
+    }
+  },
+  "protocol_deviations": [
+    "Gemini Auto replaced the prior Flash label; underlying model selection not fixed.",
+    "After the researcher's computer went offline, later runs used the runner box network; location-specific result leakage was observed.",
+    "Six run order deviations from planned sequence due to authentication holds.",
+    "One Gemini refusal was preserved; no post-hoc retry.",
+    "Some citations/sources recorded from screenshots because page extraction did not expose hrefs.",
+    "October 21 partial was abandoned rather than blended with November 3-4 final."
+  ],
+  "interpretation_boundary": "Descriptive repeated consumer-interface tests, not a representative consumer sample or a causal experiment. Machine-access policy, product quality, session settings, account conditions, geography and model changes remain potential confounders. Source PDF's unfiltered alias-match totals are not valid Recommendation Share numerators.",
+  "release_note": "Summary and coded-run file generated from uploaded workbook; independent second-coder adjudication remains desirable before formal inferential claims."
+}
