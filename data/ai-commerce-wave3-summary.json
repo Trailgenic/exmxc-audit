@@ -1,0 +1,179 @@
+{
+  "dataset": "ai-commerce-exposure-wave3-summary",
+  "version": "1.0.0",
+  "wave": "W3",
+  "snapshot_date": "2026-11-04",
+  "classification": "within_period_replication",
+  "collection_window_pacific": "2026-11-04",
+  "protocol_commit": "63ef358555c02db6f46d6f7325a6e0e29e63cca5",
+  "execution": {
+    "prompts": 13,
+    "platforms": [
+      "ChatGPT",
+      "Gemini",
+      "Claude",
+      "Perplexity"
+    ],
+    "replicates": 3,
+    "planned_slots": 156,
+    "valid_analysis_runs": 156,
+    "refusals": 0,
+    "attempt_log_rows": 159,
+    "nonanalysis_attempts": 3,
+    "prompt_mismatches_vs_wave2": 0,
+    "raw_answer_sha256_verified": 156
+  },
+  "source_sha256": {
+    "wave3_runs.xlsx": "474f97f7569d4e2736e5bff9964a168d7d0ed2a2337ddd436a2f0db6003a9bc1",
+    "wave3_summary.pdf": "1da68c9bb0f44a8da199300c9e03a9049bfa5ffae0fa24a28aacfd40e7ba0ee5"
+  },
+  "local_coded_runs_sha256": "bb2c816116c004ddb675a8a491e391345ed79b3461fe8539cb733da7f572be09",
+  "common_eight_prompt_ids": [
+    "P01",
+    "P02",
+    "P04",
+    "P05",
+    "P07",
+    "P08",
+    "P09",
+    "P10"
+  ],
+  "comparison_denominator_per_retailer": 96,
+  "common_eight_prompt_metrics": {
+    "Walmart banner": {
+      "recommended_runs": 68,
+      "share": 0.708333,
+      "first_place": 30,
+      "mean_rank": 2.4412
+    },
+    "Walmart parent": {
+      "recommended_runs": 68,
+      "share": 0.708333,
+      "first_place": 30,
+      "mean_rank_best_banner": 2.3971
+    },
+    "Costco Wholesale": {
+      "recommended_runs": 61,
+      "share": 0.635417,
+      "first_place": 15,
+      "mean_rank": 2.1475
+    },
+    "Target": {
+      "recommended_runs": 48,
+      "share": 0.5,
+      "first_place": 15,
+      "mean_rank": 2.4375
+    },
+    "Amazon.com": {
+      "recommended_runs": 27,
+      "share": 0.28125,
+      "first_place": 0,
+      "rank_distribution": {
+        "1": 0,
+        "2": 2,
+        "3": 12,
+        "4": 8,
+        "5": 5
+      },
+      "mean_rank": 3.5926
+    }
+  },
+  "full_eligibility_metrics": {
+    "Walmart banner": {
+      "recommended_runs": 86,
+      "eligible_runs": 144,
+      "share": 0.597222
+    },
+    "Walmart parent": {
+      "recommended_runs": 97,
+      "eligible_runs": 144,
+      "share": 0.673611
+    },
+    "Costco Wholesale": {
+      "recommended_runs": 81,
+      "eligible_runs": 120,
+      "share": 0.675
+    },
+    "Target": {
+      "recommended_runs": 48,
+      "eligible_runs": 96,
+      "share": 0.5
+    },
+    "Amazon.com": {
+      "recommended_runs": 27,
+      "eligible_runs": 120,
+      "share": 0.225,
+      "first_place": 0,
+      "mean_rank": 3.5926
+    }
+  },
+  "amazon_platform_full_eligible": {
+    "ChatGPT": {
+      "recommended_runs": 5,
+      "eligible_runs": 30,
+      "share": 0.166667
+    },
+    "Gemini": {
+      "recommended_runs": 7,
+      "eligible_runs": 30,
+      "share": 0.233333
+    },
+    "Claude": {
+      "recommended_runs": 13,
+      "eligible_runs": 30,
+      "share": 0.433333
+    },
+    "Perplexity": {
+      "recommended_runs": 2,
+      "eligible_runs": 30,
+      "share": 0.066667
+    }
+  },
+  "first_place_category_counts": {
+    "P01": {
+      "Walmart": 12
+    },
+    "P03": {
+      "Costco": 12
+    },
+    "P04": {
+      "Costco": 12
+    },
+    "P05": {
+      "Best Buy": 10,
+      "Costco": 2
+    },
+    "P06": {
+      "Home Depot": 12
+    },
+    "P07": {
+      "Walmart": 12
+    },
+    "P08": {
+      "Target": 9,
+      "Walmart": 1,
+      "Old Navy": 2
+    },
+    "P11": {
+      "Best Buy": 11,
+      "Verizon": 1
+    },
+    "P12": {
+      "AutoZone": 11,
+      "O'Reilly": 1
+    }
+  },
+  "deviations": [
+    "39 Gemini Auto runs",
+    "entire wave via runner box network with some localized search results",
+    "3 nonanalysis blocked/technical attempts, retained with approved make-up runs",
+    "4 analysis runs out of prompt-major order",
+    "ChatGPT Shop product cards not added as ranked retailer mentions",
+    "Perplexity one source URL contained serpads=1 without visible sponsored label",
+    "some Claude verbatim clipboard preambles not visible on page",
+    "Gemini searched_or_browsed capture inconsistent with source chips",
+    "one fresh_standard Gemini session",
+    "some source links/page metadata manually transcribed"
+  ],
+  "limitations": "This wave was collected on the same day Wave 2 finished; treat as within-period replication, not a spaced biweekly time point. Only ranked-headline retailer names were coded; unranked narrative mentions are excluded. The raw ZIP and manifest described in the PDF were not provided here, so archive integrity could not be independently verified. No causal conclusions about crawler restrictions."
+}
