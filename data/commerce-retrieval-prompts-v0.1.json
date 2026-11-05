@@ -1,0 +1,148 @@
+{
+  "study_id": "exmxc-commerce-retrieval-attribution",
+  "version": "0.1.0",
+  "frozen_date": "2026-11-04",
+  "status": "preregistered_no_outcomes",
+  "population": {
+    "comparison_retailers": [
+      "Walmart",
+      "Amazon",
+      "Costco",
+      "Target",
+      "Best Buy"
+    ],
+    "aliases_reference": "data/commerce-retailer-coding-registry-v0.1.json",
+    "retailers_not_named_in_prompts": true,
+    "open_world_other_retailers_allowed": true,
+    "eligibility_rule": "All five benchmark retailers retained as fixed comparison set for each prompt, regardless of model response. This is an observed recommendation-incidence comparison, not a claim of SKU-specific inventory availability."
+  },
+  "arms": {
+    "N": {
+      "description": "Natural retailer recommendation with no explicit request for citations",
+      "prefix": "Assume you are advising a U.S. shopper who has no loyalty memberships and no saved store preferences. Do not use my account history or prior conversations. ",
+      "suffix": " Recommend up to five U.S. retailers, ranked, with one short reason for each. Do not ask me a follow-up question."
+    },
+    "S": {
+      "description": "Source-visibility prompt: identical purchase intent plus explicit request for verifiable citations",
+      "prefix": "Assume you are advising a U.S. shopper who has no loyalty memberships and no saved store preferences. Do not use my account history or prior conversations. ",
+      "suffix": " Recommend up to five U.S. retailers, ranked, with one short reason for each. For each recommendation, show any verifiable URLs supporting current retailer or product facts, if available. If none are available, say 'not verified'; do not invent sources. Do not ask me a follow-up question."
+    }
+  },
+  "prompts": [
+    {
+      "id": "R01",
+      "category": "oled_tv",
+      "intent": "Where should I buy a 65-inch OLED television if I value competitive price, reliable delivery, and straightforward returns?"
+    },
+    {
+      "id": "R02",
+      "category": "laptop",
+      "intent": "Where should I buy a Windows laptop with at least 16 GB memory for college if I value reliable warranty support and a competitive price?"
+    },
+    {
+      "id": "R03",
+      "category": "headphones",
+      "intent": "Where should I buy wireless noise-canceling over-ear headphones if I value authentic products, clear return terms, and good prices?"
+    },
+    {
+      "id": "R04",
+      "category": "air_purifier",
+      "intent": "Where should I buy an air purifier for a medium-sized bedroom if I value filter availability, warranty support, and price?"
+    },
+    {
+      "id": "R05",
+      "category": "drip_coffee_maker",
+      "intent": "Where should I buy an 8- to 12-cup automatic drip coffee maker if I value product selection, returns, and competitive prices?"
+    },
+    {
+      "id": "R06",
+      "category": "robot_vacuum",
+      "intent": "Where should I buy a robot vacuum for an apartment if I value dependable support, authenticity, and competitive prices?"
+    },
+    {
+      "id": "R07",
+      "category": "home_office_printer",
+      "intent": "Where should I buy an all-in-one home-office printer if I value ink supply availability, returns, and warranty support?"
+    },
+    {
+      "id": "R08",
+      "category": "wifi_router",
+      "intent": "Where should I buy a Wi-Fi router for a medium-sized home if I value reliable product information, good value, and return options?"
+    }
+  ],
+  "execution": {
+    "platforms": [
+      "ChatGPT",
+      "Perplexity",
+      "Gemini",
+      "Claude"
+    ],
+    "replicates": 3,
+    "arms_per_intent": [
+      "N",
+      "S"
+    ],
+    "expected_valid_run_slots": 192,
+    "separate_new_chat_every_arm": true,
+    "no_followups": true,
+    "session_mode": "Temporary/private new chat when natively available without settings changes, else fresh standard; always record",
+    "model_mode": "Default logged-in consumer model displayed; record label and routing changes; do not manually override default",
+    "search_mode": "Leave user-facing search/browsing toggle at platform default; record observed indicators",
+    "platform_order_by_replicate": {
+      "1": [
+        "ChatGPT",
+        "Gemini",
+        "Claude",
+        "Perplexity"
+      ],
+      "2": [
+        "Perplexity",
+        "Claude",
+        "ChatGPT",
+        "Gemini"
+      ],
+      "3": [
+        "Gemini",
+        "ChatGPT",
+        "Perplexity",
+        "Claude"
+      ]
+    },
+    "prompt_order_by_replicate": {
+      "1": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05",
+        "R06",
+        "R07",
+        "R08"
+      ],
+      "2": [
+        "R06",
+        "R03",
+        "R08",
+        "R01",
+        "R05",
+        "R02",
+        "R07",
+        "R04"
+      ],
+      "3": [
+        "R04",
+        "R07",
+        "R02",
+        "R05",
+        "R08",
+        "R01",
+        "R06",
+        "R03"
+      ]
+    },
+    "arm_order_rule": "For each platform x replicate x prompt in frozen order, run N then S when (replicate 1-based + prompt 1-based position within that replicate order) is even; otherwise run S then N. Fresh separate chat for each arm. Do not reuse a chat.",
+    "source_audit_order": "Perform independent merchant access/surface observation before any model outcome is examined; preserve run-time site snapshots. Do not choose surfaces in response to retailer rankings."
+  },
+  "exact_message_template": "{arm.prefix}{prompt.intent}{arm.suffix}",
+  "note": "The S arm deliberately requests citations, so any arm effect measures sensitivity to a citation request, not an externally imposed crawler-permission treatment. The two arms can differ for reasons other than source access."
+}
