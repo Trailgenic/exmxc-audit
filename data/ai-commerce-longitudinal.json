@@ -1,6 +1,6 @@
 {
   "dataset": "ai-commerce-exposure-longitudinal",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "cadence": "biweekly",
   "metric_definition": "Recommendation Share = eligible valid runs in which the retailer appears as a positive ranked recommendation / all category-eligible valid runs.",
   "waves": [
@@ -47,6 +47,36 @@
         "Oct 21 partial aborted/restarted"
       ],
       "note": "Difference from Wave 1 is descriptive, not an identified causal or controlled temporal effect."
+    },
+    {
+      "wave": "W3",
+      "snapshot_date": "2026-11-04",
+      "collection_window_pacific": "2026-11-04",
+      "status": "within_period_replication_mechanically_coded",
+      "longitudinal_interval": "same_day_as_wave2_not_biweekly",
+      "analysis_runs": 156,
+      "valid_answers": 156,
+      "refusal_count": 0,
+      "source_workbook_sha256": "474f97f7569d4e2736e5bff9964a168d7d0ed2a2337ddd436a2f0db6003a9bc1",
+      "common_eight_prompt_denominator_per_retailer": 96,
+      "common_eight_prompt_recommendation_share": {
+        "Walmart banner": 0.708333,
+        "Walmart parent": 0.708333,
+        "Costco Wholesale": 0.635417,
+        "Target": 0.5,
+        "Amazon.com": 0.28125
+      },
+      "amazon_all_eligible_recommendation_share": 0.225,
+      "amazon_all_eligible_denominator": 120,
+      "amazon_first_position_share": 0,
+      "amazon_mean_rank_when_recommended": 3.5926,
+      "protocol_deviations": [
+        "Gemini Auto underlying model variable",
+        "all runs over runner box network with some localized sources",
+        "4 out-of-order make-up runs after holds/errors",
+        "some Shop cards/source metadata require careful coding"
+      ],
+      "note": "This is a same-period replication of the November 3-4 Wave 2 rather than an observation after a full 14-day interval. Do not interpret the W2→W3 difference as time-series trend."
     }
   ]
 }
