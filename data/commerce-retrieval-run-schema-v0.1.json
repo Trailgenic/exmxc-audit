@@ -1,0 +1,115 @@
+{
+  "schema": "exmxc-commerce-retrieval-run-v0.1",
+  "version": "0.1.0",
+  "required": [
+    "study_id",
+    "run_id",
+    "prompt_id",
+    "arm",
+    "replicate",
+    "platform",
+    "timestamp_utc",
+    "attempt_status",
+    "exact_submitted_message",
+    "raw_answer",
+    "links",
+    "recommendations"
+  ],
+  "enums": {
+    "platform": [
+      "ChatGPT",
+      "Perplexity",
+      "Gemini",
+      "Claude"
+    ],
+    "arm": [
+      "N",
+      "S"
+    ],
+    "attempt_status": [
+      "valid",
+      "refusal",
+      "technical_error",
+      "blocked_login",
+      "blocked_usage_limit",
+      "blocked_automation",
+      "wrong_prompt",
+      "other_invalid"
+    ],
+    "link_role": [
+      "evidence_citation",
+      "merchant_handoff",
+      "contextual_link",
+      "sponsored_ui",
+      "unresolved_chip"
+    ],
+    "source_owner": [
+      "retailer_owned",
+      "brand_or_manufacturer",
+      "third_party_review_editorial",
+      "comparison_aggregator_marketplace",
+      "community_social",
+      "platform_or_search",
+      "other",
+      "unknown"
+    ]
+  },
+  "fields": {
+    "study_id": "exmxc-commerce-retrieval-attribution",
+    "run_id": "string unique incl replicate/prompt/platform/arm/attempt",
+    "prompt_id": "R01-R08",
+    "arm": "N or S",
+    "replicate": "integer 1-3",
+    "platform": "ChatGPT|Perplexity|Gemini|Claude",
+    "timestamp_utc": "ISO8601 time when answer completed or run failed",
+    "attempt_number": "1 or 2",
+    "attempt_status": "enum above",
+    "selected_analysis_run": "boolean",
+    "parent_failed_attempt_id": "string|null",
+    "exact_submitted_message": "string; exact frozen concatenated prompt",
+    "exact_submitted_message_sha256": "sha256 of UTF-8 string",
+    "logged_in": "boolean",
+    "session_mode": "temporary|private|fresh_standard|other",
+    "visible_model_label": "string|null",
+    "visible_search_behavior": "searched|not_searched|unknown",
+    "visible_personalized_badge": "string|null",
+    "location_or_locale_signal": "string|null",
+    "browser_network_context": "string|null",
+    "raw_answer": "verbatim native clipboard/copy",
+    "raw_answer_sha256": "sha256 of UTF-8 raw_answer",
+    "ui_visible_answer": "optional separate visible text; do not overwrite raw_answer",
+    "links": [
+      {
+        "raw_url": "string|null",
+        "resolved_url": "string|null",
+        "visible_label": "string",
+        "role": "enum link_role",
+        "owner_type": "enum source_owner",
+        "matched_retailer_banner": "string|null",
+        "href_resolution_status": "resolved|unresolved|unavailable|failed_validation",
+        "provider_host": "string|null",
+        "page_title": "string|null",
+        "paid_label_visible": "boolean",
+        "provenance_capture_reference": "string|null",
+        "notes": "string|null"
+      }
+    ],
+    "recommendations": [
+      {
+        "raw_banner": "string",
+        "rank": "integer 1-5 or null",
+        "positive": "boolean",
+        "raw_answer_span": "string",
+        "related_merchant_link_indexes": "array of integer link indexes"
+      }
+    ],
+    "visible_source_chip_count": "integer|null",
+    "visibly_sponsored_item_count": "integer|null",
+    "error_description": "string|null",
+    "screenshot_references": "string array",
+    "capture_directory_reference": "string|null",
+    "deviation_notes": "string array",
+    "validation_status": "not_checked|checked|adjudication_required"
+  },
+  "interpretation_boundary": "Links visible in a consumer UI do not establish which hidden pages or feeds the assistant used; product cards and merchant handoffs are not automatically evidence citations."
+}
