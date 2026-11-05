@@ -1,0 +1,49 @@
+{
+  "schema": "exmxc-commerce-retailer-access-snapshot-v0.1",
+  "version": "0.1.0",
+  "required": [
+    "retailer",
+    "observed_url",
+    "surface_type",
+    "timestamp_utc",
+    "collection_status",
+    "robots_url",
+    "robots_status",
+    "provider_purpose_rules"
+  ],
+  "fields": {
+    "retailer": "Walmart|Amazon|Costco|Target|Best Buy",
+    "observed_url": "https URL to exact observed storefront/robots/category/PDP",
+    "surface_type": "robots|storefront|category|pdp|announcement",
+    "category_id": "R01-R08|null",
+    "selection_rule": "first organic public category-search PDP before outcomes observed|null",
+    "timestamp_utc": "ISO8601",
+    "collection_status": "delivered|access_restricted|timeout|rate_limited|unavailable|unsupported_content|unknown",
+    "http_status": "integer|null",
+    "robots_url": "string",
+    "robots_status": "delivered|unavailable|unknown",
+    "robots_content_sha256": "hex SHA256|null",
+    "page_html_sha256": "hex SHA256|null",
+    "provider_purpose_rules": [
+      {
+        "provider": "string",
+        "token": "string",
+        "purpose": "string",
+        "path": "string",
+        "decision": "allowed|disallowed|unknown",
+        "matched_rule": "string|null"
+      }
+    ],
+    "product_markup": {
+      "found_product_schema": "boolean|null",
+      "has_price": "boolean|null",
+      "has_availability": "boolean|null",
+      "name": "string|null",
+      "brand": "string|null",
+      "currency": "string|null",
+      "observed_price": "number|null"
+    },
+    "public_disclosure_url": "string|null",
+    "limitation": "Never treat a single denied page, robots policy, or missing schema as proof a model could not access the retailer."
+  }
+}
